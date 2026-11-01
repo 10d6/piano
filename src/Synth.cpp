@@ -110,7 +110,7 @@ struct PianoVoice : Voice {
   // the strike's noise: octave bands of noise, per mic, each fading at its measured rate
   bool knocking = false;
   float nzEnv[2][pd::kNoiseBands] = {}, nzMul[pd::kNoiseBands] = {};
-  float nzS1[2][pd::kNoiseBands] = {}, nzS2[2][pd::kNoiseBands] = {};
+  float nzS[2][pd::kNoiseBands][4] = {};   // two filter stages per band, two states each
 };
 
 struct Piano : Synth {
@@ -151,8 +151,10 @@ struct Piano : Synth {
   int compsNow = 0;
   float floorDb = kFloorDb;
 
-  // Octave band-pass filters for the strike's noise (RBJ, 0 dB peak), each
-  // scaled so white noise through it comes out at unit RMS.
+  // Band-pass filters for the strike's noise: two identical RBJ band-pass
+  // stages per octave band (4th order, so loud bands don't spill into quiet
+  // ones), each scaled so white noise through it comes out at unit RMS.
+  // tools/make_header.py solves the band gains against these same filters.
   struct Band { float b0 = 0, a1 = 0, a2 = 0, norm = 0; };
   Band bands[pd::kNoiseBands];
 
@@ -183,27 +185,30 @@ struct Piano : Synth {
       Band& bd = bands[b];
       float fc = pd::kNoiseBandLow[b] * 1.41421356f;
       if (fc * 1.41421356f > 0.49f * sr) { bd = Band{}; continue; }
-      float w0 = kTwoPi * fc / sr, alpha = std::sin(w0) / (2 * 1.41421356f), a0 = 1 + alpha;
+      float w0 = kTwoPi * fc / sr, alpha = std::sin(w0) / (2 * pd::kNoiseQ), a0 = 1 + alpha;
       bd.b0 = alpha / a0;
       bd.a1 = -2 * std::cos(w0) / a0;
       bd.a2 = (1 - alpha) / a0;
-      float s1 = 0, s2 = 0;
+      float st[4] = {};
       double var = 0;
       int n = static_cast<int>(sr);
       for (int i = 0; i < n + 2000; ++i) {
-        float y = bandStep(bd, rng.bipolar(), s1, s2);
+        float y = bandStep(bd, rng.bipolar(), st);
         if (i >= 2000) var += double(y) * y;
       }
       bd.norm = static_cast<float>(1.0 / std::sqrt(var / n));
     }
   }
 
-  // one sample of a band-pass (transposed direct form II; b1 = 0, b2 = −b0)
-  static float bandStep(const Band& b, float x, float& s1, float& s2) {
-    float y = b.b0 * x + s1;
-    s1 = -b.a1 * y + s2;
-    s2 = -b.b0 * x - b.a2 * y;
-    return y;
+  // one sample of a band: two band-pass stages (transposed direct form II; b1 = 0, b2 = −b0)
+  static float bandStep(const Band& b, float x, float* st) {
+    for (int k = 0; k < 2; ++k) {
+      float y = b.b0 * x + st[2 * k];
+      st[2 * k] = -b.a1 * y + st[2 * k + 1];
+      st[2 * k + 1] = -b.b0 * x - b.a2 * y;
+      x = y;
+    }
+    return x;
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
@@ -477,22 +482,38 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
 
   if (knocking) {
     dsp::Rng& rnd = ctx.rng();
+    // bands that have faded below −100 dB are skipped (and their filters cleared)
+    bool live[pd::kNoiseBands];
+    for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+      float g = std::max(nzEnv[0][bd], nzEnv[1][bd]) / std::max(synth.bands[bd].norm, 1e-9f);
+      live[bd] = g > 1e-5f;
+      if (!live[bd] && g > 0) {
+        nzEnv[0][bd] = nzEnv[1][bd] = 0;
+        for (float& v : nzS[0][bd]) v = 0;
+        for (float& v : nzS[1][bd]) v = 0;
+      }
+    }
     for (int i = 0; i < frames; ++i) {
       float xl = rnd.bipolar(), xr = rnd.bipolar(), l = 0, r = 0;
       for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+        if (!live[bd]) continue;
         const auto& band = synth.bands[bd];
-        l += Piano::bandStep(band, xl, nzS1[0][bd], nzS2[0][bd]) * nzEnv[0][bd];
-        r += Piano::bandStep(band, xr, nzS1[1][bd], nzS2[1][bd]) * nzEnv[1][bd];
+        l += Piano::bandStep(band, xl, nzS[0][bd]) * nzEnv[0][bd];
+        r += Piano::bandStep(band, xr, nzS[1][bd]) * nzEnv[1][bd];
         nzEnv[0][bd] *= nzMul[bd];
         nzEnv[1][bd] *= nzMul[bd];
       }
       out.add(i, l, r);
     }
     float peak = 0;
-    for (int bd = 0; bd < pd::kNoiseBands; ++bd) peak = std::max(peak, std::max(nzEnv[0][bd], nzEnv[1][bd]) / std::max(synth.bands[bd].norm, 1.f));
-    if (peak < 1e-6f) {
+    for (int bd = 0; bd < pd::kNoiseBands; ++bd) peak = std::max(peak, std::max(nzEnv[0][bd], nzEnv[1][bd]));
+    if (peak <= 0) {
       knocking = false;
-      for (int bd = 0; bd < pd::kNoiseBands; ++bd) nzEnv[0][bd] = nzEnv[1][bd] = nzS1[0][bd] = nzS1[1][bd] = nzS2[0][bd] = nzS2[1][bd] = 0;
+      for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+        nzEnv[0][bd] = nzEnv[1][bd] = 0;
+        for (float& v : nzS[0][bd]) v = 0;
+        for (float& v : nzS[1][bd]) v = 0;
+      }
     }
   }
 }

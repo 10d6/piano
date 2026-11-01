@@ -13,8 +13,12 @@ everything about them is **measured from recordings of a real grand**:
 - each partial's starting level at 16 velocities, for both of the recording's
   microphones, and the phase between them, so tone, loudness and stereo
   image change with how hard a key is struck;
-- the strike's noise (hammer, action and soundboard knock): octave bands
-  per key, velocity and microphone, each with its own decay.
+- the strike's noise (hammer, action and soundboard knock): what the
+  recordings hold beyond the partials, in octave bands per key, velocity and
+  microphone, each with its own decay. The bands' filters are steep
+  (4th order) and their gains are solved against the filters' overlap, so
+  the noise's spectrum matches the measured one rather than spilling hiss
+  into the treble.
 
 The recordings sample every minor third; keys between are interpolated. One
 voice per key: striking a key that is still sounding adds to its vibration.
@@ -25,7 +29,7 @@ with the recordings in octave bands over time. Measured keys land within
 heard (held out from the data and interpolated) land within 3–4 dB.
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~4.7× realtime in Chromium; ordinary playing at 20×+. A
+can do, renders at ~5× realtime in Chromium; ordinary playing at 15–25×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data

@@ -28,6 +28,51 @@ def repair(keys):
             k["f0"] = 440 * 2 ** ((k["key"] - 69) / 12) * 2 ** (c / 1200)
 
 
+NOISE_Q = 1.2
+
+
+def band_matrix(bands, sr):
+    """M[i][j]: share of band filter j's output power (unit total) that falls in octave band i,
+    for the engine's filters: two identical RBJ band-pass stages at sqrt(2)·low edge."""
+    import numpy as np
+    f = np.linspace(1, sr / 2, 200000)
+    w = 2 * np.pi * f / sr
+    z = np.exp(-1j * w)
+    M = np.zeros((len(bands), len(bands)))
+    for j, lo in enumerate(bands):
+        fc = lo * math.sqrt(2)
+        if fc * math.sqrt(2) > 0.49 * sr:
+            continue
+        w0 = 2 * math.pi * fc / sr
+        alpha = math.sin(w0) / (2 * NOISE_Q)
+        a0 = 1 + alpha
+        b0, a1, a2 = alpha / a0, -2 * math.cos(w0) / a0, (1 - alpha) / a0
+        H = (b0 - b0 * z * z) / (1 + a1 * z + a2 * z * z)
+        P = np.abs(H) ** 4
+        tot = P.sum()
+        for i, lo2 in enumerate(bands):
+            sel = (f >= lo2) & (f < 2 * lo2)
+            M[i, j] = P[sel].sum() / tot
+    return M
+
+
+def solve_gains(M, target_db):
+    """Band gains (dB) whose filtered noise, overlap included, matches the target band levels."""
+    import numpy as np
+    from scipy.optimize import nnls
+    t = 10 ** (np.array(target_db) / 10)
+    active = M.sum(0) > 0
+    # relative error, so quiet bands count as much as loud ones, but only within 40 dB of the
+    # loudest band (deeper than that, a band can't be heard next to the others anyway)
+    W = 1 / (t + t.max() * 1e-4)
+    # a band with no measurable residual is one the partials cover: don't let it constrain the rest
+    rows = np.array(target_db) > -120
+    g, _ = nnls((M[:, active] * W[:, None])[rows], (t * W)[rows])
+    out = np.full(len(target_db), -150.0)
+    out[np.nonzero(active)[0]] = 10 * np.log10(np.maximum(g, 1e-15))
+    return np.maximum(out, -150.0)
+
+
 def main():
     d = json.load(open(sys.argv[1]))
     out = open(sys.argv[2], "w")
@@ -91,25 +136,32 @@ def main():
         nz = json.load(open(npath))
         bands = nz["bands"]
         byk = {k["key"]: k for k in nz["keys"]}
+        M = band_matrix(bands, 48000.0)
         rows_nl, rows_nd = [], []
         for k in keys:
             n = byk[k["key"]]
             dec = []
             for b, d in enumerate(n["decay"]):
-                dec.append(min(max(d, -400.0), -40.0))
+                dec.append(min(max(d, -1500.0), -60.0))
             # a residual that fades as slowly as the strings is partial energy the analysis
             # smeared, not knock: keep only what decays like a transient
             slow = [max(0.0, (d + 40.0) / 35.0) for d in n["decay"]]   # 0 at -40 dB/s, 1 at -5 dB/s
             lv = []
             for layer in n["levels"]:
-                lv.append("{" + ", ".join("{" + ", ".join(str(round(max(min(x - 18 * min(slow[b], 1.0), 0), -150) * 100))
-                                                          for b, x in enumerate(mic)) + "}" for mic in layer) + "}")
+                mics = []
+                for mic in layer:
+                    target = [max(min(x - 18 * min(slow[b], 1.0), 0), -150) for b, x in enumerate(mic)]
+                    g = solve_gains(M, target)
+                    mics.append("{" + ", ".join(str(round(v * 100)) for v in g) + "}")
+                lv.append("{" + ", ".join(mics) + "}")
             rows_nl.append("  {" + ", ".join(lv) + "}")
             rows_nd.append("  {" + ", ".join("%.1ff" % d for d in dec) + "}")
         out.write(f"// The strike's noise (hammer, action, soundboard knock): octave bands from {bands[0]:g} Hz\n")
         out.write(f"constexpr int kNoiseBands = {len(bands)};\n")
+        out.write(f"constexpr float kNoiseQ = {NOISE_Q}f;   // per stage; two stages per band\n")
         out.write("constexpr float kNoiseBandLow[kNoiseBands] = {" + ", ".join("%.2ff" % b for b in bands) + "};\n")
-        out.write("// RMS level at the strike per key, layer, mic and band (hundredths of a dB)\n")
+        out.write("// gain of each band's noise at the strike per key, layer and mic (hundredths of a dB), solved so\n"
+                  "// that the bands together, with their filters' overlap, give the measured spectrum\n")
         out.write("constexpr short noiseLevels[kKeys][kLayers][2][kNoiseBands] = {\n" + ",\n".join(rows_nl) + "\n};\n")
         out.write("// decay per key and band (dB/s)\n")
         out.write("constexpr float noiseDecay[kKeys][kNoiseBands] = {\n" + ",\n".join(rows_nd) + "\n};\n\n")
