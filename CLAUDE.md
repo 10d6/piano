@@ -28,6 +28,20 @@ from CI at milestones.
    parameter is a message (§9b); a look of the synth's own is `ui/page.js`
    (§9a), with `ui/style.css` for styling either page.
 
+## This synth
+
+- `src/PianoData.h` is generated (`tools/make_header.py`); never edit it by
+  hand. The measurements are `tools/salamander*.json`; README has the
+  pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
+  README and in the plugin/release notes.
+- After any change to the sound, run `tools/compare.py` against the
+  recordings and `tools/bench-web.cjs` for browser speed, and report both.
+- Voices read parameters only in `render`, so the strike happens at the
+  start of the first render after `start` (`pending`).
+- Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
+  half-pedalling (the kit treats it as on/off), release velocity, parameter
+  access in `Voice::start`, sostenuto (CC66).
+
 ## Fresh workspace
 
 A new session starts without the toolchains. Install them first (Ubuntu; the

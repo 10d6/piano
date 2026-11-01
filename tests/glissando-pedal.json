@@ -808,6 +808,15 @@
  "expect": {
   "soundBy": 0.02,
   "limiterBelow": 6,
-  "silentAfter": 6.9
+  "levelAt": [
+   {
+    "t": 4.9,
+    "above": -40
+   },
+   {
+    "t": 6.9,
+    "below": -55
+   }
+  ]
  }
 }

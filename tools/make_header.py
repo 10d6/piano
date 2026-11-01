@@ -84,6 +84,35 @@ def main():
     out.write("constexpr Partial partials[kPartials] = {\n" + ",\n".join(rows_p) + "\n};\n\n")
     out.write("// starting level of each partial per layer and mic (left, right), in hundredths of a dB\n")
     out.write("constexpr short levels[kPartials][kLayers][2] = {\n" + ",\n".join(rows_l) + "\n};\n\n")
+    # the strike's noise (tools/analyze_noise.py), if measured
+    import os
+    npath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_noise.json")
+    if os.path.exists(npath):
+        nz = json.load(open(npath))
+        bands = nz["bands"]
+        byk = {k["key"]: k for k in nz["keys"]}
+        rows_nl, rows_nd = [], []
+        for k in keys:
+            n = byk[k["key"]]
+            dec = []
+            for b, d in enumerate(n["decay"]):
+                dec.append(min(max(d, -400.0), -40.0))
+            # a residual that fades as slowly as the strings is partial energy the analysis
+            # smeared, not knock: keep only what decays like a transient
+            slow = [max(0.0, (d + 40.0) / 35.0) for d in n["decay"]]   # 0 at -40 dB/s, 1 at -5 dB/s
+            lv = []
+            for layer in n["levels"]:
+                lv.append("{" + ", ".join("{" + ", ".join(str(round(max(min(x - 18 * min(slow[b], 1.0), 0), -150) * 100))
+                                                          for b, x in enumerate(mic)) + "}" for mic in layer) + "}")
+            rows_nl.append("  {" + ", ".join(lv) + "}")
+            rows_nd.append("  {" + ", ".join("%.1ff" % d for d in dec) + "}")
+        out.write(f"// The strike's noise (hammer, action, soundboard knock): octave bands from {bands[0]:g} Hz\n")
+        out.write(f"constexpr int kNoiseBands = {len(bands)};\n")
+        out.write("constexpr float kNoiseBandLow[kNoiseBands] = {" + ", ".join("%.2ff" % b for b in bands) + "};\n")
+        out.write("// RMS level at the strike per key, layer, mic and band (hundredths of a dB)\n")
+        out.write("constexpr short noiseLevels[kKeys][kLayers][2][kNoiseBands] = {\n" + ",\n".join(rows_nl) + "\n};\n")
+        out.write("// decay per key and band (dB/s)\n")
+        out.write("constexpr float noiseDecay[kKeys][kNoiseBands] = {\n" + ",\n".join(rows_nd) + "\n};\n\n")
     out.write("}  // namespace piano_data\n")
     print(f"{len(keys)} keys, {len(rows_p)} partials")
 

@@ -69,31 +69,17 @@ float measuredCents(int note) {
 }
 }  // namespace
 
-#ifdef PIANO_STATS
-#include <cstdio>
-namespace piano_stats {
-inline double compSamples = 0, voiceSamples = 0;
-inline int peak = 0;
-inline void add(int c, int frames, int) { compSamples += double(c) * frames; voiceSamples += frames; }
-struct Report { ~Report() { std::fprintf(stderr, "component-samples %.3g, per voice-sample %.1f\n", compSamples, compSamples / (voiceSamples + 1)); } };
-inline Report report;
-}
-#endif
 
 struct Piano;
 
 struct PianoVoice : Voice {
   explicit PianoVoice(Piano& s) : synth(s) {}
-  void prepare(const PrepareInfo& info) override {
-    sr = static_cast<float>(info.sampleRate);
-    noiseTone.prepare(sr);
-    noiseTone.setMode(dsp::Svf::Mode::LowPass);
-  }
+  void prepare(const PrepareInfo& info) override { sr = static_cast<float>(info.sampleRate); }
   void start(const NoteOn& n, const StartInfo& s) override;
   void strike(VoiceContext& ctx, float vel);
   void release() override { damped = true; }
   void render(VoiceContext& ctx, Buffer& out) override;
-  bool active() const override { return pending || count > 0 || noiseEnv > 1e-5f; }
+  bool active() const override { return pending || count > 0 || knocking; }
 
   void add(float amp, float decayDb, float ratio, float offsetHz, float phase, float damp, float wl, float wr,
            float stereoPhase);
@@ -121,10 +107,10 @@ struct PianoVoice : Voice {
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1;
   bool lastDamped = false;
 
-  // hammer: a short burst of filtered noise
-  dsp::Noise noise;
-  dsp::Svf noiseTone;
-  float noiseEnv = 0, noiseDecay = 0, noiseGainL = 0, noiseGainR = 0;
+  // the strike's noise: octave bands of noise, per mic, each fading at its measured rate
+  bool knocking = false;
+  float nzEnv[2][pd::kNoiseBands] = {}, nzMul[pd::kNoiseBands] = {};
+  float nzS1[2][pd::kNoiseBands] = {}, nzS2[2][pd::kNoiseBands] = {};
 };
 
 struct Piano : Synth {
@@ -134,13 +120,13 @@ struct Piano : Synth {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
     dynamics = b.add("play.dynamics").name("Dynamics").range(25, 150).def(100).unit("%").group("Playing");
     bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").group("Tone");
-    hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(-6).unit("dB").group("Tone");
+    hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
-    room = b.add("space.room").name("Room").range(0, 1).def(0.12).group("Space");
+    room = b.add("space.room").name("Room").range(0, 100).def(12).unit("%").group("Space");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<PianoVoice>(*this); }
@@ -165,6 +151,11 @@ struct Piano : Synth {
   int compsNow = 0;
   float floorDb = kFloorDb;
 
+  // Octave band-pass filters for the strike's noise (RBJ, 0 dB peak), each
+  // scaled so white noise through it comes out at unit RMS.
+  struct Band { float b0 = 0, a1 = 0, a2 = 0, norm = 0; };
+  Band bands[pd::kNoiseBands];
+
   // A small room: decorrelated, darkening noise tails, one per side.
   wa::Convolver roomConv;
   float sr = 48000;
@@ -187,13 +178,39 @@ struct Piano : Synth {
     }
     const float* ch[2] = {l.data(), r.data()};
     roomConv.setImpulse(ch, 2, len, info.sampleRate, true);
+
+    for (int b = 0; b < pd::kNoiseBands; ++b) {
+      Band& bd = bands[b];
+      float fc = pd::kNoiseBandLow[b] * 1.41421356f;
+      if (fc * 1.41421356f > 0.49f * sr) { bd = Band{}; continue; }
+      float w0 = kTwoPi * fc / sr, alpha = std::sin(w0) / (2 * 1.41421356f), a0 = 1 + alpha;
+      bd.b0 = alpha / a0;
+      bd.a1 = -2 * std::cos(w0) / a0;
+      bd.a2 = (1 - alpha) / a0;
+      float s1 = 0, s2 = 0;
+      double var = 0;
+      int n = static_cast<int>(sr);
+      for (int i = 0; i < n + 2000; ++i) {
+        float y = bandStep(bd, rng.bipolar(), s1, s2);
+        if (i >= 2000) var += double(y) * y;
+      }
+      bd.norm = static_cast<float>(1.0 / std::sqrt(var / n));
+    }
+  }
+
+  // one sample of a band-pass (transposed direct form II; b1 = 0, b2 = −b0)
+  static float bandStep(const Band& b, float x, float& s1, float& s2) {
+    float y = b.b0 * x + s1;
+    s1 = -b.a1 * y + s2;
+    s2 = -b.b0 * x - b.a2 * y;
+    return y;
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
     float over = static_cast<float>(compsNow - kBudget) / kBudget;
     floorDb = kFloorDb + std::clamp(over * 40.f, 0.f, 40.f);
     compsNow = 0;
-    Ramp w = ctx.ramp(width), mix = ctx.ramp(room);
+    Ramp w = ctx.ramp(width), mix = ctx.ramp(room);   // both in %
     for (int i = 0; i < io.frames; ++i) {
       float l = io.left[i], r = io.right[i];
       float m = 0.5f * (l + r), s = 0.5f * (l - r) * w.at(i) * 0.01f;
@@ -201,7 +218,7 @@ struct Piano : Synth {
       r = m - s;
       float wl = l, wr = r;
       roomConv.process(wl, wr);
-      float k = mix.at(i);
+      float k = mix.at(i) * 0.01f;
       io.left[i] = l + k * wl;
       io.right[i] = r + k * wr;
     }
@@ -240,10 +257,11 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
 }
 
 void PianoVoice::start(const NoteOn& n, const StartInfo&) {
-  if (note != note) {   // a different key in this slot: start clean
+  if (n.note != note) {   // a different key in this slot: start clean
     count = 0;
-    noiseEnv = 0;
-    note = note;
+    knocking = false;
+    for (auto& ch : nzEnv) for (float& e : ch) e = 0;
+    note = n.note;
   }
   damped = false;
   // The strike needs parameter values, which a voice reads in render(): it
@@ -369,16 +387,22 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;
 
-  // hammer noise: louder and brighter with velocity, longer in the bass
-  float hv = std::clamp(vel, 0.f, 1.f);
-  float hg = dbToGain(ctx.get(synth.hammer) - 34.f + 30.f * std::log10(std::max(hv, 1e-3f)) + gainDb);
-  float pos = std::clamp((note - 21) / 87.f, 0.f, 1.f);
-  noiseEnv += hg;
-  noiseDecay = std::exp(-1.f / ((0.018f - 0.012f * pos) * sr));
-  noiseGainL = 1.f - 0.4f * pos;   // the bass sits a little left, as on the recording
-  noiseGainR = 0.6f + 0.4f * pos;
-  noiseTone.set(std::min(900.f + 5000.f * hv * hv + 3000.f * pos, 0.45f * sr), 0.15f);
-  noise.seed(r.next());
+  // the strike's noise, measured per key, layer, mic and band
+  float hg = ctx.get(synth.hammer) + gainDb;
+  for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+    if (synth.bands[bd].norm == 0) continue;
+    for (int mic = 0; mic < 2; ++mic) {
+      auto lvl = [&](int k) {
+        const auto& L = pd::noiseLevels[k];
+        return 0.01f * (L[l0][mic][bd] + (L[l0 + 1][mic][bd] - L[l0][mic][bd]) * lf);
+      };
+      float db = lvl(s.a) + (lvl(s.b) - lvl(s.a)) * s.w + hg;
+      if (db > -110) nzEnv[mic][bd] += dbToGain(db) * synth.bands[bd].norm;
+    }
+    float dec = pd::noiseDecay[s.a][bd] + (pd::noiseDecay[s.b][bd] - pd::noiseDecay[s.a][bd]) * s.w;
+    nzMul[bd] = std::pow(10.f, dec * 0.05f / sr);
+  }
+  knocking = true;
 }
 
 void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale) {
@@ -423,9 +447,6 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
     lastPitch = pitch; lastSustain = sus; lastUnison = uni; lastDamper = dmp; lastDamped = damped;
   }
 
-#ifdef PIANO_STATS
-  piano_stats::add(count, out.frames, ctx.key());
-#endif
   const int frames = out.frames;
   const int padded = (count + kLanes - 1) & ~(kLanes - 1);
   for (int c = 0; c < padded; c += kLanes) {
@@ -454,14 +475,25 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   cull();
   synth.compsNow += count;
 
-  if (noiseEnv > 1e-5f) {
+  if (knocking) {
+    dsp::Rng& rnd = ctx.rng();
     for (int i = 0; i < frames; ++i) {
-      float x = noiseTone.process(noise.white()) * noiseEnv;
-      noiseEnv *= noiseDecay;
-      out.add(i, x * noiseGainL, x * noiseGainR);
+      float xl = rnd.bipolar(), xr = rnd.bipolar(), l = 0, r = 0;
+      for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+        const auto& band = synth.bands[bd];
+        l += Piano::bandStep(band, xl, nzS1[0][bd], nzS2[0][bd]) * nzEnv[0][bd];
+        r += Piano::bandStep(band, xr, nzS1[1][bd], nzS2[1][bd]) * nzEnv[1][bd];
+        nzEnv[0][bd] *= nzMul[bd];
+        nzEnv[1][bd] *= nzMul[bd];
+      }
+      out.add(i, l, r);
     }
-  } else {
-    noiseEnv = 0;
+    float peak = 0;
+    for (int bd = 0; bd < pd::kNoiseBands; ++bd) peak = std::max(peak, std::max(nzEnv[0][bd], nzEnv[1][bd]) / std::max(synth.bands[bd].norm, 1.f));
+    if (peak < 1e-6f) {
+      knocking = false;
+      for (int bd = 0; bd < pd::kNoiseBands; ++bd) nzEnv[0][bd] = nzEnv[1][bd] = nzS1[0][bd] = nzS1[1][bd] = nzS2[0][bd] = nzS2[1][bd] = 0;
+    }
   }
 }
 
