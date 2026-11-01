@@ -32,7 +32,7 @@ constexpr int kMaxPartials = 96;
 constexpr int kLanes = 8;
 constexpr int kCapacity = 512;            // components per voice: room for a restrike over a sounding note
 constexpr int kLastDamper = 88;           // E6: keys above have no dampers, as on a grand
-constexpr float kFloorDb = -90.f;         // components quieter than this (dBFS) are dropped
+constexpr float kFloorDb = -105.f;        // components quieter than this (dBFS) are dropped
 constexpr int kBudget = 4000;             // components sounding across all keys before the quietest are dropped early
 constexpr float kRangeDb = 70.f;          // and partials this far below a note's loudest one aren't started
 constexpr float kTwoPi = 6.28318530718f;
@@ -81,8 +81,12 @@ struct PianoVoice : Voice {
   void render(VoiceContext& ctx, Buffer& out) override;
   bool active() const override { return pending || count > 0 || knocking; }
 
+  // adds a component; with onset > 0 (dB/s) also a short-lived negative twin, so the
+  // component swells in as 1 − e^{−t/τ} over the hammer's contact instead of starting at full level
   void add(float amp, float decayDb, float ratio, float offsetHz, float phase, float damp, float wl, float wr,
-           float stereoPhase);
+           float stereoPhase, float onset);
+  void addOne(float amp, float decayDb, float ratio, float offsetHz, float phase, float damp, float wl, float wr,
+              float stereoPhase, float extraDb);
   void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale);
   void cull();
 
@@ -100,7 +104,8 @@ struct PianoVoice : Voice {
   alignas(32) float wl[kCapacity], wrr[kCapacity], wri[kCapacity];  // to left / right
   float ratio[kCapacity];     // frequency / the key's pitch
   float offset[kCapacity];    // beat offset (Hz), scaled by the unison setting
-  float decay[kCapacity];     // natural decay (dB/s, negative)
+  float decay[kCapacity];     // natural decay (dB/s, negative), scaled by Sustain
+  float extra[kCapacity];     // extra decay not scaled by Sustain (dB/s, positive): the onset twins
   float damp[kCapacity];      // extra decay with the damper down (dB/s, positive)
 
   // pole inputs last used, to recompute only on change
@@ -110,16 +115,18 @@ struct PianoVoice : Voice {
   // the strike's noise: octave bands of noise, per mic, each fading at its measured rate
   bool knocking = false;
   float nzEnv[2][pd::kNoiseBands] = {}, nzMul[pd::kNoiseBands] = {};
-  float nzS[2][pd::kNoiseBands][4] = {};   // two filter stages per band, two states each
+  float nzS[2][pd::kNoiseBands][4] = {};
+  float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)   // two filter stages per band, two states each
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, bright, hammer, unison, stretch, sustain, damper, width, room;
+  Param touch, dynamics, bright, attack, hammer, unison, stretch, sustain, damper, width, room;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
     dynamics = b.add("play.dynamics").name("Dynamics").range(25, 150).def(100).unit("%").group("Playing");
     bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").group("Tone");
+    attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").group("Tone");
     hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
@@ -233,7 +240,13 @@ struct Piano : Synth {
 // ---------------------------------------------------------------- voice
 
 void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
-                     float stereoPhase) {
+                     float stereoPhase, float onset) {
+  addOne(amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, 0);
+  if (onset > 0) addOne(-amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, onset);
+}
+
+void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
+                        float stereoPhase, float extraDb) {
   if (count >= kCapacity) {
     // full (many fast restrikes): replace the quietest component
     int q = 0;
@@ -243,6 +256,7 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
       if (m < qm) { qm = m; q = i; }
     }
     if (qm > amp * amp) return;
+    extra[q] = extra[count - 1];
     re[q] = re[count - 1]; im[q] = im[count - 1]; pr[q] = pr[count - 1]; pi[q] = pi[count - 1];
     wl[q] = wl[count - 1]; wrr[q] = wrr[count - 1]; wri[q] = wri[count - 1];
     ratio[q] = ratio[count - 1]; offset[q] = offset[count - 1]; decay[q] = decay[count - 1]; damp[q] = damp[count - 1];
@@ -257,6 +271,7 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
   ratio[i] = rat;
   offset[i] = offHz;
   decay[i] = decayDb;
+  extra[i] = extraDb;
   damp[i] = dmp;
   pr[i] = pi[i] = 0;
 }
@@ -338,6 +353,18 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
       loudest = std::max(loudest, std::max(layerLevel(i, 0), layerLevel(i, 1)));
   float cut = std::max(kFloorDb + 6, loudest + gainDb - kRangeDb);
 
+  // How long each partial takes to swell in (the hammer's contact, the soundboard's response):
+  // measured per key and layer (tools/analyze_onset.py), scaled by Attack.
+  auto tauAt = [&](int k) {
+    return pd::onsetMs[k][l0] + (pd::onsetMs[k][l0 + 1] - pd::onsetMs[k][l0]) * lf;
+  };
+  float tauMs = std::exp(std::log(tauAt(s.a)) + (std::log(tauAt(s.b)) - std::log(tauAt(s.a))) * s.w);
+  float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f, 0.05f) * 0.001f;
+  float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
+  nzRise = 1;
+  nzRiseMul = std::exp(-1.f / (tau * sr));
+  int layerNear = static_cast<int>(std::lround(lp));
+
   dsp::Rng& r = ctx.rng();
   int ia = ka.first, ea = ka.first + ka.count, ib = kb.first, eb = kb.first + kb.count;
   for (int pn = 1; pn <= kMaxPartials; ++pn) {
@@ -363,7 +390,11 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float drop = wa * A.drop + wb * Bp.drop;
     float beat = wa * A.beat + wb * Bp.beat;
     float beatDb = wa * A.beatDb + wb * Bp.beatDb;
-    float stereoPhase = (s.w < 0.5f ? A : Bp).phase;
+    // phases at the strike, measured per layer and mic, from the nearer measured key
+    int pp = hasA && hasB ? (s.w < 0.5f ? pa : pb) : pa;
+    constexpr float kPhaseStep = 3.14159265f / 127.f;
+    float phL = pd::phases[pp][layerNear][0] * kPhaseStep;
+    float stereoPhase = pd::phases[pp][layerNear][1] * kPhaseStep - phL;
 
     float gl = dbToGain(Ll), gr = dbToGain(Lr);
     float amp = std::sqrt(0.5f * (gl * gl + gr * gr));
@@ -371,22 +402,30 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     gr /= amp;
     float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B));
     float dmp = dampBase * (1 + 0.03f * (pn - 1));
-    constexpr float kStart = -1.5707963f;   // sine phase: each partial starts from rest
 
     float after = drop < -0.01f ? amp * dbToGain(drop) : amp;
     float prompt = amp - after;
-    if (prompt > amp * 1e-3f) add(prompt, s1, rat, 0, kStart, dmp, gl, gr, stereoPhase);
+    if (prompt > amp * 1e-3f) add(prompt, s1, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
+    // the strike's first burst above the decay line, gone within a fraction of a second
+    float x0 = wa * A.x0 + wb * Bp.x0, s0 = wa * A.s0 + wb * Bp.s0;
+    if (x0 > -40.f) add(amp * dbToGain(x0), s0, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
     float q = 0;
     if (beat > 0.05f) {
       float rr = dbToGain(beatDb);
       q = (rr - 1) / (rr + 1);
     }
     if (q > 0.02f) {
-      float a = after / (1 + q), b = after * q / (1 + q);
-      add(a, s2, rat, -0.5f * beat, kStart, dmp, gl, gr, stereoPhase);
-      add(b, s2, rat, 0.5f * beat, kStart + r.uniform(-1.5f, 1.5f), dmp, gl, gr, stereoPhase);
+      // each partial's unison drifts on its own: a beat rate within ±25 % of the measured one,
+      // and its own beat phase, so the partials don't all dip at the same moment
+      float bt = beat * r.uniform(0.75f, 1.25f);
+      // the measured aftersound is a line through the beating envelope in dB, and the mean in dB
+      // of |a + b·e^{jθ}| is the level of the larger component alone: so a carries the measured
+      // level and b the beat on top of it
+      float a = after, b = after * q;
+      add(a, s2, rat, -0.5f * bt, phL, dmp, gl, gr, stereoPhase, onset);
+      add(b, s2, rat, 0.5f * bt, phL + r.uniform(-3.14159f, 3.14159f), dmp, gl, gr, stereoPhase, onset);
     } else {
-      add(after, s2, rat, 0, kStart, dmp, gl, gr, stereoPhase);
+      add(after, s2, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
     }
   }
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
@@ -414,7 +453,7 @@ void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScal
   float nyq = 0.47f * sr;
   for (int i = 0; i < count; ++i) {
     float f = pitchHz * ratio[i] + offset[i] * unisonScale;
-    float db = decay[i] / sustainScale - (damped ? damp[i] / damperScale : 0.f);
+    float db = decay[i] / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f);
     float rad = f < nyq ? std::pow(10.f, db * 0.05f / sr) : 0.f;
     float w = kTwoPi * f / sr;
     pr[i] = rad * std::cos(w);
@@ -430,7 +469,7 @@ void PianoVoice::cull() {
       int j = --count;
       re[i] = re[j]; im[i] = im[j]; pr[i] = pr[j]; pi[i] = pi[j];
       wl[i] = wl[j]; wrr[i] = wrr[j]; wri[i] = wri[j];
-      ratio[i] = ratio[j]; offset[i] = offset[j]; decay[i] = decay[j]; damp[i] = damp[j];
+      ratio[i] = ratio[j]; offset[i] = offset[j]; decay[i] = decay[j]; damp[i] = damp[j]; extra[i] = extra[j];
       re[j] = im[j] = pr[j] = pi[j] = wl[j] = wrr[j] = wri[j] = 0;
     } else {
       ++i;
@@ -495,6 +534,8 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
     }
     for (int i = 0; i < frames; ++i) {
       float xl = rnd.bipolar(), xr = rnd.bipolar(), l = 0, r = 0;
+      float rise = 1 - nzRise;
+      nzRise *= nzRiseMul;
       for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
         if (!live[bd]) continue;
         const auto& band = synth.bands[bd];
@@ -503,7 +544,7 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
         nzEnv[0][bd] *= nzMul[bd];
         nzEnv[1][bd] *= nzMul[bd];
       }
-      out.add(i, l, r);
+      out.add(i, l * rise, r * rise);
     }
     float peak = 0;
     for (int bd = 0; bd < pd::kNoiseBands; ++bd) peak = std::max(peak, std::max(nzEnv[0][bd], nzEnv[1][bd]));

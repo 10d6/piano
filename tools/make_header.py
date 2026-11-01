@@ -73,8 +73,40 @@ def solve_gains(M, target_db):
     return np.maximum(out, -150.0)
 
 
+def clean_onsets(by_key, key_list):
+    """The swell fit (tools/analyze_onset.py) is only trusted where the partials explain the
+    recording's first 40 ms well (residual < 25 %). Per key: the median swell of its good layers
+    (the recordings show no consistent trend with velocity); keys with no good layer take the
+    log-interpolation of their neighbours. Start offsets: the fit's where good, else 2 ms.
+    Swells are kept within 1-15 ms."""
+    if not by_key:
+        return
+    med = {}
+    for k in key_list:
+        o = by_key[k]
+        good = [t for t, e in zip(o["tau"], o["err"]) if e < 0.25]
+        if good:
+            med[k] = float(sorted(good)[len(good) // 2])
+    have = sorted(med)
+    for k in key_list:
+        o = by_key[k]
+        if k not in med:
+            lo = max([x for x in have if x < k], default=None)
+            hi = min([x for x in have if x > k], default=None)
+            if lo is None or hi is None:
+                med[k] = med[lo if hi is None else hi]
+            else:
+                u = (k - lo) / (hi - lo)
+                med[k] = math.exp(math.log(med[lo]) + u * (math.log(med[hi]) - math.log(med[lo])))
+        tau = min(max(med[k], 0.001), 0.015)
+        o["tau"] = [tau] * len(o["tau"])
+        o["delay"] = [d if e < 0.25 else 0.002 for d, e in zip(o["delay"], o["err"])]
+        print(f"onset {k}: {tau * 1000:.1f} ms")
+
+
 def main():
     d = json.load(open(sys.argv[1]))
+    n_layers = d["layers"]
     out = open(sys.argv[2], "w")
     keys = d["keys"]
     repair(keys)
@@ -94,7 +126,11 @@ def main():
 
     centers = [(lo + hi) / 2 for lo, hi in d["velRanges"]]
 
-    rows_k, rows_p, rows_l = [], [], []
+    import os
+    opath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_onset.json")
+    onset_by_key = {o["key"]: o for o in json.load(open(opath))["keys"]} if os.path.exists(opath) else {}
+    clean_onsets(onset_by_key, [k["key"] for k in keys])
+    rows_k, rows_p, rows_l, rows_ph = [], [], [], []
     for k in keys:
         first = len(rows_p)
         for p in sorted(k["partials"], key=lambda p: p["n"]):
@@ -102,10 +138,20 @@ def main():
             if max(max(a) for a in lv) < -96:
                 continue                       # never above the noise
             drop = min(0.0, max(-60.0, p["drop"]))
-            rows_p.append("  {%d, %.3ff, %.3ff, %.2ff, %.3ff, %.2ff, %.4ff}" % (
-                p["n"], p["s1"], p["s2"], drop, p["beat"], p["beat_db"], p["phase"]))
+            # beats found at the bottom of the detector's range (0.25-0.35 Hz) are as likely to be
+            # slow curvature in the decay: keep them, but shallower
+            beat_db = p["beat_db"] * (0.5 if p["beat"] < 0.35 else 1.0)
+            rows_p.append("  {%d, %.3ff, %.3ff, %.2ff, %.3ff, %.2ff, %.4ff, %.2ff, %.1ff}" % (
+                p["n"], p["s1"], p["s2"], drop, p["beat"], beat_db, p["phase"], p.get("x0", -100.0), p.get("s0", -100.0)))
             rows_l.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100))
                                              for a in lv) + "}")
+            phs = p.get("phases") or [[-math.pi / 2, -math.pi / 2 + p["phase"]]] * len(lv)
+            # the engine starts the swell at its t = 0; the recordings' swell starts `delay` in,
+            # so advance each phase to that moment
+            dl = onset_by_key.get(k["key"], {}).get("delay", [0.0] * len(lv))
+            phs = [[a[0] + 2 * math.pi * p["f"] * dl[i], a[1] + 2 * math.pi * p["f"] * dl[i]] for i, a in enumerate(phs)]
+            q = lambda x: max(-127, min(127, round(math.remainder(x, 2 * math.pi) / math.pi * 127)))
+            rows_ph.append("  {" + ", ".join("{%d, %d}" % (q(a[0]), q(a[1])) for a in phs) + "}")
         # loudness of each layer: the power sum of every partial, both mics averaged
         loud = []
         for v in range(d["layers"]):
@@ -119,8 +165,9 @@ def main():
     out.write("struct Key { unsigned char note; float cents; float B; unsigned short first, count; float loud[16]; };\n\n")
     out.write("// n: partial number; s1, s2: prompt and aftersound decay (dB/s); drop: the aftersound's\n"
               "// level at the strike relative to the whole partial (dB, 0 = one stage); beat: Hz;\n"
-              "// beatDb: the aftersound's beat, peak to trough; phase: right mic against left (rad)\n")
-    out.write("struct Partial { unsigned char n; float s1, s2, drop, beat, beatDb, phase; };\n\n")
+              "// beatDb: the aftersound's beat, peak to trough; phase: right mic against left (rad);\n"
+              "// x0, s0: a fast transient at the strike, its level over the decay line (dB, -100 = none) and decay (dB/s)\n")
+    out.write("struct Partial { unsigned char n; float s1, s2, drop, beat, beatDb, phase, x0, s0; };\n\n")
     out.write(f"constexpr int kKeys = {len(keys)};\nconstexpr int kLayers = {d['layers']};\n")
     out.write("// MIDI velocity at the middle of each recorded layer\n")
     out.write("constexpr float kLayerVel[kLayers] = {" + ", ".join("%.1ff" % c for c in centers) + "};\n\n")
@@ -129,6 +176,8 @@ def main():
     out.write("constexpr Partial partials[kPartials] = {\n" + ",\n".join(rows_p) + "\n};\n\n")
     out.write("// starting level of each partial per layer and mic (left, right), in hundredths of a dB\n")
     out.write("constexpr short levels[kPartials][kLayers][2] = {\n" + ",\n".join(rows_l) + "\n};\n\n")
+    out.write("// phase of each partial at the strike per layer and mic (cosine reference), in steps of pi/127\n")
+    out.write("constexpr signed char phases[kPartials][kLayers][2] = {\n" + ",\n".join(rows_ph) + "\n};\n\n")
     # the strike's noise (tools/analyze_noise.py), if measured
     import os
     npath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_noise.json")
@@ -140,17 +189,25 @@ def main():
         rows_nl, rows_nd = [], []
         for k in keys:
             n = byk[k["key"]]
-            dec = []
+            dec, cut = [], []
+            f0 = k["f0"]
             for b, d in enumerate(n["decay"]):
-                dec.append(min(max(d, -1500.0), -60.0))
-            # a residual that fades as slowly as the strings is partial energy the analysis
-            # smeared, not knock: keep only what decays like a transient
-            slow = [max(0.0, (d + 40.0) / 35.0) for d in n["decay"]]   # 0 at -40 dB/s, 1 at -5 dB/s
+                if bands[b] * 2 <= f0 * 0.9:
+                    # below the fundamental: no partials here, so this is the knock itself
+                    dec.append(min(max(d, -1500.0), -40.0))
+                    cut.append(18.0 * min(max((d + 40.0) / 35.0, 0.0), 1.0))
+                else:
+                    # a band holding partials: a residual that fades like a string is partial
+                    # energy the analysis didn't account for, not knock. Keep what decays like a
+                    # transient (faster than 150 dB/s); what decays slower than 60 dB/s is cut 25 dB
+                    # (enough to keep the model a little cleaner than the recordings around A4-C5).
+                    dec.append(min(max(d, -1500.0), -60.0))
+                    cut.append(25.0 * min(max((d + 150.0) / 90.0, 0.0), 1.0))
             lv = []
             for layer in n["levels"]:
                 mics = []
                 for mic in layer:
-                    target = [max(min(x - 18 * min(slow[b], 1.0), 0), -150) for b, x in enumerate(mic)]
+                    target = [max(min(x - cut[b], 0), -150) for b, x in enumerate(mic)]
                     g = solve_gains(M, target)
                     mics.append("{" + ", ".join(str(round(v * 100)) for v in g) + "}")
                 lv.append("{" + ", ".join(mics) + "}")
@@ -165,6 +222,12 @@ def main():
         out.write("constexpr short noiseLevels[kKeys][kLayers][2][kNoiseBands] = {\n" + ",\n".join(rows_nl) + "\n};\n")
         out.write("// decay per key and band (dB/s)\n")
         out.write("constexpr float noiseDecay[kKeys][kNoiseBands] = {\n" + ",\n".join(rows_nd) + "\n};\n\n")
+    out.write("// how long each key takes to swell in at the strike, per layer (ms, τ of 1 − e^{−t/τ})\n")
+    rows_o = []
+    for k in keys:
+        taus = onset_by_key.get(k["key"], {}).get("tau", [0.003] * n_layers)
+        rows_o.append("  {" + ", ".join("%.2ff" % (t * 1000) for t in taus) + "}")
+    out.write("constexpr float onsetMs[kKeys][kLayers] = {\n" + ",\n".join(rows_o) + "\n};\n\n")
     out.write("}  // namespace piano_data\n")
     print(f"{len(keys)} keys, {len(rows_p)} partials")
 
