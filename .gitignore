@@ -1,0 +1,9 @@
+/build*/
+/renders/
+/web-test/
+/node_modules/
+*.wav
+.DS_Store
+build*/
+/renders/
+__pycache__/

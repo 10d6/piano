@@ -1,0 +1,14 @@
+{
+  "id": "piano",
+  "name": "Piano",
+  "vendor": "10d6",
+  "version": "0.1.0",
+  "pluginCode": "Pian",
+  "vendorCode": "Tend",
+  "patchVersion": 1,
+  "features": {
+    "voices": 128,
+    "voiceModes": ["poly"],
+    "standardEnvelopes": 0
+  }
+}

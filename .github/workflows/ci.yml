@@ -1,0 +1,184 @@
+name: CI
+
+# Generated from synthkit/template. The heavy lifting is in synthkit/tools/ci,
+# pinned with the synthkit submodule.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]          # a version tag also publishes a release
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  SYNTH: piano               # the name given to synthkit_add_synth
+  SCENARIO: tests/chord.json      # rendered in the browser and natively, and compared
+
+jobs:
+  native:
+    name: Native build + checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: synthkit/tools/ci/deps.sh native
+      - name: Build
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+      - name: Checks (scenarios, presets, sample rates, block sizes, random patches)
+        run: ./build/${SYNTH}_render --check . --out renders
+      - name: Upload renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renders
+          path: |
+            renders/tests/*.wav
+            renders/presets/*.wav
+            renders/failures/*
+          if-no-files-found: ignore
+          retention-days: 14
+
+  web:
+    name: Browser build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: synthkit/tools/ci/deps.sh web
+      - name: Build the page
+        run: |
+          cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web
+      - name: Build the native renderer (for comparison)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target ${SYNTH}_render
+      - name: Install Chromium for Playwright
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.48.2
+          npx playwright install --with-deps chromium
+      - name: Check the page in Chromium
+        run: node synthkit/web/test/browser-test.cjs build-web/web/${SYNTH}.html web-test $SCENARIO
+      - name: Browser output matches the native engine
+        run: |
+          ./build/${SYNTH}_render $SCENARIO --block 128 --out web-test/native.wav
+          python3 synthkit/web/test/compare.py web-test/web-render.f32 web-test/native.wav
+      - name: Upload the page
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: |
+            build-web/web/${{ env.SYNTH }}.html
+            web-test/*.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+  plugin:
+    name: Plugin (${{ matrix.name }})
+    needs: web
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-2022, slug: windows }
+          - { name: macOS, os: macos-15, slug: macos }
+          - { name: Linux, os: ubuntu-24.04, slug: linux }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: page
+      - name: Install dependencies
+        shell: bash
+        run: synthkit/tools/ci/deps.sh plugin
+      - name: Build, check (plugin check, pluginval, auval) and package
+        shell: bash
+        run: synthkit/tools/ci/plugin.sh . "$SYNTH" . page/build-web/web plugin.zip
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ matrix.slug }}
+          path: plugin.zip
+          retention-days: 30
+
+  release:
+    name: Release
+    needs: plugin
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plugin-*
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          name="$(python3 -c "import json; print(json.load(open('synth.json'))['name'].replace(' ', '-'))")"
+          for os in windows macos linux; do mv "plugin-$os/plugin.zip" "$name-$TAG-$os.zip"; done
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$name $TAG" \
+            --notes "Install: unzip, then follow INSTALL.md inside." "$name-$TAG"-*.zip
+
+  # Publishes the page with GitHub Pages: main at the site root, each PR under
+  # pr/<number>/, with a link on the PR. Needs the repo to be public and
+  # Settings → Pages → Deploy from a branch → gh-pages / root.
+  pages:
+    name: Publish preview
+    needs: web
+    if: ${{ !github.event.repository.private && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency: pages-branch
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: page
+      - name: Push to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          dest="."
+          [ -n "$PR" ] && dest="pr/$PR"
+          git init -q site && cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch -q --depth 1 origin gh-pages; then git checkout -q gh-pages; else git checkout -q --orphan gh-pages; fi
+          mkdir -p "$dest"
+          cp "../page/build-web/web/${SYNTH}.html" "$dest/index.html"
+          touch .nojekyll
+          git add -A
+          what="main"; [ -n "$PR" ] && what="PR #$PR"
+          git commit -q -m "Preview for $what (${{ github.sha }})" || exit 0
+          git push -q origin gh-pages
+      - name: Link the preview on the PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          owner="${GITHUB_REPOSITORY%/*}"; repo="${GITHUB_REPOSITORY#*/}"
+          url="https://${owner}.github.io/${repo}/pr/${PR}/"
+          marker="<!-- synthkit-preview -->"
+          if ! gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --jq '.[].body' | grep -q "$marker"; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="${marker}
+          Play this PR in the browser: ${url} (updates on every push; give Pages a minute)."
+          fi

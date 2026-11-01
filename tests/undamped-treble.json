@@ -1,0 +1,6 @@
+{
+  "patch": "init",
+  "length": 3,
+  "events": [ { "t": 0, "on": 100, "vel": 100 }, { "t": 0.1, "off": 100 } ],
+  "expect": { "soundBy": 0.02, "levelAt": [ { "t": 1.0, "above": -70 } ] }
+}
