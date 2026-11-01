@@ -1,0 +1,9 @@
+{
+  "patch": "init",
+  "length": 4,
+  "events": [
+    { "t": 0, "on": 60, "vel": 100 }, { "t": 0, "on": 64, "vel": 90 }, { "t": 0, "on": 67, "vel": 95 },
+    { "t": 1.5, "off": 60 }, { "t": 1.5, "off": 64 }, { "t": 1.5, "off": 67 }
+  ],
+  "expect": { "soundBy": 0.02, "silentAfter": 3.6, "limiterBelow": 1, "levelAt": [ { "t": 1.4, "above": -40 } ] }
+}

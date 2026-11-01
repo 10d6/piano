@@ -1,0 +1,1 @@
+{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Mellow", "params": { "tone.bright": -2.5, "tone.hammer": -8, "play.touch": 0.25, "space.room": 20 } }
