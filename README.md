@@ -25,11 +25,15 @@ voice per key: striking a key that is still sounding adds to its vibration.
 
 **How close is it?** `tools/compare.py` renders notes dry and compares them
 with the recordings in octave bands over time. Measured keys land within
-1–4 dB (median) up to A5 and ~6 dB in the top octaves. Keys the model never
-heard (held out from the data and interpolated) land within 3–4 dB.
+2–5 dB (median) up to A6 and ~11 dB at F#7. `tools/diagnose.py` measures
+what's audible at the strike: the attack's swell (10–20 ms, as recorded),
+its brightness per velocity (tracks the recordings), the noise between the
+partials (kept a little below the recordings) and the partials' pitch.
+Keys the model never heard (held out from the data and interpolated) land
+within 3–4 dB.
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~5× realtime in Chromium; ordinary playing at 15–25×. A
+can do, renders at ~4× realtime in Chromium; ordinary playing at ~16×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data
@@ -44,8 +48,10 @@ included. To measure again:
 git clone https://github.com/sfzinstruments/SalamanderGrandPiano ../salamander   # ~700 MB
 python3 -I tools/analyze.py ../salamander tools/salamander.json          # partials (~10 min)
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
+python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
+python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
 node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
 ```
 

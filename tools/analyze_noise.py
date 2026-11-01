@@ -33,7 +33,8 @@ def partial_power(key, layer, mic, t):
             continue
         a = 10 ** (L / 20)
         aft = 10 ** (min(p["drop"], 0) / 20) if p["drop"] < -0.01 else 1.0
-        env = a * ((1 - aft) * 10 ** (p["s1"] * t / 20) + aft * 10 ** (p["s2"] * t / 20))
+        env = a * ((1 - aft) * 10 ** (p["s1"] * t / 20) + aft * 10 ** (p["s2"] * t / 20)
+                   + 10 ** (p.get("x0", -100) / 20) * 10 ** (p.get("s0", -100) * t / 20))
         b = np.searchsorted(BANDS, p["f"], side="right") - 1
         if 0 <= b < len(BANDS) and p["f"] < BANDS[b] * 2:
             out[b] += env ** 2 / 2

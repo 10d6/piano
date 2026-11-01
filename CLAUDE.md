@@ -34,8 +34,14 @@ from CI at milestones.
   hand. The measurements are `tools/salamander*.json`; README has the
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
-- After any change to the sound, run `tools/compare.py` against the
-  recordings and `tools/bench-web.cjs` for browser speed, and report both.
+- After any change to the sound, run `tools/compare.py` and
+  `tools/diagnose.py` against the recordings and `tools/bench-web.cjs` for
+  browser speed, and report them. Compare per mic and averaged over ~0.2 s:
+  single mono snapshots are thrown off by beating and the mics' phase.
+- The partial fits feed the noise and onset fits: after `analyze.py`, rerun
+  `analyze_noise.py` and `analyze_onset.py` too.
+- Known gaps: sympathetic resonance (undamped treble strings ringing along;
+  A6's recorded tail is mostly that), release noises.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
