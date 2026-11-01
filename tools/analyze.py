@@ -120,25 +120,45 @@ def envelope(sig, sr, f, T, hop=HOP, tmax=None):
 
 def hinge_fit(t, e):
     """Fit e(t) [dB] with a continuous two-slope line. Returns
-    (level0, slope1, slope2, knee) with slopes in dB/s."""
-    best = None
+    (level0, slope1, slope2, knee) with slopes in dB/s.
+
+    The fit leans towards the start (weight 1/(t + 0.3 s)): the loud first part
+    of a partial is what's heard most, and a long quiet tail mustn't flatten it."""
+    w = 1.0 / (t + 0.3)
+    sw = np.sqrt(w)
     A1 = np.stack([np.ones_like(t), t], 1)
-    sol, res, *_ = np.linalg.lstsq(A1, e, rcond=None)
-    sse1 = float(np.sum((A1 @ sol - e) ** 2))
+    sol, *_ = np.linalg.lstsq(A1 * sw[:, None], e * sw, rcond=None)
+    sse1 = float(np.sum(w * (A1 @ sol - e) ** 2))
     single = (sol[0], sol[1], sol[1], t[-1])
     if len(t) < 12:
         return single
-    for tk in np.linspace(t[0] + 0.1 * (t[-1] - t[0]), t[0] + 0.8 * (t[-1] - t[0]), 40):
+    best = None
+    span = t[-1] - t[0]
+    for tk in np.concatenate([t[0] + np.linspace(0.02, 0.3, 15) * span ** 0 * np.minimum(1, span),
+                              np.linspace(t[0] + 0.1 * span, t[0] + 0.8 * span, 40)]):
+        if not (t[0] + 0.015 < tk < t[-1] - 0.05):
+            continue
         A = np.stack([np.ones_like(t), t, np.maximum(0, t - tk)], 1)
-        s, *_ = np.linalg.lstsq(A, e, rcond=None)
-        sse = float(np.sum((A @ s - e) ** 2))
+        sol2, *_ = np.linalg.lstsq(A * sw[:, None], e * sw, rcond=None)
+        sse = float(np.sum(w * (A @ sol2 - e) ** 2))
         if best is None or sse < best[0]:
-            best = (sse, s, tk)
-    sse, s, tk = best
-    s1, s2 = s[1], s[1] + s[2]
-    # keep the knee only if it is a real prompt → aftersound bend and it helps
-    if s1 < s2 - 1.0 and sse < 0.6 * sse1 and s2 <= 0.5:
-        return (s[0], s1, min(s2, -0.05), tk)
+            best = (sse, sol2, tk)
+    if best is None:
+        return single
+    sse, s2v, tk = best
+    s1, s2 = s2v[1], s2v[1] + s2v[2]
+    # keep the knee if it is a real prompt → aftersound bend and it helps
+    if s1 < s2 - 1.0 and sse < 0.75 * sse1 and s2 <= 0.5:
+        l0 = s2v[0]
+        # the aftersound line again, from the tail alone and unweighted, so the weighting that
+        # gets the start right can't pull the long tail off; then the knee where the lines meet
+        tail = t > tk
+        if tail.sum() >= 12:
+            s2b, c2 = np.polyfit(t[tail], e[tail], 1)
+            drop = c2 - l0
+            if s2b <= 0.5 and s1 < s2b - 1.0 and drop < 0:
+                return (l0, s1, min(s2b, -0.05), drop / (s1 - s2b))
+        return (l0, s1, min(s2, -0.05), tk)
     return single
 
 
@@ -204,59 +224,71 @@ def analyze_key(root, k):
             tt, ee = t[start:end], e[start:end]
             l0, s1, s2, tk = hinge_fit(tt, ee)
             fitline = l0 + s1 * tt + (s2 - s1) * np.maximum(0, tt - tk)
+            # a fast transient above the decay line in the first 200 ms (the strike's first
+            # burst, before the strings settle): its level at t = 0 relative to the line, and its decay
+            x0, s0 = -100.0, min(s1, -60.0)
+            early = tt < tt[0] + 0.2
+            ex = 10 ** (ee / 20) - 10 ** (fitline / 20)
+            sel = early & (ex > 0.25 * 10 ** (ee / 20))
+            if sel.sum() >= 4 and sel[:3].any():
+                xs = np.nonzero(sel)[0]
+                xs = xs[: int(np.argmax(np.diff(np.concatenate([xs, [10 ** 9]])) > 2)) + 1]   # first run only
+                if len(xs) >= 4:
+                    b, a = np.polyfit(tt[xs], 20 * np.log10(ex[xs]), 1)
+                    if b < min(s1, -40.0) - 20 and a - l0 > -20:
+                        x0, s0 = float(min(a - l0, 30.0)), float(max(b, -2000.0))
             after = tt > tk if s1 != s2 else np.ones_like(tt, bool)
             bf, bdb = beat_of(tt[after], (ee - fitline)[after])
             # refine frequency from the phase slope over the first second of the loudest layer
             ph = np.unwrap(np.angle(z[start:min(end, start + int(1.0 / HOP))]))
             df = np.polyfit(t[start:start + len(ph)], ph, 1)[0] / (2 * np.pi) if len(ph) > 10 else 0.0
-            fits.append({"v": v, "l0": l0, "s1": s1, "s2": s2, "tk": tk, "beat": bf, "beat_db": bdb,
+            fits.append({"v": v, "l0": l0, "s1": s1, "s2": s2, "tk": tk, "x0": x0, "s0": s0, "beat": bf, "beat_db": bdb,
                          "df": df, "span": tt[-1] - tt[0], "w": e[peak_i] - floor})
         if not fits:
             continue
-        w = np.array([f["w"] for f in fits])
-        w = w / w.sum()
-        avg = lambda key: float(np.sum(w * np.array([f[key] for f in fits])))
-        s1, s2 = avg("s1"), avg("s2")
-        two = [f for f in fits if f["s1"] != f["s2"]]
-        # the aftersound's level relative to the prompt at t=0 (dB): from the fits that found a knee
-        if two:
-            drop = float(np.median([(f["s1"] - f["s2"]) * f["tk"] for f in two]))
-            tk = float(np.median([f["tk"] for f in two]))
-            s1 = float(np.median([f["s1"] for f in two]))
-            s2 = float(np.median([f["s2"] for f in two]))
-        else:
-            drop, tk = 0.0, 0.0
-            s1 = s2 = float(np.median([f["s1"] for f in fits]))
+        # the decay shape comes whole from one layer, the one with the most range above its
+        # noise: medians of slopes and knees taken from different layers don't make one curve
+        best = max(fits, key=lambda f: f["w"])
+        s1, s2, tk = best["s1"], best["s2"], best["tk"]
+        drop = (s1 - s2) * tk if s1 != s2 else 0.0
+        if s1 == s2:
+            tk = 0.0
+        x0, s0 = best["x0"], best["s0"]
         beats = [f for f in fits if f["beat"] > 0]
         beat = float(np.median([f["beat"] for f in beats])) if beats else 0.0
         beat_db = float(np.median([f["beat_db"] for f in beats])) if beats else 0.0
         df = float(np.median([f["df"] for f in fits]))
         if abs(df) > 0.002 * fn + 0.3:   # the phase slope locked onto something else: keep the fitted frequency
             df = 0.0
-        result["partials"].append({"n": n, "f": fn + df, "s1": s1, "s2": s2, "tk": tk, "drop": drop,
+        result["partials"].append({"n": n, "f": fn + df, "s1": s1, "s2": s2, "tk": tk, "drop": drop, "x0": x0, "s0": s0,
                                    "beat": beat, "beat_db": beat_db})
 
-    # starting levels per layer and mic: complex amplitude over the first ~60 ms, extrapolated back to t=0
+    # starting level and phase per layer and mic: the complex amplitude over an early window,
+    # brought back to t = 0 along the partial's own two-stage decay
     for p in result["partials"]:
+        aft = 10 ** (p["drop"] / 20) if p["drop"] < -0.01 else 1.0
+        X = 10 ** (p["x0"] / 20)
+        def shape_db(tt):   # the decay line (1 at t = 0) plus the transient
+            return 20 * np.log10((1 - aft) * 10 ** (p["s1"] * tt / 20) + aft * 10 ** (p["s2"] * tt / 20)
+                                 + X * 10 ** (p["s0"] * tt / 20))
         lv, ph = [], []
         for v in range(1, LAYERS + 1):
             x, _ = layers[v - 1]
-            zs = []
+            lvv, phv = [], []
             for ch in range(2):
                 t, z = envelope(x[:, ch], sr, p["f"], T, tmax=0.5)
-                sel = (t >= T * 0.75) & (t <= T * 0.75 + 0.06)
+                t0 = max(0.75 * T, 0.015)
+                sel = (t >= t0) & (t <= t0 + 0.04)
                 if not sel.any():
                     sel = slice(0, 3)
-                zz = z[sel]
-                tt = t[sel]
-                # undo the prompt decay up to that point (dB/s → amplitude)
-                g = 10 ** (-p["s1"] * tt / 20)
-                zs.append(np.mean(zz * g))
-            lv.append([20 * np.log10(abs(zs[0]) + 1e-9), 20 * np.log10(abs(zs[1]) + 1e-9)])
-            ph.append(float(np.angle(zs[1] * np.conj(zs[0]))))
-        p["levels"] = lv            # [layer][mic] dB at the strike
-        # phase between mics: circular mean over the louder layers
-        p["phase"] = float(np.angle(np.mean(np.exp(1j * np.array(ph[8:])))))
+                zz, tt = z[sel], t[sel]
+                lvv.append(float(np.mean(20 * np.log10(np.abs(zz) + 1e-12) - shape_db(tt))))
+                phv.append(float(np.angle(np.mean(zz))))
+            lv.append(lvv)
+            ph.append(phv)
+        p["levels"] = lv            # [layer][mic] dB of the decay line at the strike (the transient adds x0 dB on top)
+        p["phases"] = ph            # [layer][mic] phase at the strike (rad), cosine reference
+        p["phase"] = float(np.angle(np.mean(np.exp(1j * (np.array(ph)[8:, 1] - np.array(ph)[8:, 0])))))
     return result
 
 
