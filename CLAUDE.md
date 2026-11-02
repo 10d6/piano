@@ -42,12 +42,27 @@ from CI at milestones.
   problems from engine problems. Compare per mic and averaged over ~0.2 s:
   single mono snapshots are thrown off by beating and the mics' phase.
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
-  rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too.
+  rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
+  (`analyze_mech.py` is independent of them).
 - The page's on-screen keyboard always plays velocity 100 (mouse and
   computer keys); judge velocity response with MIDI or renders.
-- Known gaps: sympathetic resonance of other strings (with the pedal down),
-  release noises. The recordings' late tails on top notes are partly mains
-  hum (50 Hz and harmonics) and rumble: don't model those.
+- Known gaps: the dampers' imperfect stop (the `harm*` release samples hold
+  each note's residual ring after its damper lands), half-pedalling, the soft
+  pedal. The recordings' late tails on top notes are partly mains hum (50 Hz
+  and harmonics) and rumble: don't model those (the mechanics analysis leaves
+  the hum's bins out).
+- Mechanical noises (`tools/analyze_mech.py` → `releaseEnv`/`pedal*` tables)
+  play through the body's band-noise bank. The release samples are
+  normalised, so their level is the sfz's mix (−37 dB; pedal −20/−19 dB).
+- The sympathetic string bank (`renderBank`, in `processGlobal`) drives a
+  string only while its damper is up and it isn't sounding as a voice (voices
+  set `sounding[note]` each block): a voice driving its own string would
+  double it. Key and pedal changes reach it at their sample through a queue
+  (`processEvents` sees the whole host block at once; `processGlobal` runs
+  per control block): anything else that must follow events in
+  `processGlobal` needs the same. The pedal's lift ring is calibrated
+  against pedalD (`tools/measure/mechanics.py`); the note coupling
+  (`kCoupling`) isn't measurable from these recordings.
 - Velocity: `Piano::velocityMap` is the one place velocity becomes tone layer
   and level; the strike and the page's graph (`ui/custom.js`, messages
   `vel.query` / `vel.point` / `vel.note`) both use it.
@@ -67,7 +82,10 @@ from CI at milestones.
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
-  access in `Voice::start`, sostenuto (CC66).
+  access in `Voice::start`, sostenuto (CC66). API.md doesn't say that an
+  event's `.sample` counts from the host block's start, nor that
+  `processEvents` runs once per host block and `processGlobal` once per
+  control block (found by rendering at different block sizes).
 
 ## Fresh workspace
 

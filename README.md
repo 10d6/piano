@@ -32,6 +32,26 @@ everything about them is **measured from recordings of a real grand**:
   partials are too dense to separate it), velocity, microphone and octave
   band, and played by one shared bank of band noise. It gives high notes
   their echo-like tail; without it they're a few pure partials, like a bell.
+- the mechanical noises: each key's own noise as it comes back up (all 88
+  keys were recorded), and the sustain pedal's thump going down and up, as
+  octave-band envelopes in 10 ms steps per microphone. They play through the
+  body's noise bank, so they cost almost nothing.
+
+**Sympathetic resonance.** Every string's lower partials (to the 16th, below
+4 kHz) are also a bank of resonators, at the frequencies the voices play and
+with the strings' measured slow decay. A string whose damper is up (all of
+them with the pedal down, those above E6 always) and that isn't sounding as a
+note of its own is driven by everything the piano plays, so it rings along
+where its partials line up with the notes': the octave below a note sets the
+upper string going, a fifth sets its twelfth, and so on, and pedalled playing
+gets its halo. Pressing the pedal sets the free strings ringing on its own,
+as the dampers lift: that ring is calibrated against the pedal recording
+(within ~1 dB per band over its 6 s). How strongly played notes drive the
+strings isn't in the recordings (they were made note by note), so its
+default (**Resonance**, 0 dB) is a judgment, to be tuned by playing: the halo
+sits 20–40 dB under a mid-range note a second or two in, closer under high
+notes, whose own sound fades sooner than the lower strings' ring. The bank runs at half
+the sample rate, and only for strings that are free or still ringing.
 
 The recordings sample every minor third; keys between are interpolated. One
 voice per key: striking a key that is still sounding adds to its vibration.
@@ -61,7 +81,7 @@ envelopes fluctuate about as much as the recordings' (3.0 against 3.6 dB,
 detrended, partials 1–4).
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~2.8× realtime in Chromium; ordinary playing at ~11×. A
+can do, renders at ~2.7× realtime in Chromium; ordinary playing at ~9×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data
@@ -78,6 +98,7 @@ python3 -I tools/analyze.py ../salamander tools/salamander.json          # parti
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
 python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
+python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch

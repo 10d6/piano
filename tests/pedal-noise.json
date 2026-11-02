@@ -1,0 +1,43 @@
+{
+ "patch": "init",
+ "params": {
+  "space.room": 0
+ },
+ "length": 4.0,
+ "events": [
+  {
+   "t": 0.2,
+   "cc": 64,
+   "value": 127
+  },
+  {
+   "t": 2.0,
+   "cc": 64,
+   "value": 0
+  }
+ ],
+ "expect": {
+  "levelAt": [
+   {
+    "t": 0.25,
+    "above": -72,
+    "window": 0.05
+   },
+   {
+    "t": 1.5,
+    "above": -80,
+    "window": 0.2
+   },
+   {
+    "t": 2.5,
+    "below": -90,
+    "window": 0.2
+   },
+   {
+    "t": 3.5,
+    "below": -110,
+    "window": 0.2
+   }
+  ]
+ }
+}

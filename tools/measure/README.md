@@ -30,6 +30,7 @@ plays that layer.
 | `decay_by_velocity.py` | Do the stored decay curves fit soft and loud strikes alike? (data only) | within ~2 dB at every layer |
 | `attack.py` | Is the attack free of excess hiss or knock, band by band? | median within a few dB; no band far above |
 | `velocity.py` | Is the velocity response even, and does the model change from soft to loud as the recordings do? | even dB steps; changes match within a few dB |
+| `mechanics.py` | Do the pedal's thump and ring, the pedal-up noise and each key's release noise match their recordings; how loud is the sympathetic ring a note sets going, relative to the note? | pedal bands within ~1–3 dB over 6 s; release ~2 dB (noise varies take to take); sympathetic ring 20–40 dB under mid notes at 1–2 s |
 | `notes.py` | Do fast repeats always sound, do event orderings behave, how fast do dampers stop notes, when do voices end, are strikes consistent? | every strike rises; strike spread ≤ ~1 dB per channel |
 | `holdout.py --keys 45,60` | How good are the keys the model never heard (interpolated)? | within ~1–2 dB of the measured build |
 | `../stress.py build/piano_render 300` (and `overlap`) | Does anything keep sounding after random fast playing is released? | 0 failures |
@@ -45,3 +46,10 @@ Some lessons these taught (details in the git history):
   fundamental first (`partials.py`).
 - Look at a stored curve before blaming the engine, and at the engine's
   components before blaming the data.
+- To hear one part of the sound alone, render twice with only its level
+  changed (e.g. Resonance 0 and −40 dB) and subtract: everything else cancels,
+  since renders are deterministic. Turn down anything that shares its noise
+  bank (the body's ring shares the mechanical noises'), or the difference
+  isn't linear.
+- Low octave bands need long spectra: a 1024-point frame can't tell 31 Hz from
+  70 Hz, and the recordings' 50 Hz hum sits right there.

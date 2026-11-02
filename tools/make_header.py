@@ -109,6 +109,48 @@ def clean_onsets(by_key, key_list):
         print(f"onset {k}: {tau * 1000:.1f} ms")
 
 
+def write_mech(out, path):
+    """Key release and pedal noises (tools/analyze_mech.py): envelopes of 10 ms frames (dB under
+    the peak; -128 ends one) and band gains solved like the strike noise's; and the ring of the
+    strings the pedal's lift sets going, as band levels per mic (dB of variance) for the engine's
+    string bank to match."""
+    mech = json.load(open(path))
+    M = band_matrix(mech["bands"], 48000.0)
+
+    def gains(levels):
+        return "{" + ", ".join("{" + ", ".join(str(round(max(v, -150) * 100)) for v in solve_gains(M, mic)) + "}"
+                               for mic in levels) + "}"
+
+    def envs(items, n):
+        rows = []
+        for it in items:
+            e = [max(int(round(v)), -127) for v in it["env"]][:n]
+            rows.append("  {" + ", ".join(str(v) for v in e + [-128] * (n - len(e))) + "}")
+        return ",\n".join(rows)
+
+    rel, dn, up = mech["release"], mech["pedal_down"], mech["pedal_up"]
+    nr = max(len(r["env"]) for r in rel)
+    nd = max(len(r["env"]) for r in dn)
+    nu = max(len(r["env"]) for r in up)
+    out.write("// Mechanical noises, from the release and pedal recordings: envelopes in 10 ms frames (dB under\n"
+              "// the loudest; -128 ends one), band gains per mic (hundredths of a dB, as noiseLevels)\n")
+    out.write(f"constexpr float kMechFrameS = {mech['frame_s']:g}f;\n")
+    out.write(f"constexpr int kReleaseFrames = {nr}, kPedalDownFrames = {nd}, kPedalUpFrames = {nu};\n")
+    out.write("constexpr signed char releaseEnv[88][kReleaseFrames] = {\n" + envs(rel, nr) + "\n};\n")
+    out.write("constexpr short releaseLevels[88][2][kNoiseBands] = {\n" +
+              ",\n".join("  " + gains(r["levels"]) for r in rel) + "\n};\n")
+    out.write("// the pedal: two takes each, down (the thump, above the strings' ring) and up\n")
+    out.write("constexpr signed char pedalDownEnv[2][kPedalDownFrames] = {\n" + envs(dn, nd) + "\n};\n")
+    out.write("constexpr short pedalDownLevels[2][2][kNoiseBands] = {\n" +
+              ",\n".join("  " + gains(r["levels"]) for r in dn) + "\n};\n")
+    out.write("constexpr signed char pedalUpEnv[2][kPedalUpFrames] = {\n" + envs(up, nu) + "\n};\n")
+    out.write("constexpr short pedalUpLevels[2][2][kNoiseBands] = {\n" +
+              ",\n".join("  " + gains(r["levels"]) for r in up) + "\n};\n")
+    out.write("// the free strings' ring after the pedal's lift, 0.3-1.0 s (hundredths of a dB of variance, per mic)\n")
+    out.write("constexpr short pedalRing[2][kNoiseBands] = {" +
+              ", ".join("{" + ", ".join(str(round(v * 100)) for v in mic) + "}" for mic in mech["ring"]) + "};\n\n")
+
+
 def main():
     d = json.load(open(sys.argv[1]))
     n_layers = d["layers"]
@@ -265,6 +307,7 @@ def main():
         taus = onset_by_key.get(k["key"], {}).get("tau", [0.003] * n_layers)
         rows_o.append("  {" + ", ".join("%.2ff" % (t * 1000) for t in taus) + "}")
     out.write("constexpr float onsetMs[kKeys][kLayers] = {\n" + ",\n".join(rows_o) + "\n};\n\n")
+    write_mech(out, os.path.join(os.path.dirname(sys.argv[1]), "salamander_mech.json"))
     out.write("}  // namespace piano_data\n")
     print(f"{len(keys)} keys, {len(rows_p)} partials")
 
