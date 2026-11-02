@@ -50,6 +50,16 @@ from CI at milestones.
   `vel.query` / `vel.point` / `vel.note`) both use it.
 - `analyze.py` takes about 25 minutes on one core: run halves of the key list
   in parallel and combine them with `--merge` (see `main()`).
+- Voices: one per key. A restrike hands the old vibration over to the new
+  (it fades three times as fast as the new strike swells), so fast repeats
+  can't cancel. A voice ends when its total level is under −84 dBFS. The
+  body ring lives in the synth, per key, and is damped from note and pedal
+  events in `processEvents` (keys/pedal followed there), not by the voice.
+- After any change to voices, notes or pedal handling, run
+  `tools/stress.py build/piano_render 300` (and with `overlap`): random fast
+  passages must all go silent after release.
+- C5 (and nearby) is the weakest measured region: upper partials a few dB
+  strong, body ring weak late. Known, not yet fixed.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
