@@ -121,11 +121,14 @@ struct PianoVoice : Voice {
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, bright, attack, hammer, body, unison, stretch, sustain, damper, width, room;
+  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, body, unison, stretch, sustain, damper, width, room;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
     dynamics = b.add("play.dynamics").name("Dynamics").range(25, 150).def(100).unit("%").group("Playing");
+    toneRange = b.add("play.tone").name("Tone Range").range(0, 150).def(100).unit("%").group("Playing");
+    velMap = b.add("play.velmap").name("Velocity Map").choices({"Smooth", "As Recorded"}).group("Playing");
+    softAttack = b.add("play.softattack").name("Soft Attack").range(0, 100).def(25).unit("%").group("Playing");
     bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").group("Tone");
     attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").group("Tone");
     body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").group("Tone");
@@ -143,6 +146,90 @@ struct Piano : Synth {
   // The recording's stretch tuning, scaled by Stretch.
   double tune(int note, const NoteContext& n) override {
     return note + n.get(stretch) * 0.01 * measuredCents(note) * 0.01;
+  }
+
+  // Velocity → loudness and tone, smoothly, across the key's measured range (its softest
+  // recording to its loudest), whatever the recorded layers' own velocity spacing. The
+  // tone comes from the recorded layer with that loudness, and Tone Range moves it towards the
+  // loudest layer (< 100 %) or further down (> 100 %). Dynamics scales the loudness range alone.
+  struct VelMap {
+    float layer;    // 0-based layer position for tone and decay
+    float gainDb;   // level change to apply to that layer's measurements
+    float relDb;    // loudness against the hardest strike (for the page's graph)
+    float v;        // velocity after Touch, 1…127
+  };
+  static constexpr float kBelowSoftest = 6.f;
+  static constexpr float kVelCurve = 1.5f;   // a feather-light strike: this far under the softest recording
+  VelMap velocityMap(int note, float vel01, float touchV, float dynPct, float tonePct, int mapMode = 0) const {
+    KeySpan s = spanFor(note);
+    const pd::Key& ka = pd::keys[s.a];
+    const pd::Key& kb = pd::keys[s.b];
+    float loud[pd::kLayers], mono[pd::kLayers];
+    for (int i = 0; i < pd::kLayers; ++i) {
+      loud[i] = ka.loud[i] + (kb.loud[i] - ka.loud[i]) * s.w;
+      mono[i] = i == 0 ? loud[0] : std::max(mono[i - 1], loud[i]);   // made monotonic to invert
+    }
+    VelMap m;
+    m.v = 1.f + 126.f * std::pow(std::clamp(vel01, 0.f, 1.f), std::exp2(touchV));
+    float top = mono[pd::kLayers - 1], bottom = mono[0] - kBelowSoftest;
+    if (mapMode == 1) {
+      // As Recorded: the sample library's own velocity ranges (the middle of each layer's range
+      // plays that layer), for comparing with the recordings layer by layer
+      float lpL = 0, below = 0;
+      if (m.v <= pd::kLayerVel[0]) {
+        below = 6.f * std::log2(std::max(m.v, 1.f) / pd::kLayerVel[0]);
+      } else if (m.v >= pd::kLayerVel[pd::kLayers - 1]) {
+        lpL = pd::kLayers - 1;
+      } else {
+        int i = 0;
+        while (i + 2 < pd::kLayers && m.v >= pd::kLayerVel[i + 1]) ++i;
+        lpL = i + (m.v - pd::kLayerVel[i]) / (pd::kLayerVel[i + 1] - pd::kLayerVel[i]);
+      }
+      int a0 = std::min(static_cast<int>(lpL), pd::kLayers - 2);
+      float target = loud[a0] + (loud[a0 + 1] - loud[a0]) * (lpL - a0) + below;
+      return finish(m, loud, lpL, target, loud[pd::kLayers - 1], dynPct, tonePct);
+    }
+    // loudness falls slowly from the top and faster towards the softest touch, (1 − u)^1.5:
+    // half velocity is about a third of the range down
+    float target = top - (top - bottom) * std::pow(1.f - (m.v - 1.f) / 126.f, kVelCurve);
+    float lpL = 0;
+    if (target > mono[0]) {
+      int i = 0;
+      while (i + 2 < pd::kLayers && target > mono[i + 1]) ++i;
+      float d = mono[i + 1] - mono[i];
+      lpL = std::min(i + (d > 1e-6f ? (target - mono[i]) / d : 1.f), static_cast<float>(pd::kLayers - 1));
+    }
+    return finish(m, loud, lpL, target, top, dynPct, tonePct);
+  }
+  // Tone Range moves the tone layer; Dynamics scales the loudness's distance from the top; the
+  // level change makes up the difference between the tone layer's own loudness and the target.
+  static VelMap finish(VelMap m, const float* loud, float lpL, float target, float top, float dynPct, float tonePct) {
+    float last = static_cast<float>(pd::kLayers - 1);
+    m.layer = std::clamp(last - (last - lpL) * tonePct * 0.01f, 0.f, last);
+    int l0 = std::min(static_cast<int>(m.layer), pd::kLayers - 2);
+    float lf = m.layer - l0;
+    float loudAtTone = loud[l0] + (loud[l0 + 1] - loud[l0]) * lf;
+    float finalDb = top + dynPct * 0.01f * (target - top);
+    m.gainDb = finalDb - loudAtTone;
+    m.relDb = finalDb - top;
+    return m;
+  }
+
+  // The page's velocity graph: it asks for a key's curve; each strike reports its point.
+  MessageId velQuery, velPoint, velNote;
+  void defineMessages(MessageBuilder& b) override {
+    velQuery = b.add("vel.query");   // page → engine: [key]
+    velPoint = b.add("vel.point");   // engine → page: [index, velocity, dB, tone 0-1]
+    velNote = b.add("vel.note");     // engine → page: [key, velocity, dB, tone 0-1] for each strike
+  }
+  void reportCurve(EventContext& ctx, int key) {
+    constexpr int kPoints = 32;
+    for (int i = 0; i < kPoints; ++i) {
+      float v01 = static_cast<float>(i) / (kPoints - 1);
+      VelMap m = velocityMap(key, std::max(v01, 1.f / 127.f), ctx.get(touch), ctx.get(dynamics), ctx.get(toneRange),
+                             ctx.choice(velMap));
+      ctx.post(velPoint, {static_cast<float>(i), v01 * 127.f, m.relDb, m.layer / (pd::kLayers - 1)});
+    }
   }
 
   // One voice per key: a key that is still sounding is struck again in place.
@@ -258,8 +345,14 @@ struct Piano : Synth {
   }
 
   void processEvents(EventContext& ctx) override {
+    for (auto& msg : ctx.messages())
+      if (msg.is(velQuery)) reportCurve(ctx, static_cast<int>(msg.value()));
     for (auto& e : ctx.in()) {
       if (e.isCC(120)) clearBody();   // all sound off (the kit's Stop all sound too)
+      if (e.isNoteOn()) {
+        VelMap m = velocityMap(e.note, e.vel, ctx.get(touch), ctx.get(dynamics), ctx.get(toneRange), ctx.choice(velMap));
+        ctx.post(velNote, {static_cast<float>(e.note), e.vel * 127.f, m.relDb, m.layer / (pd::kLayers - 1)});
+      }
       ctx.out(e);
     }
   }
@@ -384,21 +477,17 @@ void PianoVoice::start(const NoteOn& n, const StartInfo&) {
 void PianoVoice::strike(VoiceContext& ctx, float vel) {
   lastPitch = -1;         // recompute every pole
 
-  // velocity → position among the recorded layers
-  float gamma = std::exp2(ctx.get(synth.touch));
-  float v = 127.f * std::pow(std::clamp(vel, 0.f, 1.f), gamma);
-  float lp = 0, below = 0;
-  if (v <= pd::kLayerVel[0]) {
-    below = 12.f * std::log2(std::max(v, 1.f) / pd::kLayerVel[0]) * 0.5f;   // softer than the softest layer
-  } else if (v >= pd::kLayerVel[pd::kLayers - 1]) {
-    lp = pd::kLayers - 1;
-  } else {
-    int i = 0;
-    while (i + 2 < pd::kLayers && v >= pd::kLayerVel[i + 1]) ++i;
-    lp = i + (v - pd::kLayerVel[i]) / (pd::kLayerVel[i + 1] - pd::kLayerVel[i]);
-  }
+  // velocity → tone layer and level (Piano::velocityMap)
+  Piano::VelMap vm = synth.velocityMap(note, vel, ctx.get(synth.touch), ctx.get(synth.dynamics),
+                                                ctx.get(synth.toneRange), ctx.choice(synth.velMap));
+  float v = vm.v;
+  float lp = vm.layer;
   int l0 = std::min(static_cast<int>(lp), pd::kLayers - 2);
   float lf = lp - l0;
+  // the decay shape: between the soft, medium and loud measurements
+  int gi = lp < pd::kShapeLayer[1] ? 0 : 1;
+  float gw = std::clamp((lp - pd::kShapeLayer[gi]) / (pd::kShapeLayer[gi + 1] - pd::kShapeLayer[gi]), 0.f, 1.f);
+  auto shape = [&](const float (&arr)[3]) { return arr[gi] + (arr[gi + 1] - arr[gi]) * gw; };
 
   KeySpan s = spanFor(note);
   const pd::Key& ka = pd::keys[s.a];
@@ -409,13 +498,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     const auto& L = pd::levels[pIdx];
     return 0.01f * (L[l0][mic] + (L[l0 + 1][mic] - L[l0][mic]) * lf);
   };
-  auto keyLoud = [&](const pd::Key& k) { return k.loud[l0] + (k.loud[l0 + 1] - k.loud[l0]) * lf; };
-
-  // Dynamics: scale the distance from the loudest layer
-  float loudNow = keyLoud(ka) + (keyLoud(kb) - keyLoud(ka)) * s.w;
-  float loudTop = ka.loud[pd::kLayers - 1] + (kb.loud[pd::kLayers - 1] - ka.loud[pd::kLayers - 1]) * s.w;
-  float dyn = ctx.get(synth.dynamics) * 0.01f;
-  float gainDb = (dyn - 1.f) * (loudNow - loudTop) + below * dyn + kTrimDb;
+  float gainDb = vm.gainDb + kTrimDb;
   float bright = ctx.get(synth.bright);
   // keep a note's loudness when Brightness tilts it: compare the power with and without the tilt
   float brightComp = 0;
@@ -450,7 +533,10 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     return pd::onsetMs[k][l0] + (pd::onsetMs[k][l0 + 1] - pd::onsetMs[k][l0]) * lf;
   };
   float tauMs = std::exp(std::log(tauAt(s.a)) + (std::log(tauAt(s.b)) - std::log(tauAt(s.a))) * s.w);
-  float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f, 0.05f) * 0.001f;
+  // Soft Attack: softer strikes swell in more slowly (the felt stays on the string longer);
+  // at 100 % a strike at half velocity takes twice as long as the hardest
+  float soft = ctx.get(synth.softAttack) * 0.01f * 2.f * (1.f - (v - 1.f) / 126.f);
+  float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft), 0.05f) * 0.001f;
   float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
   nzRise = 1;
   nzRiseMul = std::exp(-1.f / (tau * sr));
@@ -478,9 +564,9 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0) + extra;
     float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1) + extra;
     if (std::max(Ll, Lr) < cut) continue;
-    float s1 = wa * A.s1 + wb * Bp.s1;
-    float s2 = wa * A.s2 + wb * Bp.s2;
-    float drop = wa * A.drop + wb * Bp.drop;
+    float s1 = wa * shape(A.s1) + wb * shape(Bp.s1);
+    float s2 = wa * shape(A.s2) + wb * shape(Bp.s2);
+    float drop = wa * shape(A.drop) + wb * shape(Bp.drop);
     float beat = wa * A.beat + wb * Bp.beat;
     float beatDb = wa * A.beatDb + wb * Bp.beatDb;
     // phases at the strike, measured per layer and mic, from the nearer measured key
@@ -498,28 +584,36 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
 
     float after = drop < -0.01f ? amp * dbToGain(drop) : amp;
     float prompt = amp - after;
-    if (prompt > amp * 1e-3f) add(prompt, s1, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
-    // the strike's first burst above the decay line, gone within a fraction of a second
-    float x0 = wa * A.x0 + wb * Bp.x0, s0 = wa * A.s0 + wb * Bp.s0;
-    if (x0 > -40.f) add(amp * dbToGain(x0), s0, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
     float q = 0;
     if (beat > 0.05f) {
       float rr = dbToGain(beatDb);
       q = (rr - 1) / (rr + 1);
     }
-    if (q > 0.02f) {
-      // each partial's unison drifts on its own: a beat rate within ±25 % of the measured one,
-      // and its own beat phase, so the partials don't all dip at the same moment
-      float bt = beat * r.uniform(0.75f, 1.25f);
-      // the measured aftersound is a line through the beating envelope in dB, and the mean in dB
-      // of |a + b·e^{jθ}| is the level of the larger component alone: so a carries the measured
-      // level and b the beat on top of it
-      float a = after, b = after * q;
-      add(a, s2, rat, -0.5f * bt, phL, dmp, gl, gr, stereoPhase, onset);
-      add(b, s2, rat, 0.5f * bt, phL + r.uniform(-3.14159f, 3.14159f), dmp, gl, gr, stereoPhase, onset);
-    } else {
-      add(after, s2, rat, 0, phL, dmp, gl, gr, stereoPhase, onset);
-    }
+    // each partial's unison drifts on its own: a beat rate within ±25 % of the measured one
+    float bt = q > 0.02f ? beat * r.uniform(0.75f, 1.25f) : 0.f;
+    // The prompt, the first burst and the main aftersound are one mode decaying at different
+    // rates: they share a frequency, so they don't beat against each other (which would dig a
+    // hole at the knee, where prompt and aftersound are equally loud). Only the second
+    // aftersound component, bt away, beats against them.
+    float main = -0.5f * bt;
+    // The unison's strings beat against each other from the strike on, not only in the aftersound:
+    // each part of the partial (prompt, first burst, aftersound) has a partner bt away at q of its
+    // level, reaching the mics at its own angle (so left and right beat at different moments).
+    // The hammer strikes the unison's strings together, so they start in phase and drift apart:
+    // the partner starts (nearly) in phase with the main component at the strike.
+    float beatPh = r.uniform(-0.3f, 0.3f), beatSt = stereoPhase + r.uniform(-3.14159f, 3.14159f);
+    auto withBeat = [&](float a, float dec) {
+      add(a, dec, rat, main, phL, dmp, gl, gr, stereoPhase, onset);
+      if (q > 0.02f) add(a * q, dec, rat, main + bt, phL + beatPh, dmp, gl, gr, beatSt, onset);
+    };
+    if (prompt > amp * 1e-3f) withBeat(prompt, s1);
+    // the strike's first burst above the decay line, gone within a fraction of a second
+    float x0 = wa * shape(A.x0) + wb * shape(Bp.x0), s0 = wa * shape(A.s0) + wb * shape(Bp.s0);
+    if (x0 > -40.f) withBeat(amp * dbToGain(x0), s0);
+    // the measured decay lines run through the beating envelope in dB, and the mean in dB of
+    // |a + b·e^{jθ}| is the level of the larger component alone: so the main components carry the
+    // measured levels and the partners the beat on top
+    withBeat(after, s2);
   }
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;

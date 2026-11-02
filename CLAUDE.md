@@ -45,6 +45,11 @@ from CI at milestones.
 - Known gaps: sympathetic resonance of other strings (with the pedal down),
   release noises. The recordings' late tails on top notes are partly mains
   hum (50 Hz and harmonics) and rumble: don't model those.
+- Velocity: `Piano::velocityMap` is the one place velocity becomes tone layer
+  and level; the strike and the page's graph (`ui/custom.js`, messages
+  `vel.query` / `vel.point` / `vel.note`) both use it.
+- `analyze.py` takes about 25 minutes on one core: run halves of the key list
+  in parallel and combine them with `--merge` (see `main()`).
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for

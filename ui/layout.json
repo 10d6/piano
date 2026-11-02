@@ -7,12 +7,27 @@
       "title": "Playing",
       "controls": [
         {
+          "param": "play.velmap",
+          "label": "Velocity Map"
+        },
+        {
           "param": "play.touch"
         },
         {
           "param": "play.dynamics"
+        },
+        {
+          "param": "play.tone"
+        },
+        {
+          "param": "play.softattack"
+        },
+        {
+          "type": "velocityCurve"
         }
-      ]
+      ],
+      "wide": true,
+      "info": "How velocity becomes loudness, tone and attack. The graph shows the last key played: loudness (solid) and tone (dashed) across velocity, and a dot for each note you strike."
     },
     {
       "title": "Tone",
@@ -64,8 +79,8 @@
     }
   ],
   "paramInfo": {
-    "play.touch": "How hard you have to play. Light: quiet playing already reaches the loud, bright layers. Heavy: you need to dig in.",
-    "play.dynamics": "The range between soft and loud notes. 100% is the recorded piano's own range.",
+    "play.touch": "How hard you have to play. Light: quiet playing already reaches the loud, bright end. Heavy: you need to dig in.",
+    "play.dynamics": "The loudness range between the softest and hardest strike. 100% is the recorded piano's own range; lower keeps soft notes louder.",
     "tone.bright": "Tilts every note's partials: more or less treble per octave of overtones, like harder or softer hammers.",
     "tone.hammer": "The knock of the hammer and key at the start of each note.",
     "string.unison": "How far the two or three strings of each note are out of tune with each other. This is the slow beating in a sustained note. 100% is as measured.",
@@ -75,7 +90,10 @@
     "space.width": "Stereo width of the two microphones the piano was measured with.",
     "space.room": "A small room around the piano. The measurements are close-miked, so 0 is the dry piano.",
     "tone.attack": "How long each note takes to swell in at the strike. 100% is as measured for each key, from the recordings.",
-    "tone.body": "The soundboard and room ringing on after each strike: the echo-like tail most audible on high notes. 0 dB is as measured. The key's damper stops it when you let go (above E6, where there are no dampers, it rings on)."
+    "tone.body": "The soundboard and room ringing on after each strike: the echo-like tail most audible on high notes. 0 dB is as measured. The key's damper stops it when you let go (above E6, where there are no dampers, it rings on).",
+    "play.tone": "How much the tone darkens as you play softer. 100% is as recorded: each loudness has the tone the real piano had at that loudness. Lower keeps soft notes brighter; higher makes them darker and gentler.",
+    "play.softattack": "How much softer notes swell in more slowly, as the hammer's felt stays on the string longer at gentle blows. 0% swells in at the measured speed whatever the velocity.",
+    "play.velmap": "Smooth: velocity moves evenly through this piano's loudness range, with the tone that goes with each loudness. As Recorded: the sample library's own velocity layers, unevenly spaced as recorded."
   },
   "keyboard": true
 }

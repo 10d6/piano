@@ -41,7 +41,8 @@ def load_rec(root, k, layer):
 
 
 def render(tool, out_dir, k, vel, length):
-    sc = {"patch": "init", "params": {"space.room": 0}, "length": length,
+    # As Recorded velocity map: a layer's middle velocity plays that layer, as in the recordings
+    sc = {"patch": "init", "params": {"space.room": 0, "play.velmap": 1}, "length": length,
           "events": [{"t": 0, "on": k, "vel": vel}]}
     p = out_dir / f"sc_{k}_{vel}.json"
     p.write_text(json.dumps(sc))
