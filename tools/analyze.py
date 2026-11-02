@@ -162,6 +162,26 @@ def hinge_fit(t, e):
     return single
 
 
+def fit_curve(tt, ee):
+    """A two-stage decay line (hinge_fit) plus a fast transient above it in the first 200 ms
+    (the strike's first burst, before the strings settle): (l0, s1, s2, tk, x0, s0), x0 being the
+    transient's level at t = 0 relative to the line (-100 = none) and s0 its decay."""
+    l0, s1, s2, tk = hinge_fit(tt, ee)
+    fitline = l0 + s1 * tt + (s2 - s1) * np.maximum(0, tt - tk)
+    x0, s0 = -100.0, min(s1, -60.0)
+    early = tt < tt[0] + 0.2
+    ex = 10 ** (ee / 20) - 10 ** (fitline / 20)
+    sel = early & (ex > 0.25 * 10 ** (ee / 20))
+    if sel.sum() >= 4 and sel[:3].any():
+        xs = np.nonzero(sel)[0]
+        xs = xs[: int(np.argmax(np.diff(np.concatenate([xs, [10 ** 9]])) > 2)) + 1]   # first run only
+        if len(xs) >= 4:
+            b, a = np.polyfit(tt[xs], 20 * np.log10(ex[xs]), 1)
+            if b < min(s1, -40.0) - 20 and a - l0 > -20:
+                x0, s0 = float(min(a - l0, 30.0)), float(max(b, -2000.0))
+    return l0, s1, s2, tk, x0, s0
+
+
 def beat_of(t, resid):
     """Dominant slow periodicity (0.15 … 8 Hz) of the envelope residual, and its
     peak-to-peak size in dB."""
@@ -205,9 +225,9 @@ def analyze_key(root, k):
     result = {"key": k, "name": name, "f0": f0, "cents": cents, "B": B, "window": T, "partials": []}
 
     # decays: pooled from the loud layers (mono), where the partials sit highest above the noise
-    decay_layers = [8, 12, 14, 16]
+    decay_layers = [8, 10, 12, 14, 16]
     for n, fn in partials:
-        fits = []
+        fits, curves = [], []
         for v in decay_layers:
             x, _ = layers[v - 1]
             t, z = envelope(x.mean(1), sr, fn, T)
@@ -222,38 +242,41 @@ def analyze_key(root, k):
             if end - start < 20:
                 continue
             tt, ee = t[start:end], e[start:end]
-            l0, s1, s2, tk = hinge_fit(tt, ee)
+            l0, s1, s2, tk, x0, s0 = fit_curve(tt, ee)
             fitline = l0 + s1 * tt + (s2 - s1) * np.maximum(0, tt - tk)
-            # a fast transient above the decay line in the first 200 ms (the strike's first
-            # burst, before the strings settle): its level at t = 0 relative to the line, and its decay
-            x0, s0 = -100.0, min(s1, -60.0)
-            early = tt < tt[0] + 0.2
-            ex = 10 ** (ee / 20) - 10 ** (fitline / 20)
-            sel = early & (ex > 0.25 * 10 ** (ee / 20))
-            if sel.sum() >= 4 and sel[:3].any():
-                xs = np.nonzero(sel)[0]
-                xs = xs[: int(np.argmax(np.diff(np.concatenate([xs, [10 ** 9]])) > 2)) + 1]   # first run only
-                if len(xs) >= 4:
-                    b, a = np.polyfit(tt[xs], 20 * np.log10(ex[xs]), 1)
-                    if b < min(s1, -40.0) - 20 and a - l0 > -20:
-                        x0, s0 = float(min(a - l0, 30.0)), float(max(b, -2000.0))
             after = tt > tk if s1 != s2 else np.ones_like(tt, bool)
             bf, bdb = beat_of(tt[after], (ee - fitline)[after])
-            # refine frequency from the phase slope over the first second of the loudest layer
+            # refine frequency from the phase slope over the first second
             ph = np.unwrap(np.angle(z[start:min(end, start + int(1.0 / HOP))]))
             df = np.polyfit(t[start:start + len(ph)], ph, 1)[0] / (2 * np.pi) if len(ph) > 10 else 0.0
-            fits.append({"v": v, "l0": l0, "s1": s1, "s2": s2, "tk": tk, "x0": x0, "s0": s0, "beat": bf, "beat_db": bdb,
-                         "df": df, "span": tt[-1] - tt[0], "w": e[peak_i] - floor})
+            fits.append({"v": v, "beat": bf, "beat_db": bdb, "df": df, "w": e[peak_i] - floor})
+            curves.append((start, end, e))
         if not fits:
             continue
-        # the decay shape comes whole from one layer, the one with the most range above its
-        # noise: medians of slopes and knees taken from different layers don't make one curve
-        best = max(fits, key=lambda f: f["w"])
-        s1, s2, tk = best["s1"], best["s2"], best["tk"]
+        # The decay shape: one fit to the layers' envelopes averaged (in dB, each shifted onto the
+        # loudest layer over the time they share). Averaging smooths the beats and represents all
+        # the louder velocities, rather than the loudest alone.
+        ref = max(range(len(curves)), key=lambda i: fits[i]["w"])
+        rs, re_, rcurve = curves[ref]
+        acc = np.zeros(len(rcurve))
+        cnt = np.zeros(len(rcurve))
+        for st, en, e in curves:
+            lo, hi = max(st, rs), min(en, re_)
+            if hi - lo < 10:
+                continue
+            off = np.mean(rcurve[lo:hi] - e[lo:hi])
+            acc[st:en] += e[st:en] + off
+            cnt[st:en] += 1
+        ok = cnt > 0
+        idx = np.nonzero(ok)[0]
+        i0, i1 = idx[0], idx[-1] + 1
+        tt = t[i0:i1]
+        ee = acc[i0:i1] / np.maximum(cnt[i0:i1], 1)
+        good = cnt[i0:i1] > 0
+        l0, s1, s2, tk, x0, s0 = fit_curve(tt[good], ee[good])
         drop = (s1 - s2) * tk if s1 != s2 else 0.0
         if s1 == s2:
             tk = 0.0
-        x0, s0 = best["x0"], best["s0"]
         beats = [f for f in fits if f["beat"] > 0]
         beat = float(np.median([f["beat"] for f in beats])) if beats else 0.0
         beat_db = float(np.median([f["beat_db"] for f in beats])) if beats else 0.0

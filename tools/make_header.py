@@ -61,12 +61,16 @@ def solve_gains(M, target_db):
     import numpy as np
     from scipy.optimize import nnls
     t = 10 ** (np.array(target_db) / 10)
-    active = M.sum(0) > 0
+    # a band gets noise only if it has a measured target: an untargeted band left free would
+    # be filled to help its neighbours through the filters' overlap
+    active = (M.sum(0) > 0) & (np.array(target_db) > -120)
     # relative error, so quiet bands count as much as loud ones, but only within 40 dB of the
     # loudest band (deeper than that, a band can't be heard next to the others anyway)
     W = 1 / (t + t.max() * 1e-4)
     # a band with no measurable residual is one the partials cover: don't let it constrain the rest
     rows = np.array(target_db) > -120
+    if not active.any():
+        return np.full(len(target_db), -150.0)
     g, _ = nnls((M[:, active] * W[:, None])[rows], (t * W)[rows])
     out = np.full(len(target_db), -150.0)
     out[np.nonzero(active)[0]] = 10 * np.log10(np.maximum(g, 1e-15))
@@ -222,6 +226,31 @@ def main():
         out.write("constexpr short noiseLevels[kKeys][kLayers][2][kNoiseBands] = {\n" + ",\n".join(rows_nl) + "\n};\n")
         out.write("// decay per key and band (dB/s)\n")
         out.write("constexpr float noiseDecay[kKeys][kNoiseBands] = {\n" + ",\n".join(rows_nd) + "\n};\n\n")
+    # the body's ring (tools/analyze_body.py)
+    bpath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_body.json")
+    bd = {b["key"]: b for b in json.load(open(bpath))["keys"]}
+    nb = len(json.load(open(bpath))["bands"])
+    Mb = band_matrix(json.load(open(bpath))["bands"], 48000.0)
+    rows_bl, rows_bd = [], []
+    for k in keys:
+        # below C3 the partials are too dense to tell the ring from the strings: use C3's
+        src = bd[k["key"]] if k["key"] >= 48 else bd[48]
+        # a band that doesn't fade (> -5 dB/s) is the recordings' floor, not ring
+        dead = [d > -5.0 for d in src["decay"]]
+        lv = []
+        for layer in src["levels"]:
+            mics = []
+            for mic in layer:
+                target = [(-150.0 if dead[b] or x < -95 else x) for b, x in enumerate(mic)]
+                g = solve_gains(Mb, target) if max(target) > -140 else [-150.0] * nb
+                mics.append("{" + ", ".join(str(round(max(v, -150) * 100)) for v in g) + "}")
+            lv.append("{" + ", ".join(mics) + "}")
+        rows_bl.append("  {" + ", ".join(lv) + "}")
+        rows_bd.append("  {" + ", ".join("%.1ff" % min(max(d, -120.0), -5.0) for d in src["decay"]) + "}")
+    out.write("// the body's ring after the strike (soundboard, case, room): band gains per key, layer, mic\n")
+    out.write("// (hundredths of a dB, solved like the strike noise's), and decay per key and band (dB/s)\n")
+    out.write("constexpr short bodyLevels[kKeys][kLayers][2][kNoiseBands] = {\n" + ",\n".join(rows_bl) + "\n};\n")
+    out.write("constexpr float bodyDecay[kKeys][kNoiseBands] = {\n" + ",\n".join(rows_bd) + "\n};\n\n")
     out.write("// how long each key takes to swell in at the strike, per layer (ms, τ of 1 − e^{−t/τ})\n")
     rows_o = []
     for k in keys:

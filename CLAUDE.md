@@ -38,10 +38,13 @@ from CI at milestones.
   `tools/diagnose.py` against the recordings and `tools/bench-web.cjs` for
   browser speed, and report them. Compare per mic and averaged over ~0.2 s:
   single mono snapshots are thrown off by beating and the mics' phase.
-- The partial fits feed the noise and onset fits: after `analyze.py`, rerun
-  `analyze_noise.py` and `analyze_onset.py` too.
-- Known gaps: sympathetic resonance (undamped treble strings ringing along;
-  A6's recorded tail is mostly that), release noises.
+- The partial fits feed the noise, onset and body fits: after `analyze.py`,
+  rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too.
+- The page's on-screen keyboard always plays velocity 100 (mouse and
+  computer keys); judge velocity response with MIDI or renders.
+- Known gaps: sympathetic resonance of other strings (with the pedal down),
+  release noises. The recordings' late tails on top notes are partly mains
+  hum (50 Hz and harmonics) and rumble: don't model those.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
