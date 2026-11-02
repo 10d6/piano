@@ -61,7 +61,7 @@ envelopes fluctuate about as much as the recordings' (3.0 against 3.6 dB,
 detrended, partials 1–4).
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~3.4× realtime in Chromium; ordinary playing at ~14×. A
+can do, renders at ~2.8× realtime in Chromium; ordinary playing at ~11×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data

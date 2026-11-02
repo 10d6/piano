@@ -30,7 +30,8 @@ namespace pd = piano_data;
 namespace {
 constexpr int kMaxPartials = 96;
 constexpr int kLanes = 8;
-constexpr int kCapacity = 512;            // components per voice: room for a restrike over a sounding note
+constexpr int kCapacity = 2048;           // components per voice: room for fast restrikes of the lowest keys
+constexpr float kVoiceEndDb = -84.f;      // a voice whose total level falls below this (dBFS) has finished: about 75 dB under a loud note
 constexpr int kLastDamper = 88;           // E6: keys above have no dampers, as on a grand
 constexpr float kFloorDb = -105.f;        // components quieter than this (dBFS) are dropped
 constexpr int kBudget = 4000;             // components sounding across all keys before the quietest are dropped early
@@ -69,6 +70,13 @@ float measuredCents(int note) {
 }
 }  // namespace
 
+
+// The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
+inline float damperRate(int note) {
+  if (note > kLastDamper) return 0.f;
+  float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
+  return 70.f * std::pow(300.f / 70.f, t);   // A0 ≈ 70 (about 0.9 s to silence), E6 ≈ 300
+}
 
 struct Piano;
 
@@ -315,6 +323,7 @@ struct Piano : Synth {
   float bodyPow[128][2][pd::kNoiseBands] = {};
   float bodyDec[128][pd::kNoiseBands] = {};     // dB/s
   float bodyRise[128] = {};                     // × (1 − bodyRise)², bodyRise falling from 1
+  float bodyDamp[128] = {};                     // the key's damper is down: its rate (dB/s), else 0
   bool bodyOn[128] = {};
   float bodyState[2][pd::kNoiseBands][4] = {};
   dsp::Rng bodyRng;
@@ -325,7 +334,9 @@ struct Piano : Synth {
     for (int b = 0; b < pd::kNoiseBands; ++b) {
       bodyPow[key][0][b] += powL[b];
       bodyPow[key][1][b] += powR[b];
-      bodyDec[key][b] = dec[b];
+      // a strike whose key was already let go (note-on and note-off in one block, the strike
+      // coming at the next render) rings damped from the start
+      bodyDec[key][b] = bodyDamp[key] > 0 ? std::min(dec[b], -bodyDamp[key]) : dec[b];
     }
     bodyRise[key] = 1;
     bodyOn[key] = true;
@@ -333,6 +344,7 @@ struct Piano : Synth {
   // the key's damper falls: its ring fades as its strings do (keys without dampers ring on)
   void dampBody(int key, float dampDbPerS) {
     key = std::clamp(key, 0, 127);
+    bodyDamp[key] = std::max(dampDbPerS, 0.f);
     if (dampDbPerS <= 0) return;
     for (int b = 0; b < pd::kNoiseBands; ++b) bodyDec[key][b] = std::min(bodyDec[key][b], -dampDbPerS);
   }
@@ -344,11 +356,38 @@ struct Piano : Synth {
     for (auto& ch : bodyState) for (auto& b : ch) for (float& v : b) v = 0;
   }
 
+  // Which keys are down and whether the pedal is, followed here so a key's ring is damped when
+  // its damper falls, whether or not its voice is still sounding (a very quiet note's voice can
+  // finish while the key is held, and then its note-off has no voice to release).
+  int keysDown[128] = {};
+  bool pedalDown = false;
+  void damperFalls(EventContext& ctx, int key) {
+    dampBody(key, damperRate(key) / std::max(ctx.get(damper) * 0.01f, 0.25f));
+  }
+
   void processEvents(EventContext& ctx) override {
     for (auto& msg : ctx.messages())
       if (msg.is(velQuery)) reportCurve(ctx, static_cast<int>(msg.value()));
     for (auto& e : ctx.in()) {
-      if (e.isCC(120)) clearBody();   // all sound off (the kit's Stop all sound too)
+      if (e.isCC(120) || e.isCC(123)) {   // all sound off / all notes off (the kit's buttons too)
+        for (int& k : keysDown) k = 0;
+        if (e.isCC(120)) clearBody();
+        else for (int k = 0; k < 128; ++k) damperFalls(ctx, k);
+      }
+      if (e.isCC(64)) {
+        bool down = e.value >= 0.5f;     // as the kit reads the pedal
+        if (pedalDown && !down)
+          for (int k = 0; k < 128; ++k) if (keysDown[k] == 0) damperFalls(ctx, k);
+        pedalDown = down;
+      }
+      if (e.isNoteOn() && e.vel > 0) {
+        keysDown[e.note & 127] = 1;
+        bodyDamp[e.note & 127] = 0;   // the damper lifts
+      }
+      else if (e.isNoteOff() || (e.isNoteOn() && e.vel <= 0)) {
+        keysDown[e.note & 127] = 0;
+        if (!pedalDown) damperFalls(ctx, e.note & 127);
+      }
       if (e.isNoteOn()) {
         VelMap m = velocityMap(e.note, e.vel, ctx.get(touch), ctx.get(dynamics), ctx.get(toneRange), ctx.choice(velMap));
         ctx.post(velNote, {static_cast<float>(e.note), e.vel * 127.f, m.relDb, m.layer / (pd::kLayers - 1)});
@@ -377,7 +416,7 @@ struct Piano : Synth {
           peak = std::max(peak, pw);
         }
       }
-      if (peak < 1e-12f) {   // −120 dB: done
+      if (peak < 3e-10f) {   // −95 dB: done
         bodyOn[k] = false;
         for (auto& ch : bodyPow[k]) for (float& v : ch) v = 0;
       }
@@ -425,27 +464,16 @@ struct Piano : Synth {
 
 void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
                      float stereoPhase, float onset) {
+  // a component and its onset twin go in together or not at all: either alone would click.
+  // Below −80 dBFS the twin is left out: so quiet a component's start can't be heard as a click.
+  if (std::fabs(amp) < 1e-4f) onset = 0;
+  if (count + (onset > 0 ? 2 : 1) > kCapacity) return;
   addOne(amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, 0);
   if (onset > 0) addOne(-amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, onset);
 }
 
 void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
                         float stereoPhase, float extraDb) {
-  if (count >= kCapacity) {
-    // full (many fast restrikes): replace the quietest component
-    int q = 0;
-    float qm = re[0] * re[0] + im[0] * im[0];
-    for (int i = 1; i < count; ++i) {
-      float m = re[i] * re[i] + im[i] * im[i];
-      if (m < qm) { qm = m; q = i; }
-    }
-    if (qm > amp * amp) return;
-    extra[q] = extra[count - 1];
-    re[q] = re[count - 1]; im[q] = im[count - 1]; pr[q] = pr[count - 1]; pi[q] = pi[count - 1];
-    wl[q] = wl[count - 1]; wrr[q] = wrr[count - 1]; wri[q] = wri[count - 1];
-    ratio[q] = ratio[count - 1]; offset[q] = offset[count - 1]; decay[q] = decay[count - 1]; damp[q] = damp[count - 1];
-    --count;
-  }
   int i = count++;
   re[i] = amp * std::cos(phase);
   im[i] = amp * std::sin(phase);
@@ -514,11 +542,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   }
 
   // dampers: faster in the treble, slower and weaker in the bass
-  float dampBase = 0;
-  if (note <= kLastDamper) {
-    float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
-    dampBase = 35.f * std::pow(300.f / 35.f, t);   // dB/s: A0 ≈ 35, E6 ≈ 300
-  }
+  float dampBase = damperRate(note);
 
   // the loudest partial at this velocity, for the range cut
   float loudest = -200.f;
@@ -538,6 +562,12 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   float soft = ctx.get(synth.softAttack) * 0.01f * 2.f * (1.f - (v - 1.f) / 126.f);
   float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft), 0.05f) * 0.001f;
   float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
+  // Struck again while still sounding: the old vibration hands over to the new one, fading as the
+  // new strike swells in. Adding the new partials on top of the old ones would let them cancel
+  // where their phases disagree, and a fast repeat could make no attack at all.
+  // It fades three times as fast as the new strike swells, as the hammer's contact stops the
+  // string, so the two barely overlap.
+  for (int i = 0; i < count; ++i) extra[i] = std::max(extra[i], 3.f * onset);
   nzRise = 1;
   nzRiseMul = std::exp(-1.f / (tau * sr));
   int layerNear = static_cast<int>(std::lround(lp));
@@ -597,14 +627,19 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // aftersound component, bt away, beats against them.
     float main = -0.5f * bt;
     // The unison's strings beat against each other from the strike on, not only in the aftersound:
-    // each part of the partial (prompt, first burst, aftersound) has a partner bt away at q of its
-    // level, reaching the mics at its own angle (so left and right beat at different moments).
-    // The hammer strikes the unison's strings together, so they start in phase and drift apart:
-    // the partner starts (nearly) in phase with the main component at the strike.
-    float beatPh = r.uniform(-0.3f, 0.3f), beatSt = stereoPhase + r.uniform(-3.14159f, 3.14159f);
+    // each part of the partial (prompt, first burst, aftersound) has beating partners at q of its
+    // level. Each mic hears its own partner, at its own rate near the measured one, so the two
+    // channels beat independently, as with the recording's spaced pair; both start (nearly) in
+    // phase with the partial, since the hammer strikes the unison's strings together, so a strike
+    // is never cancelled in either channel.
+    float btR = bt * r.uniform(0.8f, 1.25f);
+    float phBL = r.uniform(-0.3f, 0.3f), phBR = r.uniform(-0.3f, 0.3f);
     auto withBeat = [&](float a, float dec) {
       add(a, dec, rat, main, phL, dmp, gl, gr, stereoPhase, onset);
-      if (q > 0.02f) add(a * q, dec, rat, main + bt, phL + beatPh, dmp, gl, gr, beatSt, onset);
+      if (q > 0.02f && a * q > 3e-5f) {   // a beat under −90 dBFS can't be heard
+        add(a * q, dec, rat, main + bt, phL + phBL, dmp, gl, 0.f, stereoPhase, onset);
+        add(a * q, dec, rat, main + btR, phL + phBR, dmp, 0.f, gr, stereoPhase, onset);
+      }
     };
     if (prompt > amp * 1e-3f) withBeat(prompt, s1);
     // the strike's first burst above the decay line, gone within a fraction of a second
@@ -675,6 +710,15 @@ void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScal
 }
 
 void PianoVoice::cull() {
+  // Finished: the whole voice is below kVoiceEndDb (each component's gains to the two mics are
+  // normalised around 1, so |z|² summed is close to the output power)
+  float total = 0;
+  for (int k = 0; k < count; ++k) total += re[k] * re[k] + im[k] * im[k];
+  if (count > 0 && total < dbToGain(kVoiceEndDb) * dbToGain(kVoiceEndDb)) {
+    for (int k = 0; k < count; ++k) re[k] = im[k] = pr[k] = pi[k] = wl[k] = wrr[k] = wri[k] = 0;
+    count = 0;
+    return;
+  }
   const float thr = dbToGain(synth.floorDb) * dbToGain(synth.floorDb);
   int i = 0;
   while (i < count) {
