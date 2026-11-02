@@ -24,6 +24,7 @@ SCRIPTS = [
     ("decay_by_velocity", 6, True),
     ("attack", 1, True),
     ("velocity", 17, True),
+    ("between", 5, True),
     ("mechanics", 1, True),
     ("notes", 40, False),
 ]

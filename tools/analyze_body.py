@@ -26,9 +26,21 @@ WINDOWS = [(0.10, 0.20), (0.20, 0.35), (0.35, 0.6), (0.6, 1.0), (1.0, 1.5), (1.5
 N = 1 << 17
 
 
-def between(seg, sr, f0, B):
+def partial_freqs(key):
+    """Every component the partial model plays for a key: each partial at its measured frequency,
+    and the components of the treble's clusters (analyze.py)."""
+    fs = []
+    for p in key["partials"]:
+        fs.append(p["f"])
+        for c in (p.get("cluster") or {}).get("cents", []):
+            fs.append(p["f"] * 2 ** (c / 1200))
+    return fs
+
+
+def between(seg, sr, f0, B, freqs=None):
     """Variance per octave band of what lies between the partials (and away from mains hum),
-    scaled up for the bins left out."""
+    scaled up for the bins left out. freqs: the partials' own frequencies, where measured (else
+    the stiff-string series from f0 and B)."""
     L = len(seg)
     # leave out each partial's main lobe and skirt; if that covers most of the gap between
     # partials (low notes, short windows), this window can't tell the body from the strings
@@ -45,6 +57,8 @@ def between(seg, sr, f0, B):
             break
         near |= np.abs(f - fk) < width
         k += 1
+    for fk in freqs or []:
+        near |= np.abs(f - fk) < width
     near |= (np.abs(f - 50 * np.round(f / 50)) < 2.5) & (f < 1000)
     out = []
     for lo in BANDS:
@@ -83,7 +97,7 @@ def main():
                 for w, (a, b) in enumerate(WINDOWS):
                     if int(b * sr) > len(x):
                         continue
-                    p = between(x[int(a * sr):int(b * sr), ch], sr, key["f0"], key["B"]) - floor
+                    p = between(x[int(a * sr):int(b * sr), ch], sr, key["f0"], key["B"], partial_freqs(key)) - floor
                     ok = np.isfinite(p) & (p > floor * 10 ** 0.6)   # at least 6 dB above the floor
                     lv[layer, ch, ok, w] = 10 * np.log10(p[ok])
         # decay per band from the louder layers, both mics: a common slope, an offset per series

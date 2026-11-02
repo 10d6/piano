@@ -22,10 +22,18 @@ everything about them is **measured from recordings of a real grand**:
 - how each note swells in (hammer contact, soundboard response): fitted per
   key from the first 40 ms of the recordings, 2–15 ms;
 - the strike's noise (hammer, action and soundboard knock): what the
-  recordings hold beyond the partials in the first quarter second, in octave
-  bands per key, velocity and microphone, each with its own decay. The bands'
-  filters are steep (4th order) and their gains are solved against the
-  filters' overlap, so the noise's spectrum matches the measured one;
+  recordings hold between the partials in the first quarter second, in octave
+  bands per key, velocity and microphone, as the knock itself and a slower
+  part after it. The bands' filters are steep (8th order: a top key's knock
+  falls ~45 dB over two octaves) and their gains are solved against the
+  filters' overlap. Then each key is rendered and its knock compared with the
+  recording's, between the partials, and corrected (`tools/calibrate_noise.py`);
+- in the treble, where each partial really is: the stiff-string formula puts
+  some top-key partials 10-30 cents off (A6's third partial is 11 cents flat
+  of it, F#7's 60 sharp), so they're measured from the recordings' first
+  0.3 s. And there, a partial is a cluster: the unison's strings tens of Hz
+  apart, sometimes with a component well to the side. Where a cluster is wide,
+  the model plays its measured components rather than one tone and a beat;
 - the body's ring: after each strike the soundboard, case and room ring on,
   as diffuse sound between the strings' partials a couple of dozen dB below
   the note, fading over seconds. Measured per key (from C3 up; below, the
@@ -81,7 +89,7 @@ envelopes fluctuate about as much as the recordings' (3.0 against 3.6 dB,
 detrended, partials 1–4).
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~2.7× realtime in Chromium; ordinary playing at ~9×. A
+can do, renders at ~2.2× realtime in Chromium; ordinary playing at ~9×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data
@@ -99,6 +107,9 @@ python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/sala
 python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
+python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
+# then build, and calibrate the strike noise against the recordings (2-3 passes, rebuilding between):
+python3 -I tools/calibrate_noise.py ../salamander build/piano_render tools/salamander_noise.json
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch

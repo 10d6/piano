@@ -43,7 +43,27 @@ from CI at milestones.
   single mono snapshots are thrown off by beating and the mics' phase.
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
-  (`analyze_mech.py` is independent of them).
+  (`analyze_mech.py` is independent of them), then `make_header.py`, build,
+  and `calibrate_noise.py` (2-3 passes, `make_header.py` and a build between):
+  it renders keys and corrects the strike noise's two stages per band
+  against the recordings, between the partials. Re-analysing resets nothing:
+  the corrections live in salamander_noise.json (`adjust1`, `adjust2`); clear
+  them first if the noise analysis changes.
+- Treble partials: `analyze.py` moves each partial to its peak in the first
+  0.3 s (`refine_partials`; `dev` cents in the header) and records clusters
+  (`clusters`: components within ±70 cents). Played as clusters where wide
+  (≥ 15 % of the power off the main component, ≥ 6 Hz spread); otherwise the
+  beat model. Only A5 and up were re-analysed with these so far (the rest:
+  analysis from before, `f_measured` absent → `dev` 0).
+- Noise bands are 4 identical RBJ stages (Q 0.9). Fewer stages spill a top
+  key's 2-4 kHz knock into 8-16 kHz as hiss; no gain solve or calibration can
+  undo that. Gains are solved in dB (`solve_gains`): solving in power let a
+  quiet band switch its loud neighbour off.
+- Judge the treble with `tools/measure/between.py` as well as the band
+  levels: a band's total can be right with its energy in the wrong place.
+- Tried and dropped: calibrating the body ring's level and decay over its
+  first second (one line can't follow it; the long tail high notes need went
+  17-27 dB too weak at 2-3 s).
 - The page's on-screen keyboard always plays velocity 100 (mouse and
   computer keys); judge velocity response with MIDI or renders.
 - Known gaps: the dampers' imperfect stop (the `harm*` release samples hold
@@ -77,7 +97,8 @@ from CI at milestones.
   `tools/stress.py build/piano_render 300` (and with `overlap`): random fast
   passages must all go silent after release.
 - C5 (and nearby) is the weakest measured region: upper partials a few dB
-  strong, body ring weak late. Known, not yet fixed.
+  strong, body ring weak late. Known, not yet fixed. The body ring is a few
+  dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
