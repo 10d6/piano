@@ -34,9 +34,12 @@ from CI at milestones.
   hand. The measurements are `tools/salamander*.json`; README has the
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
-- After any change to the sound, run `tools/compare.py` and
-  `tools/diagnose.py` against the recordings and `tools/bench-web.cjs` for
-  browser speed, and report them. Compare per mic and averaged over ~0.2 s:
+- After any change to the sound, run `tools/measure/run_all.py` (every
+  measurement against the recordings, about a minute; `tools/measure/README.md`
+  says what each answers and what healthy looks like) and
+  `tools/bench-web.cjs` for browser speed, and report them. For one note in
+  detail, `tools/measure/partials.py --key K --layer L` separates data
+  problems from engine problems. Compare per mic and averaged over ~0.2 s:
   single mono snapshots are thrown off by beating and the mics' phase.
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too.

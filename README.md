@@ -81,6 +81,7 @@ python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salam
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
+python3 -I tools/measure/run_all.py --sal ../salamander                   # every measurement (tools/measure/README.md)
 node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
 ```
 
