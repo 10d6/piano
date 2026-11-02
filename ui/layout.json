@@ -1,13 +1,67 @@
 {
-  "theme": { "accent": "#8a5a2b" },
+  "theme": {
+    "accent": "#8a5a2b"
+  },
   "sections": [
-    { "title": "Playing", "controls": [ { "param": "play.touch" }, { "param": "play.dynamics" } ] },
-    { "title": "Tone", "controls": [ { "param": "tone.bright" }, { "param": "tone.hammer" } ] },
-    { "title": "Strings", "controls": [
-      { "param": "string.unison" }, { "param": "string.stretch" },
-      { "param": "string.sustain" }, { "param": "string.damper" } ] },
-    { "title": "Space", "controls": [ { "param": "space.width" }, { "param": "space.room" } ] },
-    { "kit": "master" }
+    {
+      "title": "Playing",
+      "controls": [
+        {
+          "param": "play.touch"
+        },
+        {
+          "param": "play.dynamics"
+        }
+      ]
+    },
+    {
+      "title": "Tone",
+      "controls": [
+        {
+          "param": "tone.bright"
+        },
+        {
+          "param": "tone.attack"
+        },
+        {
+          "param": "tone.hammer"
+        },
+        {
+          "param": "tone.body"
+        }
+      ]
+    },
+    {
+      "title": "Strings",
+      "controls": [
+        {
+          "param": "string.unison"
+        },
+        {
+          "param": "string.stretch"
+        },
+        {
+          "param": "string.sustain"
+        },
+        {
+          "param": "string.damper"
+        }
+      ]
+    },
+    {
+      "title": "Space",
+      "controls": [
+        {
+          "param": "space.width"
+        },
+        {
+          "param": "space.room"
+        }
+      ]
+    },
+    {
+      "kit": "master"
+    }
   ],
   "paramInfo": {
     "play.touch": "How hard you have to play. Light: quiet playing already reaches the loud, bright layers. Heavy: you need to dig in.",
@@ -19,7 +73,9 @@
     "string.sustain": "How long notes ring. 100% is as measured.",
     "string.damper": "How long the dampers take to stop a note when you let go of the key. Keys above E6 have no dampers, as on a grand.",
     "space.width": "Stereo width of the two microphones the piano was measured with.",
-    "space.room": "A small room around the piano. The measurements are close-miked, so 0 is the dry piano."
+    "space.room": "A small room around the piano. The measurements are close-miked, so 0 is the dry piano.",
+    "tone.attack": "How long each note takes to swell in at the strike. 100% is as measured for each key, from the recordings.",
+    "tone.body": "The soundboard and room ringing on after each strike: the echo-like tail most audible on high notes. 0 dB is as measured. The key's damper stops it when you let go (above E6, where there are no dampers, it rings on)."
   },
   "keyboard": true
 }

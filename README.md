@@ -49,6 +49,7 @@ git clone https://github.com/sfzinstruments/SalamanderGrandPiano ../salamander  
 python3 -I tools/analyze.py ../salamander tools/salamander.json          # partials (~10 min)
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
 python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
+python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
