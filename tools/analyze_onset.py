@@ -41,9 +41,7 @@ def main():
                 L = p["levels"][layer][0]
                 if L < -100:
                     continue
-                aft = 10 ** (p["drop"] / 20) if p["drop"] < -0.01 else 1.0
-                env = 10 ** (L / 20) * ((1 - aft) * 10 ** (p["s1"] * t / 20) + aft * 10 ** (p["s2"] * t / 20)
-                                        + 10 ** (p.get("x0", -100) / 20) * 10 ** (p.get("s0", -100) * t / 20))
+                env = 10 ** ((L + A.shape_db(A.shape_at(p, layer), t)) / 20)
                 comps.append((p["f"], p["phases"][layer][0], env))
             best = None
             for d in DELAYS:

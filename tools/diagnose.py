@@ -79,7 +79,7 @@ def main():
     root, tool, out_dir = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
     out_dir.mkdir(parents=True, exist_ok=True)
     cases = [(57, 4), (57, 14), (69, 2), (69, 6), (69, 10), (69, 16), (72, 4), (72, 10), (72, 16), (81, 10)]
-    params = {"space.room": 0}
+    params = {"space.room": 0, "play.velmap": 1, "play.softattack": 0}   # layer by layer, as recorded
     for a in sys.argv[4:]:
         if a.startswith("--params"):
             for kv in a.split("=", 1)[1].split(","):

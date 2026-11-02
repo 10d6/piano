@@ -29,6 +29,7 @@ def repair(keys):
 
 
 NOISE_Q = 1.2
+BEAT_SCALE = float(__import__("os").environ.get("BEAT_SCALE", "1.8"))   # calibrated: README
 
 
 def band_matrix(bands, sr):
@@ -142,11 +143,15 @@ def main():
             if max(max(a) for a in lv) < -96:
                 continue                       # never above the noise
             drop = min(0.0, max(-60.0, p["drop"]))
-            # beats found at the bottom of the detector's range (0.25-0.35 Hz) are as likely to be
-            # slow curvature in the decay: keep them, but shallower
-            beat_db = p["beat_db"] * (0.5 if p["beat"] < 0.35 else 1.0)
-            rows_p.append("  {%d, %.3ff, %.3ff, %.2ff, %.3ff, %.2ff, %.4ff, %.2ff, %.1ff}" % (
-                p["n"], p["s1"], p["s2"], drop, p["beat"], beat_db, p["phase"], p.get("x0", -100.0), p.get("s0", -100.0)))
+            # The beat's depth is measured as one sinusoid at the strongest beat rate; a real unison's
+            # three strings fluctuate more than that one component shows. BEAT_SCALE is calibrated
+            # so the model's envelopes fluctuate as much as the recordings' (see the README).
+            beat_db = min(p["beat_db"] * BEAT_SCALE, 14.0)
+            shapes = p.get("shapes") or [p, p, p]
+            arr = lambda key, f, clamp=lambda x: x: "{" + ", ".join(f % clamp(sh.get(key, -100.0)) for sh in shapes) + "}"
+            rows_p.append("  {%d, %s, %s, %s, %.3ff, %.2ff, %.4ff, %s, %s}" % (
+                p["n"], arr("s1", "%.3ff"), arr("s2", "%.3ff"), arr("drop", "%.2ff", lambda x: min(0.0, max(-60.0, x))),
+                p["beat"], beat_db, p["phase"], arr("x0", "%.2ff"), arr("s0", "%.1ff")))
             rows_l.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100))
                                              for a in lv) + "}")
             phs = p.get("phases") or [[-math.pi / 2, -math.pi / 2 + p["phase"]]] * len(lv)
@@ -171,7 +176,10 @@ def main():
               "// level at the strike relative to the whole partial (dB, 0 = one stage); beat: Hz;\n"
               "// beatDb: the aftersound's beat, peak to trough; phase: right mic against left (rad);\n"
               "// x0, s0: a fast transient at the strike, its level over the decay line (dB, -100 = none) and decay (dB/s)\n")
-    out.write("struct Partial { unsigned char n; float s1, s2, drop, beat, beatDb, phase, x0, s0; };\n\n")
+    out.write("// s1, s2, drop, x0 and s0 come for soft, medium and loud strikes (layers 2-6, 8-12, 14-16;\n"
+              "// centred on 0-based layers 3, 9 and 14): soft notes sustain relatively longer\n")
+    out.write("struct Partial { unsigned char n; float s1[3], s2[3], drop[3], beat, beatDb, phase, x0[3], s0[3]; };\n")
+    out.write("constexpr float kShapeLayer[3] = {3.f, 9.f, 14.f};\n\n")
     out.write(f"constexpr int kKeys = {len(keys)};\nconstexpr int kLayers = {d['layers']};\n")
     out.write("// MIDI velocity at the middle of each recorded layer\n")
     out.write("constexpr float kLayerVel[kLayers] = {" + ", ".join("%.1ff" % c for c in centers) + "};\n\n")

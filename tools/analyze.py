@@ -162,6 +162,49 @@ def hinge_fit(t, e):
     return single
 
 
+# velocity layers (1-based) pooled for the soft, medium and loud decay shapes, and where each
+# group sits (0-based layer) for interpolating between them
+DECAY_GROUPS = [(2, 4, 6), (8, 10, 12), (14, 15, 16)]
+GROUP_CENTERS = [3.0, 9.0, 14.0]
+
+
+def shape_at(p, layer):
+    """The decay shape (s1, s2, drop, x0, s0) for a 0-based layer position, interpolated between the
+    soft, medium and loud groups; the engine does the same."""
+    shapes = p.get("shapes") or [p] * 3
+    c = GROUP_CENTERS
+    if layer <= c[0]:
+        i, w = 0, 0.0
+    elif layer >= c[2]:
+        i, w = 1, 1.0
+    else:
+        i = 0 if layer < c[1] else 1
+        w = (layer - c[i]) / (c[i + 1] - c[i])
+    a, b = shapes[i], shapes[i + 1]
+    return {k: (1 - w) * a[k] + w * b[k] for k in ("s1", "s2", "drop", "x0", "s0")}
+
+
+def shape_db(sh, tt):
+    """The decay line (1 at t = 0) plus the transient, in dB."""
+    aft = 10 ** (sh["drop"] / 20) if sh["drop"] < -0.01 else 1.0
+    return 20 * np.log10((1 - aft) * 10 ** (sh["s1"] * tt / 20) + aft * 10 ** (sh["s2"] * tt / 20)
+                         + 10 ** (sh["x0"] / 20) * 10 ** (sh["s0"] * tt / 20))
+
+
+def smooth_beats(e, t):
+    """Average an envelope's power over a window that grows with time (half the time since the
+    start, up to 0.4 s): the strike keeps its detail, and later the unison beats (1-3 Hz in the
+    treble), which pull a line fitted in dB down into their troughs, are averaged out."""
+    p = 10 ** (e / 10)
+    c = np.concatenate([[0.0], np.cumsum(p)])
+    hop = t[1] - t[0] if len(t) > 1 else HOP
+    half = np.clip((0.25 * np.maximum(t, 0) / hop).astype(int), 0, int(0.2 / hop))
+    i = np.arange(len(p))
+    lo = np.maximum(i - half, 0)
+    hi = np.minimum(i + half + 1, len(p))
+    return 10 * np.log10((c[hi] - c[lo]) / (hi - lo) + 1e-30)
+
+
 def fit_curve(tt, ee):
     """A two-stage decay line (hinge_fit) plus a fast transient above it in the first 200 ms
     (the strike's first burst, before the strings settle): (l0, s1, s2, tk, x0, s0), x0 being the
@@ -183,23 +226,28 @@ def fit_curve(tt, ee):
 
 
 def beat_of(t, resid):
-    """Dominant slow periodicity (0.15 … 8 Hz) of the envelope residual, and its
-    peak-to-peak size in dB."""
-    if len(t) < 64:
+    """The unison's beat: the strongest periodicity (0.3 … 8 Hz) of the envelope residual, and its
+    peak-to-peak size in dB. The residual's slow curvature (what the two-stage line misses) is
+    removed first, or it shows up as a 'beat' at the bottom of the range."""
+    if len(t) < 64 or t[-1] - t[0] < 1.0:
         return 0.0, 0.0
-    r = (resid - resid.mean()) * np.hanning(len(resid))
+    tc = t - t.mean()
+    r = resid - np.polyval(np.polyfit(tc, resid, 3), tc)
     nfft = 1 << 15
-    sp = np.abs(np.fft.rfft(r, nfft))
+    sp = np.abs(np.fft.rfft(r * np.hanning(len(r)), nfft))
     fr = np.fft.rfftfreq(nfft, t[1] - t[0])
-    band = (fr > 0.25) & (fr < 8.0)
+    band = (fr > max(0.3, 1.5 / (t[-1] - t[0]))) & (fr < 8.0)   # at least 1.5 cycles in view
     if not band.any():
         return 0.0, 0.0
     i = np.argmax(np.where(band, sp, 0))
-    # require the peak to stand out from the band's median
-    if sp[i] < 4 * np.median(sp[band]):
+    if sp[i] < 3 * np.median(sp[band]):
         return 0.0, 0.0
-    ptp = float(min(np.percentile(resid, 95) - np.percentile(resid, 5), 12.0))
-    return float(fr[i]), ptp
+    # its size: a sinusoid at that rate fitted to the residual (peak to trough)
+    f = float(fr[i])
+    M = np.stack([np.cos(2 * np.pi * f * tc), np.sin(2 * np.pi * f * tc), np.ones_like(tc), tc, tc ** 2, tc ** 3], 1)
+    sol, *_ = np.linalg.lstsq(M, resid, rcond=None)
+    ptp = float(min(2 * np.hypot(sol[0], sol[1]), 12.0))
+    return f, ptp
 
 
 def analyze_key(root, k):
@@ -225,7 +273,7 @@ def analyze_key(root, k):
     result = {"key": k, "name": name, "f0": f0, "cents": cents, "B": B, "window": T, "partials": []}
 
     # decays: pooled from the loud layers (mono), where the partials sit highest above the noise
-    decay_layers = [8, 10, 12, 14, 16]
+    decay_layers = [v for g in DECAY_GROUPS for v in g]
     for n, fn in partials:
         fits, curves = [], []
         for v in decay_layers:
@@ -250,33 +298,45 @@ def analyze_key(root, k):
             ph = np.unwrap(np.angle(z[start:min(end, start + int(1.0 / HOP))]))
             df = np.polyfit(t[start:start + len(ph)], ph, 1)[0] / (2 * np.pi) if len(ph) > 10 else 0.0
             fits.append({"v": v, "beat": bf, "beat_db": bdb, "df": df, "w": e[peak_i] - floor})
-            curves.append((start, end, e))
+            curves.append((start, end, smooth_beats(e, t), v, t))
         if not fits:
             continue
-        # The decay shape: one fit to the layers' envelopes averaged (in dB, each shifted onto the
-        # loudest layer over the time they share). Averaging smooths the beats and represents all
-        # the louder velocities, rather than the loudest alone.
-        ref = max(range(len(curves)), key=lambda i: fits[i]["w"])
-        rs, re_, rcurve = curves[ref]
-        acc = np.zeros(len(rcurve))
-        cnt = np.zeros(len(rcurve))
-        for st, en, e in curves:
-            lo, hi = max(st, rs), min(en, re_)
-            if hi - lo < 10:
+        # The decay shape, for soft, medium and loud strikes (soft notes sustain relatively longer):
+        # per group, one fit to its layers' envelopes averaged (in dB, each shifted onto the group's
+        # loudest over the time they share), which smooths the beats.
+        shapes = []
+        for g in DECAY_GROUPS:
+            cs = [c for c in curves if c[3] in g]
+            if not cs:
+                shapes.append(None)
                 continue
-            off = np.mean(rcurve[lo:hi] - e[lo:hi])
-            acc[st:en] += e[st:en] + off
-            cnt[st:en] += 1
-        ok = cnt > 0
-        idx = np.nonzero(ok)[0]
-        i0, i1 = idx[0], idx[-1] + 1
-        tt = t[i0:i1]
-        ee = acc[i0:i1] / np.maximum(cnt[i0:i1], 1)
-        good = cnt[i0:i1] > 0
-        l0, s1, s2, tk, x0, s0 = fit_curve(tt[good], ee[good])
-        drop = (s1 - s2) * tk if s1 != s2 else 0.0
-        if s1 == s2:
-            tk = 0.0
+            rs, re_, rcurve, _, tref = max(cs, key=lambda c: c[1] - c[0])
+            acc = np.zeros(len(rcurve))
+            cnt = np.zeros(len(rcurve))
+            for st, en, e, _, _ in cs:
+                en = min(en, len(acc))      # recordings differ in length
+                lo, hi = max(st, rs), min(en, re_)
+                if hi - lo < 10:
+                    continue
+                off = np.mean(rcurve[lo:hi] - e[lo:hi])
+                acc[st:en] += e[st:en] + off
+                cnt[st:en] += 1
+            idx = np.nonzero(cnt > 0)[0]
+            if len(idx) < 20:
+                shapes.append(None)
+                continue
+            i0, i1 = idx[0], idx[-1] + 1
+            good = cnt[i0:i1] > 0
+            l0, s1, s2, tk, x0, s0 = fit_curve(tref[i0:i1][good], (acc[i0:i1] / np.maximum(cnt[i0:i1], 1))[good])
+            drop = (s1 - s2) * tk if s1 != s2 else 0.0
+            shapes.append({"s1": s1, "s2": s2, "tk": tk if s1 != s2 else 0.0, "drop": drop, "x0": x0, "s0": s0})
+        if all(sh is None for sh in shapes):
+            continue
+        # a group without enough signal (soft strikes of quiet partials) takes its neighbour's shape
+        for i in (1, 0, 2, 1):
+            if shapes[i] is None:
+                shapes[i] = next(shapes[j] for j in sorted(range(3), key=lambda j: abs(j - i)) if shapes[j] is not None)
+        s1, s2, tk, drop, x0, s0 = (shapes[1][k] for k in ("s1", "s2", "tk", "drop", "x0", "s0"))
         beats = [f for f in fits if f["beat"] > 0]
         beat = float(np.median([f["beat"] for f in beats])) if beats else 0.0
         beat_db = float(np.median([f["beat_db"] for f in beats])) if beats else 0.0
@@ -284,18 +344,14 @@ def analyze_key(root, k):
         if abs(df) > 0.002 * fn + 0.3:   # the phase slope locked onto something else: keep the fitted frequency
             df = 0.0
         result["partials"].append({"n": n, "f": fn + df, "s1": s1, "s2": s2, "tk": tk, "drop": drop, "x0": x0, "s0": s0,
-                                   "beat": beat, "beat_db": beat_db})
+                                   "shapes": shapes, "beat": beat, "beat_db": beat_db})
 
     # starting level and phase per layer and mic: the complex amplitude over an early window,
     # brought back to t = 0 along the partial's own two-stage decay
     for p in result["partials"]:
-        aft = 10 ** (p["drop"] / 20) if p["drop"] < -0.01 else 1.0
-        X = 10 ** (p["x0"] / 20)
-        def shape_db(tt):   # the decay line (1 at t = 0) plus the transient
-            return 20 * np.log10((1 - aft) * 10 ** (p["s1"] * tt / 20) + aft * 10 ** (p["s2"] * tt / 20)
-                                 + X * 10 ** (p["s0"] * tt / 20))
         lv, ph = [], []
         for v in range(1, LAYERS + 1):
+            sh = shape_at(p, v - 1)
             x, _ = layers[v - 1]
             lvv, phv = [], []
             for ch in range(2):
@@ -305,7 +361,7 @@ def analyze_key(root, k):
                 if not sel.any():
                     sel = slice(0, 3)
                 zz, tt = z[sel], t[sel]
-                lvv.append(float(np.mean(20 * np.log10(np.abs(zz) + 1e-12) - shape_db(tt))))
+                lvv.append(float(np.mean(20 * np.log10(np.abs(zz) + 1e-12) - shape_db(sh, tt))))
                 phv.append(float(np.angle(np.mean(zz))))
             lv.append(lvv)
             ph.append(phv)
@@ -318,6 +374,14 @@ def analyze_key(root, k):
 def main():
     root = Path(sys.argv[1])
     out = Path(sys.argv[2])
+    if len(sys.argv) > 3 and sys.argv[3] == "--merge":
+        # combine runs over parts of the key list into one file:
+        #   analyze.py <dir> a.json 21,27,… & analyze.py <dir> b.json 24,30,… ; analyze.py <dir> out.json --merge a.json b.json
+        parts = [json.load(open(f)) for f in sys.argv[4:]]
+        merged = parts[0]
+        merged["keys"] = sorted((k for p in parts for k in p["keys"]), key=lambda k: k["key"])
+        out.write_text(json.dumps(merged))
+        return
     keys = sampled_keys()
     if len(sys.argv) > 3:
         keys = [int(a) for a in sys.argv[3].split(",")]

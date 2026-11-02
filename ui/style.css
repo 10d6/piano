@@ -1,0 +1,5 @@
+
+/* velocity graph (ui/custom.js) */
+.vel-curve { min-width: 240px; flex: 1 1 260px; display: flex; flex-direction: column; gap: 4px; }
+.vel-curve canvas { display: block; width: 100%; }
+.vel-caption { font-size: 11px; color: var(--ink-soft); }

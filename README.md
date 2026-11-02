@@ -8,32 +8,60 @@ everything about them is **measured from recordings of a real grand**:
 
 - partial frequencies, from each string's stiffness (inharmonicity), and the
   instrument's stretch tuning (bass up to 22 cents flat, top octave up to 34 sharp);
-- each partial's two-stage decay: the fast "prompt" sound, then the slow
-  "aftersound", and the aftersound's beating (the unison strings drifting);
-- each partial's starting level at 16 velocities, for both of the recording's
-  microphones, and the phase between them, so tone, loudness and stereo
-  image change with how hard a key is struck;
+- each partial's two-stage decay (the fast "prompt" sound, then the slow
+  "aftersound") and the aftersound's beating (the unison strings drifting),
+  measured separately for soft, medium and loud strikes, since softly struck
+  notes sustain relatively longer;
+- each partial's first burst at the strike: a short transient above its
+  decay line, gone within a fraction of a second;
+- each partial's starting level **and phase** at 16 velocities, for both of
+  the recording's microphones, so tone, loudness, stereo image and the shape
+  of the waveform change with how hard a key is struck. Each partial's beat
+  reaches the two microphones at its own angle, so left and right fluctuate
+  independently, as with the recording's spaced pair;
+- how each note swells in (hammer contact, soundboard response): fitted per
+  key from the first 40 ms of the recordings, 2–15 ms;
 - the strike's noise (hammer, action and soundboard knock): what the
-  recordings hold beyond the partials, in octave bands per key, velocity and
-  microphone, each with its own decay. The bands' filters are steep
-  (4th order) and their gains are solved against the filters' overlap, so
-  the noise's spectrum matches the measured one rather than spilling hiss
-  into the treble.
+  recordings hold beyond the partials in the first quarter second, in octave
+  bands per key, velocity and microphone, each with its own decay. The bands'
+  filters are steep (4th order) and their gains are solved against the
+  filters' overlap, so the noise's spectrum matches the measured one;
+- the body's ring: after each strike the soundboard, case and room ring on,
+  as diffuse sound between the strings' partials a couple of dozen dB below
+  the note, fading over seconds. Measured per key (from C3 up; below, the
+  partials are too dense to separate it), velocity, microphone and octave
+  band, and played by one shared bank of band noise. It gives high notes
+  their echo-like tail; without it they're a few pure partials, like a bell.
 
 The recordings sample every minor third; keys between are interpolated. One
 voice per key: striking a key that is still sounding adds to its vibration.
 
-**How close is it?** `tools/compare.py` renders notes dry and compares them
-with the recordings in octave bands over time. Measured keys land within
-2–5 dB (median) up to A6 and ~11 dB at F#7. `tools/diagnose.py` measures
-what's audible at the strike: the attack's swell (10–20 ms, as recorded),
-its brightness per velocity (tracks the recordings), the noise between the
-partials (kept a little below the recordings) and the partials' pitch.
-Keys the model never heard (held out from the data and interpolated) land
-within 3–4 dB.
+**Velocity.** Velocity is mapped onto each key's measured loudness range
+(its softest recording to its loudest) along a smooth curve, whatever the
+recorded layers' own velocity spacing, and the tone comes from the recorded
+layer with that loudness. The Playing panel shapes it: **Touch** (how hard
+you have to play), **Dynamics** (the loudness range), **Tone Range** (how
+much the tone darkens as you play softer) and **Soft Attack** (how much
+softer notes swell in more slowly), with a graph of loudness and tone across
+velocity for the last key played. The page's on-screen keyboard always plays
+velocity 100; use a MIDI keyboard to play dynamics.
+
+**How close is it?** `tools/compare.py` renders notes dry, layer by layer (the
+As Recorded velocity map), and compares them with the recordings in octave
+bands over time: measured keys land within 2–5 dB (median). `tools/diagnose.py`
+measures what's audible at the strike: the attack's swell, its brightness per
+velocity (tracks the recordings), the noise between the partials (kept a
+little below the recordings) and the partials' pitch. Keys the model never
+heard (held out from the data and interpolated) land within 3–4 dB.
+
+The unison beat's depth is measured as one sinusoid at the strongest beat
+rate, which underestimates how much a real unison's envelope fluctuates.
+`BEAT_SCALE` in `tools/make_header.py` (1.8) is calibrated so the model's
+envelopes fluctuate about as much as the recordings' (3.0 against 3.6 dB,
+detrended, partials 1–4).
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~4× realtime in Chromium; ordinary playing at ~16×. A
+can do, renders at ~3.4× realtime in Chromium; ordinary playing at ~14×. A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data
