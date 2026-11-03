@@ -1,7 +1,10 @@
 # Piano
 
 A modelled grand piano built on [synthkit](https://github.com/10d6/synthkit). It
-runs in the browser (one ~1 MB HTML file) and as a VST3 / AU plugin.
+runs in the browser (one ~1.4 MB HTML file) and as a VST3 / AU plugin.
+
+How it's modelled, in detail: [`docs/MODEL.md`](docs/MODEL.md). How it's
+tested against the real piano: [`docs/TESTING.md`](docs/TESTING.md).
 
 There are no samples in it. Each key is a bank of decaying sine partials, and
 everything about them is **measured from recordings of a real grand**:
@@ -22,12 +25,13 @@ everything about them is **measured from recordings of a real grand**:
 - how each note swells in (hammer contact, soundboard response): fitted per
   key from the first 40 ms of the recordings, 2–15 ms;
 - the strike's noise (hammer, action and soundboard knock): what the
-  recordings hold between the partials in the first quarter second, in octave
-  bands per key, velocity and microphone, as the knock itself and a slower
-  part after it, smoothed across velocities. The bands' filters are steep
-  above (a top key's knock falls ~35-45 dB over an octave or two) and their
-  gains are solved against the filters' overlap. Then each key is rendered and its knock compared with the
-  recording's, between the partials, and corrected (`tools/calibrate_noise.py`);
+  recordings hold beyond the partials in the first quarter second (from G#3
+  up, only what lies between them), in octave bands per key, velocity and
+  microphone, as the knock itself and a slower part after it, smoothed across
+  velocities. The bands' filters are steep above (a top key's knock falls
+  ~35-45 dB over an octave or two) and their gains are solved against the
+  filters' overlap. Then each key is rendered, its knock compared with the
+  recording's, and corrected (`tools/calibrate_noise.py`);
 - in the treble, where each partial really is: the stiff-string formula puts
   some top-key partials 10-30 cents off (A6's third partial is 11 cents flat
   of it, F#7's 60 sharp), so they're measured from the recordings' first
@@ -48,7 +52,7 @@ everything about them is **measured from recordings of a real grand**:
 **Sympathetic resonance.** Every string's lower partials (to the 16th, below
 4 kHz) are also a bank of resonators, at the frequencies the voices play and
 with the strings' measured slow decay. A string whose damper is up (all of
-them with the pedal down, those above E6 always) and that isn't sounding as a
+them with the pedal down, and those above E6, which have none on a grand) and that isn't sounding as a
 note of its own is driven by everything the piano plays, so it rings along
 where its partials line up with the notes': the octave below a note sets the
 upper string going, a fifth sets its twelfth, and so on, and pedalled playing
@@ -62,7 +66,9 @@ notes, whose own sound fades sooner than the lower strings' ring. The bank runs 
 the sample rate, and only for strings that are free or still ringing.
 
 The recordings sample every minor third; keys between are interpolated. One
-voice per key: striking a key that is still sounding adds to its vibration.
+voice per key: striking a key that is still sounding hands its vibration over
+to the new strike. As on a grand, keys above E6 have no dampers and ring on
+after release (**Top Dampers** can damp every key instead).
 
 **Velocity.** Velocity is mapped onto each key's measured loudness range
 (its softest recording to its loudest) along a smooth curve, whatever the
@@ -76,20 +82,21 @@ velocity 100; use a MIDI keyboard to play dynamics.
 
 **How close is it?** `tools/compare.py` renders notes dry, layer by layer (the
 As Recorded velocity map), and compares them with the recordings in octave
-bands over time: measured keys land within 2–5 dB (median). `tools/diagnose.py`
-measures what's audible at the strike: the attack's swell, its brightness per
-velocity (tracks the recordings), the noise between the partials (kept a
-little below the recordings) and the partials' pitch. Keys the model never
-heard (held out from the data and interpolated) land within 3–4 dB.
+bands over time: measured keys land within 2–4.5 dB (median). What lies
+between the partials (knock, body) is within ~3–5 dB for the first 0.4 s
+(`tools/measure/between.py`), the partials' pitch within ~2 cents, and keys the
+model never heard (held out and interpolated) at 3.4–4.7 dB, about 1–3 dB
+worse than when measured. `docs/TESTING.md` has every measure, today's numbers and the known gaps.
 
 The unison beat's depth is measured as one sinusoid at the strongest beat
 rate, which underestimates how much a real unison's envelope fluctuates.
 `BEAT_SCALE` in `tools/make_header.py` (1.8) is calibrated so the model's
-envelopes fluctuate about as much as the recordings' (3.0 against 3.6 dB,
+envelopes fluctuate about as much as the recordings' (3.5 against 3.6 dB,
 detrended, partials 1–4).
 
 **Load.** A pedalled glissando over all 88 keys, the heaviest thing a pianist
-can do, renders at ~2.2× realtime in Chromium; ordinary playing at ~9×. A
+can do, renders at ~2× realtime in Chromium; ordinary playing at ~7× (on a
+machine where main before the sympathetic resonance did ~2.9× and ~10×). A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
 ## Measurement data
@@ -102,13 +109,13 @@ included. To measure again:
 
 ```
 git clone https://github.com/sfzinstruments/SalamanderGrandPiano ../salamander   # ~700 MB
-python3 -I tools/analyze.py ../salamander tools/salamander.json          # partials (~10 min)
+python3 -I tools/analyze.py ../salamander tools/salamander.json          # partials (~25 min; see --merge)
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
 python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
-# then build, and calibrate the strike noise against the recordings (2-3 passes, rebuilding between):
+# then build, and calibrate the strike noise against the recordings (3 passes, make_header and a build between):
 python3 -I tools/calibrate_noise.py ../salamander build/piano_render tools/salamander_noise.json
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
@@ -117,7 +124,8 @@ python3 -I tools/measure/run_all.py --sal ../salamander                   # ever
 node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
 ```
 
-(needs `pip install numpy soundfile matplotlib`)
+(needs `pip install numpy scipy soundfile matplotlib`; the browser tools need
+Playwright with Chromium)
 
 ## Playing it
 
@@ -146,7 +154,9 @@ The browser page and the plugins are built the same way as in synthkit: see
 |---|---|
 | `synth.json` | identity (name, IDs, plugin codes) and kit features |
 | `src/` | the sound engine (`Synth.cpp`) and the measured data (`PianoData.h`, generated) |
-| `tools/` | measuring the recordings, comparing with them, browser benchmark |
+| `docs/` | how it's modelled (`MODEL.md`) and tested (`TESTING.md`) |
+| `tools/` | measuring the recordings, calibrating, comparing with them, stress test, browser benchmark |
+| `tools/measure/` | every measurement against the recordings (`README.md` there) |
 | `presets/` | factory presets (`init.json` is what a new instance starts on) |
 | `tests/` | render scenarios checked in CI |
 | `ui/layout.json` | the panel layout (and `ui/custom.js` for custom widgets, `ui/style.css` for styles, or `ui/page.js` for a page of the synth's own: API.md §9a) |

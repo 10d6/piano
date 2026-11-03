@@ -9,9 +9,10 @@ and repeat (two or three passes settle it):
 The fits in analyze_noise.py read the noise from frames that are long next to a top key's knock,
 and through partials whose skirts the model doesn't hold; measuring the result the way it is
 heard, between the partials, corrects what those approximations miss. The first 40 ms set the
-knock (keys from D#4 up, where 40 ms windows can tell partials from what's between them), 40-150
-ms its slower part (from A2 up). Below the fundamental there are no partials, so there the whole
-band is measured. Corrections accumulate in the json (adjust1, adjust2: dB per band) and
+knock and 40-150 ms its slower part, each on the keys whose partials stand far enough apart for
+that window to measure between them (the knock from about D5 up, the slower part from about G#3);
+below the fundamental there are no partials, so there the whole band is measured (from A2 up).
+Corrections accumulate in the json (adjust1, adjust2: dB per band) and
 make_header.py applies them. The body's ring is left to its own fit
 (analyze_body.py): it doesn't fade along one line, and a line fitted to its first second (tried)
 takes away the long tail that high notes need.
@@ -29,7 +30,7 @@ import common as M  # noqa: E402
 
 LAYERS = [4, 8, 12, 16]
 BANDS = [0, 1, 2, 3, 4, 5, 6, 7, 8]   # 31 Hz … 8 kHz (below 500 Hz only where it's under the fundamental)
-STAGES = [((0.0, 0.04), 63), ((0.04, 0.15), 45)]   # window, lowest key it's measured for
+STAGES = [((0.0, 0.04), 45), ((0.04, 0.15), 45)]   # window, lowest key it's measured for
 
 
 def between(x, key, t0, t1):
@@ -55,6 +56,10 @@ def main():
         key = model[k["key"]]
         adj = [k.get("adjust1", [0.0] * 10), k.get("adjust2", [0.0] * 10)]
         diffs = [[[] for _ in BANDS] for _ in STAGES]
+        # a window can measure between the partials only where they stand well apart next to its
+        # frequency resolution (the same rule as analyze_noise.between_ratio); below the fundamental
+        # there are no partials, so those bands are measured on every key from A2 up
+        sep = [2 * max(4.0 / (t1 - t0), 0.04 * key["f0"], 6.0) <= 0.35 * key["f0"] for (t0, t1), _ in STAGES]
         for layer in LAYERS:
             if k["key"] < min(lo for _, lo in STAGES):
                 break
@@ -65,8 +70,8 @@ def main():
                     continue
                 r, m = between(rec, key, t0, t1), between(mod, key, t0, t1)
                 for i, b in enumerate(BANDS):
-                    # bands below 500 Hz only below the fundamental (higher up, partials crowd them)
-                    if b < 4 and 2 * AB.BANDS[b] > 0.9 * key["f0"]:
+                    below = 2 * AB.BANDS[b] <= 0.9 * key["f0"]
+                    if not below and (b < 4 or not sep[s]):
                         continue
                     if np.isfinite(r[b]) and np.isfinite(m[b]) and r[b] > -100:
                         diffs[s][i].append(m[b] - r[b])

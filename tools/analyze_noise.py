@@ -4,8 +4,12 @@
 For each sampled key, velocity layer and mic, over the first 250 ms:
 octave-band power of the recording, minus the power the partial model
 (tools/salamander.json) accounts for. What's left is the hammer's knock, the
-key and action, and the soundboard's broadband ring. Each band is fitted with
-a starting level and a decay rate.
+key and action, and the soundboard's broadband ring. From about G#3 up, where
+the partials stand well apart, it is scaled to its share that lies between
+them (the partials' skirts would otherwise become hiss). Each band is fitted
+in two stages (the knock, then a slower part: decay, decay2, drop), its level
+taken at the strike and smoothed across the 16 layers. tools/calibrate_noise.py
+then corrects the result by rendering; docs/MODEL.md has the reasoning.
 
     python3 -I tools/analyze_noise.py <Salamander dir> tools/salamander.json tools/salamander_noise.json
 """
@@ -50,7 +54,11 @@ def between_ratio(x, sr, key, mic, t, pp):
     seg = x[:L, mic]
     f0 = key["f0"]
     width = max(4.0 * sr / L, 0.04 * f0, 6.0)
-    if 2 * width > 0.7 * f0:
+    # only where the gaps between partials are wide next to the partials' skirts (as wide as
+    # calibrate_noise.py needs for its 40-150 ms window: from about G#3 up). Lower, what's "between"
+    # them is mostly their own spill, and counting it as knock made the bass's strike noisy and
+    # uneven (fast repeats at A1-A2 lost their rise)
+    if 2 * max(width, 4.0 / 0.11) > 0.35 * f0:
         return None
     nfft = 1 << 17
     sp = np.abs(np.fft.rfft(seg * np.hanning(L), nfft)) ** 2 / (0.375 * L * L / 2) / (nfft / L)

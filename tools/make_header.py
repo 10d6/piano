@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Turn tools/salamander.json (from analyze.py) into src/PianoData.h.
+"""Turn the measurements into src/PianoData.h: tools/salamander.json (analyze.py) and, next to
+it, salamander_noise.json (with calibrate_noise.py's corrections), salamander_onset.json,
+salamander_body.json and salamander_mech.json. Also solves the noise bands' gains against the
+engine's own band filters (band_matrix, solve_gains), which must match Synth.cpp's.
 
     python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 """

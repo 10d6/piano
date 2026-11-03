@@ -6,17 +6,21 @@
 // interpolated between:
 //
 //   - the partial frequencies, from each string's measured stiffness
-//     (inharmonicity B), and the instrument's stretch tuning;
+//     (inharmonicity B), and the instrument's stretch tuning; in the treble,
+//     where each partial actually peaks, and the unison's clusters;
 //   - each partial's two-stage decay: a fast "prompt" sound, then a slow
 //     "aftersound" (the 2-3 strings of a unison drifting out of phase), and
 //     the aftersound's beating;
 //   - each partial's starting level at 16 velocities, for both of the
 //     recording's microphones, and the phase between them, so loudness,
 //     tone and the stereo picture all change with how hard a key is struck,
-//     as on the recordings.
+//     as on the recordings;
+//   - how each note swells in, and the strike's noise (the knock and a slower
+//     part after it, in octave bands).
 //
 // One voice per key, as on a piano: striking a key that is still sounding
-// adds to the vibration that's already there.
+// hands its vibration over to the new strike. docs/MODEL.md describes every
+// part, and where its numbers come from.
 //
 // Around the voices, in the synth: the body's ring after each strike, the
 // mechanical noises (keys coming up, the pedal), all as octave bands of
@@ -140,7 +144,7 @@ struct PianoVoice : Voice {
   float nzDec2[pd::kNoiseBands] = {};   // dB/s, which the damper stops along with the strings
   bool nzDamped = false;
   float nzS[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
-  float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)   // two filter stages per band, two states each
+  float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)
 };
 
 struct Piano : Synth {

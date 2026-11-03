@@ -9,8 +9,15 @@ recordings themselves:
   - for each partial: the prompt and aftersound decay rates (two-stage decay),
     the knee between them, and the beat rate and depth of the aftersound
     (from the 2-3 strings of a unison not being exactly in tune);
+  - each partial's own frequency, where its peak in the first 0.3 s lies off
+    the stiff-string line (the treble: refine_partials), and, where a partial
+    is a cluster of the unison's strings, the cluster's components (clusters);
+  - for each partial: its first burst above the decay line (x0, s0), and the
+    decay shape separately for soft, medium and loud strikes;
   - for each of the 16 velocity layers and each microphone: every partial's
-    starting level, and the phase between the two mics.
+    starting level and phase.
+
+docs/MODEL.md describes the methods.
 
     python3 -I tools/analyze.py <Salamander dir> <out.json>
 

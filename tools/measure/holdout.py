@@ -37,6 +37,7 @@ def main():
         d = json.load(open(M.TOOLS / f))
         d["keys"] = [k for k in d["keys"] if k["key"] not in keys]
         json.dump(d, open(work / "data" / f, "w"))
+    shutil.copy(M.TOOLS / "salamander_mech.json", work / "data")   # per release key, not per sampled key
     repo = work / "repo"
     repo.mkdir()
     for item in ("CMakeLists.txt", "synth.json", "src", "presets", "tests", "ui"):

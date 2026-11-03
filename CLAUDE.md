@@ -30,12 +30,17 @@ from CI at milestones.
 
 ## This synth
 
+- `docs/MODEL.md` (how each part is modelled and measured) and
+  `docs/TESTING.md` (how it's tested, today's numbers, known gaps) are the
+  reference. Keep them, README and `tools/measure/README.md` current with every
+  change to the model or the tests: a PR that changes the sound updates the
+  numbers it changes.
 - `src/PianoData.h` is generated (`tools/make_header.py`); never edit it by
   hand. The measurements are `tools/salamander*.json`; README has the
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
 - After any change to the sound, run `tools/measure/run_all.py` (every
-  measurement against the recordings, about a minute; `tools/measure/README.md`
+  measurement against the recordings, about 1.5 minutes; `tools/measure/README.md`
   says what each answers and what healthy looks like) and
   `tools/bench-web.cjs` for browser speed, and report them. For one note in
   detail, `tools/measure/partials.py --key K --layer L` separates data
@@ -62,6 +67,12 @@ from CI at milestones.
   dig 12-17 dB notches at the octave edges. What's left: D#6 and A7 a few dB
   hissy at 8-16 kHz (as before PR #8). Gains are solved in dB (`solve_gains`):
   solving in power let a quiet band switch its loud neighbour off.
+- Strike noise is measured between the partials only where they stand well
+  apart (`between_ratio`: f0 from about G#3), and calibration uses each
+  window only where it can see between them (knock from ~D5, slower part
+  from ~G#3; below the fundamental, the whole band from A2). Lower keys keep
+  the old cut rule: counting the bass's partial spill as knock made A1-A2's
+  strikes noisy and fast repeats lose their rise.
 - The noise analysis smooths each band's level across the 16 layers
   (`smooth_layers`): per-layer fits jump 20 dB and more, heard as white noise
   on some velocities only (D#5-F#5, D#6 at velocity 100 in PR #8's first
