@@ -65,6 +65,9 @@
           "param": "string.damper"
         },
         {
+          "param": "string.topdampers"
+        },
+        {
           "param": "string.resonance"
         }
       ]
@@ -92,7 +95,7 @@
     "string.unison": "How far the two or three strings of each note are out of tune with each other. This is the slow beating in a sustained note. 100% is as measured.",
     "string.stretch": "The recorded piano's stretch tuning: low notes flatter and high notes sharper, as a tuner sets a real piano to match its stiff strings. 0% is plain equal temperament.",
     "string.sustain": "How long notes ring. 100% is as measured.",
-    "string.damper": "How long the dampers take to stop a note when you let go of the key. Keys above E6 have no dampers, as on a grand.",
+    "string.damper": "How long the dampers take to stop a note when you let go of the key. Keys above E6 have no dampers, as on a grand (Top Dampers changes that).",
     "space.width": "Stereo width of the two microphones the piano was measured with.",
     "space.room": "A small room around the piano. The measurements are close-miked, so 0 is the dry piano.",
     "tone.attack": "How long each note takes to swell in at the strike. 100% is as measured for each key, from the recordings.",
@@ -101,7 +104,8 @@
     "play.softattack": "How much softer notes swell in more slowly, as the hammer's felt stays on the string longer at gentle blows. 0% swells in at the measured speed whatever the velocity.",
     "play.velmap": "Smooth: velocity moves evenly through this piano's loudness range, with the tone that goes with each loudness. As Recorded: the sample library's own velocity layers, unevenly spaced as recorded.",
     "tone.mech": "The piano's mechanical sounds: each key's own noise as it comes back up and its damper lands, and the sustain pedal's thump going down and up. Measured from the recordings; 0 dB is the level the sample library mixes them at.",
-    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; −40 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal."
+    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; −40 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",
+    "string.topdampers": "A grand has no dampers above E6: those notes ring on after you let go, fading as they would held. All keys: every key is damped on release, as on many digital pianos."
   },
   "keyboard": true
 }

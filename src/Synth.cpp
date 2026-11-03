@@ -85,8 +85,8 @@ float measuredCents(int note) {
 
 
 // The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
-inline float damperRate(int note) {
-  if (note > kLastDamper) return 0.f;
+inline float damperRate(int note, int last = kLastDamper) {
+  if (note > last) return 0.f;
   float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
   return 70.f * std::pow(300.f / 70.f, t);   // A0 ≈ 70 (about 0.9 s to silence), E6 ≈ 300
 }
@@ -139,13 +139,13 @@ struct PianoVoice : Voice {
   float nzEnv2[2][pd::kNoiseBands] = {}, nzMul2[pd::kNoiseBands] = {};   // its slower second part,
   float nzDec2[pd::kNoiseBands] = {};   // dB/s, which the damper stops along with the strings
   bool nzDamped = false;
-  float nzS[2][pd::kNoiseBands][2 * pd::kNoiseStages] = {};
+  float nzS[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
   float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)   // two filter stages per band, two states each
 };
 
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, body, mech, unison, stretch, sustain, damper,
-      resonance, width, room;
+      resonance, topDampers, width, room;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -162,6 +162,7 @@ struct Piano : Synth {
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").group("Strings");
+    topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
     resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
     room = b.add("space.room").name("Room").range(0, 100).def(12).unit("%").group("Space");
@@ -273,12 +274,17 @@ struct Piano : Synth {
   int compsNow = 0;
   float floorDb = kFloorDb;
 
-  // Band-pass filters for the strike's noise: four identical RBJ band-pass
-  // stages per octave band (8th order: the top keys' knock falls ~45 dB over
-  // two octaves, which shallower bands would spill across), each band scaled so
-  // white noise through it comes out at unit RMS.
+  // Band-pass filters for the strike's noise: two identical RBJ band-pass
+  // stages per octave band and a 4th-order low-pass just above it (the top
+  // keys' knock falls ~45 dB over two octaves, which plain band-passes spill
+  // across as hiss), each band scaled so white noise through it comes out at
+  // unit RMS.
   // tools/make_header.py solves the band gains against these same filters.
-  struct Band { float b0 = 0, a1 = 0, a2 = 0, norm = 0; };
+  struct Band {
+    float b0 = 0, a1 = 0, a2 = 0, norm = 0;   // the band-pass stages (b1 = 0, b2 = −b0)
+    float lp[2][5] = {};                      // the low-pass above it: two biquads b0 b1 b2 a1 a2
+    bool hasLp = false;
+  };
   Band bands[pd::kNoiseBands];
 
   // A small room: decorrelated, darkening noise tails, one per side.
@@ -315,7 +321,20 @@ struct Piano : Synth {
       bd.b0 = alpha / a0;
       bd.a1 = -2 * std::cos(w0) / a0;
       bd.a2 = (1 - alpha) / a0;
-      float st[2 * pd::kNoiseStages] = {};
+      // a 4th-order Butterworth low-pass at kNoiseLpRatio × the band's lower edge, so a loud band
+      // spills little into the quieter ones above it (the knock's spectrum falls with frequency)
+      float fl = pd::kNoiseBandLow[b] * pd::kNoiseLpRatio;
+      bd.hasLp = fl < 0.45f * sr;
+      const float qs[2] = {0.5411961f, 1.3065630f};
+      for (int k = 0; k < 2 && bd.hasLp; ++k) {
+        float wl = kTwoPi * fl / sr, al = std::sin(wl) / (2 * qs[k]), c = std::cos(wl), n0 = 1 + al;
+        bd.lp[k][0] = (1 - c) / 2 / n0;
+        bd.lp[k][1] = (1 - c) / n0;
+        bd.lp[k][2] = (1 - c) / 2 / n0;
+        bd.lp[k][3] = -2 * c / n0;
+        bd.lp[k][4] = (1 - al) / n0;
+      }
+      float st[2 * pd::kNoiseStages + 4] = {};
       double var = 0;
       int n = static_cast<int>(sr);
       for (int i = 0; i < n + 2000; ++i) {
@@ -334,6 +353,15 @@ struct Piano : Synth {
       st[2 * k + 1] = -b.b0 * x - b.a2 * y;
       x = y;
     }
+    if (b.hasLp)
+      for (int k = 0; k < 2; ++k) {
+        const float* c = b.lp[k];
+        float* s = st + 2 * pd::kNoiseStages + 2 * k;
+        float y = c[0] * x + s[0];
+        s[0] = c[1] * x - c[3] * y + s[1];
+        s[1] = c[2] * x - c[4] * y;
+        x = y;
+      }
     return x;
   }
 
@@ -347,7 +375,7 @@ struct Piano : Synth {
   float bodyRise[128] = {};                     // × (1 − bodyRise)², bodyRise falling from 1
   float bodyDamp[128] = {};                     // the key's damper is down: its rate (dB/s), else 0
   bool bodyOn[128] = {};
-  float bodyState[2][pd::kNoiseBands][2 * pd::kNoiseStages] = {};
+  float bodyState[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
   dsp::Rng bandRng[2][pd::kNoiseBands];
 
   void addBody(int key, const float (&powL)[pd::kNoiseBands], const float (&powR)[pd::kNoiseBands],
@@ -529,7 +557,7 @@ struct Piano : Synth {
 
   void bankPoles(int key, float stretchPct, float sus, float dampScale) {
     float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f - 69.f) / 12.f);
-    float dmp = keyDamped[key] ? damperRate(key) / dampScale : 0.f;
+    float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
     float rate = 0.5f * sr, nyq = 0.47f * rate;
     for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
       float f = f0 * bRatio[i];
@@ -583,13 +611,13 @@ struct Piano : Synth {
     }
     dsp::Rng& rng = liftRng;
     for (int key = 21; key <= 108; ++key) {
-      bool free = bankPedal || bankKeys[key] || key > kLastDamper;
+      bool free = bankPedal || bankKeys[key] || key > topDamper;
       bool driven = free && !sounding[key];
       if (keyDamped[key] != !free) {
         keyDamped[key] = !free;
         keyPoles[key] = false;
       }
-      if (lift > 0 && key <= kLastDamper && !bankKeys[key] && !sounding[key]) {
+      if (lift > 0 && key <= topDamper && !bankKeys[key] && !sounding[key]) {
         for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
           if (bIn[i] == 0) continue;
           float a = liftAmp[bBand[i]] * lift, phase = rng.uniform(0.f, kTwoPi);
@@ -660,10 +688,15 @@ struct Piano : Synth {
   int keysDown[128] = {};
   bool pedalDown = false;
   void damperFalls(EventContext& ctx, int key) {
-    dampBody(key, damperRate(key) / std::max(ctx.get(damper) * 0.01f, 0.25f));
+    dampBody(key, damperRate(key, topDamper) / std::max(ctx.get(damper) * 0.01f, 0.25f));
   }
 
+  // the highest key with a damper: E6 on a grand (the top strings ring on after release, as recorded),
+  // or every key, as on many digital pianos (Top Dampers)
+  int topDamper = kLastDamper;
+
   void processEvents(EventContext& ctx) override {
+    topDamper = ctx.choice(topDampers) == 1 ? 108 : kLastDamper;
     for (int i = 0; i < nChanges; ++i) applyChange(changes[i]);   // (none left over normally)
     nChanges = 0;
     hostPos = 0;
@@ -889,7 +922,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   }
 
   // dampers: faster in the treble, slower and weaker in the bass
-  float dampBase = damperRate(note);
+  float dampBase = damperRate(note, synth.topDamper);
 
   // the loudest partial at this velocity, for the range cut
   float loudest = -200.f;
@@ -1160,7 +1193,7 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   if (knocking) {
     if (damped && !nzDamped) {   // the key is up: the knock's slower part stops with the strings
       nzDamped = true;
-      float rate = damperRate(note) / std::max(dmp, 0.25f);
+      float rate = damperRate(note, synth.topDamper) / std::max(dmp, 0.25f);
       for (int bd = 0; bd < pd::kNoiseBands; ++bd) nzMul2[bd] = std::pow(10.f, (nzDec2[bd] - rate) * 0.05f / sr);
     }
     dsp::Rng& rnd = ctx.rng();

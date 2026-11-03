@@ -24,9 +24,9 @@ everything about them is **measured from recordings of a real grand**:
 - the strike's noise (hammer, action and soundboard knock): what the
   recordings hold between the partials in the first quarter second, in octave
   bands per key, velocity and microphone, as the knock itself and a slower
-  part after it. The bands' filters are steep (8th order: a top key's knock
-  falls ~45 dB over two octaves) and their gains are solved against the
-  filters' overlap. Then each key is rendered and its knock compared with the
+  part after it, smoothed across velocities. The bands' filters are steep
+  above (a top key's knock falls ~35-45 dB over an octave or two) and their
+  gains are solved against the filters' overlap. Then each key is rendered and its knock compared with the
   recording's, between the partials, and corrected (`tools/calibrate_noise.py`);
 - in the treble, where each partial really is: the stiff-string formula puts
   some top-key partials 10-30 cents off (A6's third partial is 11 cents flat

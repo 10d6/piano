@@ -28,14 +28,16 @@ def repair(keys):
             k["f0"] = 440 * 2 ** ((k["key"] - 69) / 12) * 2 ** (c / 1200)
 
 
-NOISE_Q = 0.9       # per stage
-NOISE_STAGES = 4    # identical band-pass stages per band
+NOISE_Q = 1.2       # per stage
+NOISE_STAGES = 2    # identical band-pass stages per band
+NOISE_LP = 1.7      # then a 4th-order Butterworth low-pass at this × the band's lower edge
 BEAT_SCALE = float(__import__("os").environ.get("BEAT_SCALE", "1.8"))   # calibrated: README
 
 
 def band_matrix(bands, sr):
     """M[i][j]: share of band filter j's output power (unit total) that falls in octave band i,
-    for the engine's filters: NOISE_STAGES identical RBJ band-pass stages at sqrt(2)·low edge."""
+    for the engine's filters: NOISE_STAGES identical RBJ band-pass stages at sqrt(2)·low edge,
+    then a 4th-order Butterworth low-pass at NOISE_LP·low edge."""
     import numpy as np
     f = np.linspace(1, sr / 2, 200000)
     w = 2 * np.pi * f / sr
@@ -51,6 +53,14 @@ def band_matrix(bands, sr):
         b0, a1, a2 = alpha / a0, -2 * math.cos(w0) / a0, (1 - alpha) / a0
         H = (b0 - b0 * z * z) / (1 + a1 * z + a2 * z * z)
         P = np.abs(H) ** (2 * NOISE_STAGES)
+        fl = lo * NOISE_LP
+        if fl < 0.45 * sr:
+            for q in (0.5411961, 1.3065630):
+                wl = 2 * math.pi * fl / sr
+                al, c = math.sin(wl) / (2 * q), math.cos(wl)
+                n0 = 1 + al
+                L = ((1 - c) / 2 + (1 - c) * z + (1 - c) / 2 * z * z) / n0 / (1 + (-2 * c / n0) * z + ((1 - al) / n0) * z * z)
+                P = P * np.abs(L) ** 2
         tot = P.sum()
         for i, lo2 in enumerate(bands):
             sel = (f >= lo2) & (f < 2 * lo2)
@@ -312,6 +322,7 @@ def main():
         out.write(f"constexpr int kNoiseBands = {len(bands)};\n")
         out.write(f"constexpr float kNoiseQ = {NOISE_Q}f;   // per stage\n")
         out.write(f"constexpr int kNoiseStages = {NOISE_STAGES};   // identical band-pass stages per band\n")
+        out.write(f"constexpr float kNoiseLpRatio = {NOISE_LP}f;   // then a 4th-order low-pass at this × the lower edge\n")
         out.write("constexpr float kNoiseBandLow[kNoiseBands] = {" + ", ".join("%.2ff" % b for b in bands) + "};\n")
         out.write("// gain of each band's noise at the strike per key, layer and mic (hundredths of a dB), solved so\n"
                   "// that the bands together, with their filters' overlap, give the measured spectrum\n")

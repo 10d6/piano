@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import analyze_body as AB  # noqa: E402
 import common as M  # noqa: E402
 
-LAYERS = [6, 10, 14]
+LAYERS = [4, 8, 12, 16]
 BANDS = [0, 1, 2, 3, 4, 5, 6, 7, 8]   # 31 Hz … 8 kHz (below 500 Hz only where it's under the fundamental)
 STAGES = [((0.0, 0.04), 63), ((0.04, 0.15), 45)]   # window, lowest key it's measured for
 

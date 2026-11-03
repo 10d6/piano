@@ -55,10 +55,20 @@ from CI at milestones.
   (≥ 15 % of the power off the main component, ≥ 6 Hz spread); otherwise the
   beat model. Only A5 and up were re-analysed with these so far (the rest:
   analysis from before, `f_measured` absent → `dev` 0).
-- Noise bands are 4 identical RBJ stages (Q 0.9). Fewer stages spill a top
-  key's 2-4 kHz knock into 8-16 kHz as hiss; no gain solve or calibration can
-  undo that. Gains are solved in dB (`solve_gains`): solving in power let a
-  quiet band switch its loud neighbour off.
+- Noise bands are 2 RBJ band-pass stages (Q 1.2) and a 4th-order low-pass
+  at 1.7× the lower edge (`kNoiseLpRatio`): a top key's knock falls ~35-45 dB
+  over an octave or two, and plain band-passes spill it upward as hiss that no
+  gain solve or calibration can undo. Lower ratios cut the spill further but
+  dig 12-17 dB notches at the octave edges. What's left: D#6 and A7 a few dB
+  hissy at 8-16 kHz (as before PR #8). Gains are solved in dB (`solve_gains`):
+  solving in power let a quiet band switch its loud neighbour off.
+- The noise analysis smooths each band's level across the 16 layers
+  (`smooth_layers`): per-layer fits jump 20 dB and more, heard as white noise
+  on some velocities only (D#5-F#5, D#6 at velocity 100 in PR #8's first
+  version). Calibration measures layers 4, 8, 12, 16 for the same reason.
+- Top Dampers (`string.topdampers`): E6 is the last damped key by default, as
+  on a grand (measured: the top notes fade after release as when held,
+  a little faster than the recordings); All keys damps every key.
 - Judge the treble with `tools/measure/between.py` as well as the band
   levels: a band's total can be right with its energy in the wrong place.
 - Tried and dropped: calibrating the body ring's level and decay over its
@@ -97,7 +107,8 @@ from CI at milestones.
   `tools/stress.py build/piano_render 300` (and with `overlap`): random fast
   passages must all go silent after release.
 - C5 (and nearby) is the weakest measured region: upper partials a few dB
-  strong, body ring weak late. Known, not yet fixed. The body ring is a few
+  strong, body ring weak late. Known, not yet fixed. Soft low-mid strikes
+  (C4 layer 4) have a 62 Hz thump 15-20 dB too strong (attack.py's worst case). The body ring is a few
   dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).

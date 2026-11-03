@@ -74,6 +74,23 @@ def between_ratio(x, sr, key, mic, t, pp):
     return out
 
 
+def smooth_layers(v):
+    """A level across the 16 layers, smoothed: a quadratic in the layer through the measured
+    values (a median of three first, against single outliers), kept within 6 dB of them."""
+    ok = v > -140
+    if ok.sum() < 5:
+        return v
+    x = np.arange(len(v))
+    med = v.copy()
+    for i in range(len(v)):
+        w = [v[j] for j in (i - 1, i, i + 1) if 0 <= j < len(v) and ok[j]]
+        if ok[i] and w:
+            med[i] = np.median(w)
+    c = np.polyfit(x[ok], med[ok], 2)
+    fit = np.polyval(c, x)
+    return np.where(ok, np.clip(fit, med - 6, med + 6), v)
+
+
 def main():
     root, model_path, out_path = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
     model = json.load(open(model_path))
@@ -82,6 +99,7 @@ def main():
     result = {"bands": BANDS.tolist(), "keys": []}
     for key in model["keys"]:
         levels = np.full((16, 2, len(BANDS)), -150.0)
+        first_t = np.zeros((16, 2, len(BANDS)))
         decays = []
         seen_between = False
         for layer in range(16):
@@ -112,11 +130,8 @@ def main():
                     # slower part (on the top keys the knock falls ~300 dB/s and the rest ~60). One line
                     # through both would fade the knock too slowly (hiss) and lose the slower part.
                     l0, s1, s2, tk = A.hinge_fit(tt - tt[0], dd)
-                    # the level at the strike: the first frame is centred ~10 ms in (and averages a knock
-                    # that falls hundreds of dB/s), so take the fitted line back to the attack's start
-                    # (load() keeps 2 ms before it), at most 12 dB
-                    back = min(12.0, max(0.0, -s1 * (tt[0] - ONSET_S)))
-                    levels[layer, mic, b] = l0 + back if np.isfinite(l0) else -150   # dB of variance
+                    levels[layer, mic, b] = dd[0] if np.isfinite(dd[0]) else -150   # the peak frame, dB of variance
+                    first_t[layer, mic, b] = tt[0]
                     if layer >= 8:
                         drop = (s1 - s2) * tk if s1 != s2 else 0.0
                         decays.append((b, min(s1, -5.0), min(s2, -5.0), min(0.0, max(-60.0, drop)), dd[0]))
@@ -131,6 +146,15 @@ def main():
             dec.append(float(np.average([d[1] for d in ds], weights=w)))
             dec2.append(float(np.average([d[2] for d in ds], weights=w)))
             drops.append(float(np.average([d[3] for d in ds], weights=w)))
+        # The level at the strike: the first frame is centred ~10 ms in and averages a knock that falls
+        # hundreds of dB/s, so take it back to the attack's start along the key's pooled decay (at
+        # most 6 dB). Then smooth across the layers: each layer's fit alone jumps by 20 dB and more
+        # from one layer to the next, which is heard as noise on some velocities and not others.
+        for b in range(len(BANDS)):
+            back = np.clip(-dec[b] * (first_t[:, :, b] - ONSET_S), 0.0, 6.0)
+            levels[:, :, b] = np.where(levels[:, :, b] > -140, levels[:, :, b] + back, levels[:, :, b])
+            for mic in range(2):
+                levels[:, mic, b] = smooth_layers(levels[:, mic, b])
         result["keys"].append({"key": key["key"], "name": key["name"], "levels": levels.tolist(), "decay": dec,
                                "decay2": dec2, "drop": drops, "between": seen_between})
         print(key["name"], " ".join("%6.0f" % l for l in levels[15, 0]), " | decay", " ".join("%5.0f" % d for d in dec),
