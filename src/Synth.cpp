@@ -6,17 +6,26 @@
 // interpolated between:
 //
 //   - the partial frequencies, from each string's measured stiffness
-//     (inharmonicity B), and the instrument's stretch tuning;
+//     (inharmonicity B), and the instrument's stretch tuning; in the treble,
+//     where each partial actually peaks, and the unison's clusters;
 //   - each partial's two-stage decay: a fast "prompt" sound, then a slow
 //     "aftersound" (the 2-3 strings of a unison drifting out of phase), and
 //     the aftersound's beating;
 //   - each partial's starting level at 16 velocities, for both of the
 //     recording's microphones, and the phase between them, so loudness,
 //     tone and the stereo picture all change with how hard a key is struck,
-//     as on the recordings.
+//     as on the recordings;
+//   - how each note swells in, and the strike's noise (the knock and a slower
+//     part after it, in octave bands).
 //
 // One voice per key, as on a piano: striking a key that is still sounding
-// adds to the vibration that's already there.
+// hands its vibration over to the new strike. docs/MODEL.md describes every
+// part, and where its numbers come from.
+//
+// Around the voices, in the synth: the body's ring after each strike, the
+// mechanical noises (keys coming up, the pedal), all as octave bands of
+// noise; and the strings' sympathetic ring, a bank of every string's lower
+// partials that the strings with their dampers up pick up from the playing.
 #include <synthkit/synth.h>
 
 #include <algorithm>
@@ -38,6 +47,14 @@ constexpr int kBudget = 4000;             // components sounding across all keys
 constexpr float kRangeDb = 70.f;          // and partials this far below a note's loudest one aren't started
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kTrimDb = -10.f;          // headroom: the recordings peak near 0 dBFS on one loud note
+
+constexpr float kReleaseDb = -37.f;       // the release and pedal recordings' level against the notes
+constexpr float kPedalDownDb = -20.f;     // (the Salamander sfz's own mix: the release takes are normalised)
+constexpr float kPedalUpDb = -19.f;
+constexpr float kReleaseVelTrack = 0.82f; // how much the release noise follows the strike's velocity, as in the sfz
+constexpr int kBankMaxPartial = 16;       // the string bank: each string's partials up to the 16th…
+constexpr float kBankMaxHz = 4000.f;      // …and 4 kHz
+constexpr float kCoupling = 0.015f;       // how strongly sound at a free string's partial drives it (1/s)
 
 inline float dbToGain(float db) { return std::pow(10.f, db * 0.05f); }
 
@@ -72,8 +89,8 @@ float measuredCents(int note) {
 
 
 // The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
-inline float damperRate(int note) {
-  if (note > kLastDamper) return 0.f;
+inline float damperRate(int note, int last = kLastDamper) {
+  if (note > last) return 0.f;
   float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
   return 70.f * std::pow(300.f / 70.f, t);   // A0 ≈ 70 (about 0.9 s to silence), E6 ≈ 300
 }
@@ -118,18 +135,21 @@ struct PianoVoice : Voice {
 
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1;
-  float dampBaseNow = 0;   // this key's damper rate (dB/s), for its body ring at release
   bool lastDamped = false;
 
   // the strike's noise: octave bands of noise, per mic, each fading at its measured rate
   bool knocking = false;
   float nzEnv[2][pd::kNoiseBands] = {}, nzMul[pd::kNoiseBands] = {};
-  float nzS[2][pd::kNoiseBands][4] = {};
-  float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)   // two filter stages per band, two states each
+  float nzEnv2[2][pd::kNoiseBands] = {}, nzMul2[pd::kNoiseBands] = {};   // its slower second part,
+  float nzDec2[pd::kNoiseBands] = {};   // dB/s, which the damper stops along with the strings
+  bool nzDamped = false;
+  float nzS[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
+  float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, body, unison, stretch, sustain, damper, width, room;
+  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, body, mech, unison, stretch, sustain, damper,
+      resonance, topDampers, width, room;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -141,10 +161,13 @@ struct Piano : Synth {
     attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").group("Tone");
     body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").group("Tone");
     hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").group("Tone");
+    mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").group("Strings");
+    topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
+    resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
     room = b.add("space.room").name("Room").range(0, 100).def(12).unit("%").group("Space");
   }
@@ -256,10 +279,16 @@ struct Piano : Synth {
   float floorDb = kFloorDb;
 
   // Band-pass filters for the strike's noise: two identical RBJ band-pass
-  // stages per octave band (4th order, so loud bands don't spill into quiet
-  // ones), each scaled so white noise through it comes out at unit RMS.
+  // stages per octave band and a 4th-order low-pass just above it (the top
+  // keys' knock falls ~45 dB over two octaves, which plain band-passes spill
+  // across as hiss), each band scaled so white noise through it comes out at
+  // unit RMS.
   // tools/make_header.py solves the band gains against these same filters.
-  struct Band { float b0 = 0, a1 = 0, a2 = 0, norm = 0; };
+  struct Band {
+    float b0 = 0, a1 = 0, a2 = 0, norm = 0;   // the band-pass stages (b1 = 0, b2 = −b0)
+    float lp[2][5] = {};                      // the low-pass above it: two biquads b0 b1 b2 a1 a2
+    bool hasLp = false;
+  };
   Band bands[pd::kNoiseBands];
 
   // A small room: decorrelated, darkening noise tails, one per side.
@@ -284,6 +313,9 @@ struct Piano : Synth {
     }
     const float* ch[2] = {l.data(), r.data()};
     roomConv.setImpulse(ch, 2, len, info.sampleRate, true);
+    buildBank();
+    for (int c = 0; c < 2; ++c)
+      for (int b = 0; b < pd::kNoiseBands; ++b) bandRng[c][b].seed(0x51ed270bu + 977u * static_cast<unsigned>(b + 16 * c));
 
     for (int b = 0; b < pd::kNoiseBands; ++b) {
       Band& bd = bands[b];
@@ -293,7 +325,20 @@ struct Piano : Synth {
       bd.b0 = alpha / a0;
       bd.a1 = -2 * std::cos(w0) / a0;
       bd.a2 = (1 - alpha) / a0;
-      float st[4] = {};
+      // a 4th-order Butterworth low-pass at kNoiseLpRatio × the band's lower edge, so a loud band
+      // spills little into the quieter ones above it (the knock's spectrum falls with frequency)
+      float fl = pd::kNoiseBandLow[b] * pd::kNoiseLpRatio;
+      bd.hasLp = fl < 0.45f * sr;
+      const float qs[2] = {0.5411961f, 1.3065630f};
+      for (int k = 0; k < 2 && bd.hasLp; ++k) {
+        float wl = kTwoPi * fl / sr, al = std::sin(wl) / (2 * qs[k]), c = std::cos(wl), n0 = 1 + al;
+        bd.lp[k][0] = (1 - c) / 2 / n0;
+        bd.lp[k][1] = (1 - c) / n0;
+        bd.lp[k][2] = (1 - c) / 2 / n0;
+        bd.lp[k][3] = -2 * c / n0;
+        bd.lp[k][4] = (1 - al) / n0;
+      }
+      float st[2 * pd::kNoiseStages + 4] = {};
       double var = 0;
       int n = static_cast<int>(sr);
       for (int i = 0; i < n + 2000; ++i) {
@@ -304,14 +349,23 @@ struct Piano : Synth {
     }
   }
 
-  // one sample of a band: two band-pass stages (transposed direct form II; b1 = 0, b2 = −b0)
+  // one sample of a band: identical band-pass stages (transposed direct form II; b1 = 0, b2 = −b0)
   static float bandStep(const Band& b, float x, float* st) {
-    for (int k = 0; k < 2; ++k) {
+    for (int k = 0; k < pd::kNoiseStages; ++k) {
       float y = b.b0 * x + st[2 * k];
       st[2 * k] = -b.a1 * y + st[2 * k + 1];
       st[2 * k + 1] = -b.b0 * x - b.a2 * y;
       x = y;
     }
+    if (b.hasLp)
+      for (int k = 0; k < 2; ++k) {
+        const float* c = b.lp[k];
+        float* s = st + 2 * pd::kNoiseStages + 2 * k;
+        float y = c[0] * x + s[0];
+        s[0] = c[1] * x - c[3] * y + s[1];
+        s[1] = c[2] * x - c[4] * y;
+        x = y;
+      }
     return x;
   }
 
@@ -325,8 +379,8 @@ struct Piano : Synth {
   float bodyRise[128] = {};                     // × (1 − bodyRise)², bodyRise falling from 1
   float bodyDamp[128] = {};                     // the key's damper is down: its rate (dB/s), else 0
   bool bodyOn[128] = {};
-  float bodyState[2][pd::kNoiseBands][4] = {};
-  dsp::Rng bodyRng;
+  float bodyState[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
+  dsp::Rng bandRng[2][pd::kNoiseBands];
 
   void addBody(int key, const float (&powL)[pd::kNoiseBands], const float (&powR)[pd::kNoiseBands],
                const float (&dec)[pd::kNoiseBands]) {
@@ -356,37 +410,347 @@ struct Piano : Synth {
     for (auto& ch : bodyState) for (auto& b : ch) for (float& v : b) v = 0;
   }
 
+
+  // ---- mechanical noises: a key coming up, the pedal going down and up (tools/analyze_mech.py).
+  // Each is a recorded envelope over octave bands of noise; they play through the body's band bank,
+  // their powers adding to its, so they cost almost nothing.
+  struct Mech {
+    const signed char* env = nullptr;
+    int frames = 0;
+    float pos = 0;        // samples since it started (negative: still to come in this block)
+    float pw[2][pd::kNoiseBands] = {};
+    bool on = false;
+  };
+  static constexpr int kMechSlots = 16;
+  Mech mechs[kMechSlots];
+  float noteVel[128] = {};
+  int pedalTake = 0;
+
+  void startMech(const signed char* env, int frames, const short (&lv)[2][pd::kNoiseBands], float gainDb, int offset) {
+    int slot = 0;
+    for (int i = 0; i < kMechSlots; ++i) {
+      if (!mechs[i].on) { slot = i; break; }
+      if (mechs[i].pos > mechs[slot].pos) slot = i;   // all busy: replace the oldest
+    }
+    Mech& m = mechs[slot];
+    m.env = env;
+    m.frames = frames;
+    m.pos = -static_cast<float>(offset);
+    for (int c = 0; c < 2; ++c)
+      for (int b = 0; b < pd::kNoiseBands; ++b)
+        m.pw[c][b] = lv[c][b] > -14000 ? std::pow(10.f, (0.01f * lv[c][b] + gainDb) * 0.1f) : 0.f;
+    m.on = true;
+  }
+  // a mechanical noise's power at a moment (relative to its peak)
+  float mechEnvAt(const Mech& m, float pos) const {
+    if (pos <= 0) return 0;
+    float f = pos / (pd::kMechFrameS * sr);
+    int i = static_cast<int>(f);
+    if (i >= m.frames || m.env[i] == -128) return 0;
+    float a = m.env[i];
+    float b = (i + 1 < m.frames && m.env[i + 1] != -128) ? m.env[i + 1] : a - 20.f;   // the last frame fades out
+    return std::pow(10.f, (a + (b - a) * (f - i)) * 0.1f);
+  }
+
+  // ---- the strings' sympathetic ring. Every string's lower partials (to the 16th, below 4 kHz) are
+  // a bank of resonators at the same frequencies the voices play, with the strings' measured slow
+  // decay. A string whose damper is up (the pedal is down, its key is held, or it has no damper)
+  // and which isn't sounding as a voice of its own is driven by everything the piano plays, so it
+  // picks up the partials near its own: an octave below sets the upper string's fundamental going,
+  // a fifth sets the twelfth's, and so on. Lifting the dampers with the pedal sets the free strings
+  // ringing too (pedalRing). Damped strings fade at the damper's rate.
+  static constexpr int kBankLanes = 4;
+  static constexpr int kBankCap = 88 * kBankMaxPartial;
+  // The bank runs at half the sample rate (its partials are all below 4 kHz): the input is averaged
+  // over pairs of samples and the output interpolated back, two samples late.
+  float dAcc = 0, dPrevL = 0, dPrevR = 0, dCurL = 0, dCurR = 0;
+  int dPhase = 0;
+  float dIn[kControlBlock / 2 + 1] = {}, dOutL[kControlBlock / 2 + 1] = {}, dOutR[kControlBlock / 2 + 1] = {};
+  alignas(32) float bRe[kBankCap] = {}, bIm[kBankCap] = {}, bPr[kBankCap] = {}, bPi[kBankCap] = {};
+  alignas(32) float bWl[kBankCap] = {}, bWr[kBankCap] = {}, bWi[kBankCap] = {}, bIn[kBankCap] = {};
+  float bRatio[kBankCap] = {}, bDecay[kBankCap] = {}, bDampMul[kBankCap] = {};
+  signed char bBand[kBankCap] = {};
+  int keyFirst[128] = {}, keyLen[128] = {};      // lanes per key (a multiple of kBankLanes; the padding has bIn = 0)
+  bool keyLive[128] = {}, keyPoles[128] = {}, keyDamped[128] = {};
+  float liftAmp[pd::kNoiseBands] = {};           // the pedal's lift: amplitude given to each partial, per band
+  bool sounding[128] = {};                       // set by voices with partials sounding, each block
+  bool liftPending = false;
+  float a4Hz = 440.f;
+  dsp::Rng liftRng;   // its own stream, so the lift's phases don't depend on the block size
+  // The bank follows keys and pedal at their own sample in the host's block (processEvents sees the
+  // whole host block at once; processGlobal runs per control block): changes wait here till then.
+  struct Change { int at; int what; int key; };   // what: 0 key down, 1 key up, 2 pedal down, 3 pedal up
+  static constexpr int kMaxChanges = 512;
+  Change changes[kMaxChanges];
+  int nChanges = 0, hostPos = 0;
+  bool bankKeys[128] = {};
+  bool bankPedal = false;
+  void applyChange(const Change& c) {
+    if (c.what == 0) bankKeys[c.key] = true;
+    else if (c.what == 1) bankKeys[c.key] = false;
+    else if (c.what == 2) { liftPending = !bankPedal; bankPedal = true; }
+    else bankPedal = false;
+  }
+  void queueChange(int at, int what, int key) {
+    Change c{at, what, key};
+    if (nChanges < kMaxChanges) changes[nChanges++] = c;
+    else applyChange(c);
+  }
+  float lastStretch = -1, lastSus = -1, lastDampScale = -1, lastA4 = -1;
+
+  // string partial frequencies and decays, as the voices' strikes compute them (medium strike)
+  void buildBank() {
+    int at = 0;
+    for (int key = 21; key <= 108; ++key) {
+      keyFirst[key] = at;
+      KeySpan s = spanFor(key);
+      const pd::Key& ka = pd::keys[s.a];
+      const pd::Key& kb = pd::keys[s.b];
+      float B = std::exp(std::log(ka.B) + (std::log(kb.B) - std::log(ka.B)) * s.w);
+      float f0 = 440.f * std::exp2((key + measuredCents(key) * 0.01f - 69.f) / 12.f);
+      int ia = ka.first, ea = ka.first + ka.count, ib = kb.first, eb = kb.first + kb.count;
+      constexpr int kLayer = 9;
+      for (int pn = 1; pn <= kBankMaxPartial; ++pn) {
+        float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B));
+        if (f0 * rat > kBankMaxHz) break;
+        while (ia < ea && pd::partials[ia].n < pn) ++ia;
+        while (ib < eb && pd::partials[ib].n < pn) ++ib;
+        bool hasA = ia < ea && pd::partials[ia].n == pn, hasB = ib < eb && pd::partials[ib].n == pn;
+        if (!hasA && !hasB) continue;
+        float wa = hasA && hasB ? 1 - s.w : (hasA ? 1.f : 0.f), wb = 1 - wa;
+        int pa = hasA ? ia : ib, pb = hasB ? ib : ia;
+        rat *= std::exp2((wa * pd::partials[pa].dev + wb * pd::partials[pb].dev) / 1200.f);   // as the voices play it
+        float s2 = wa * pd::partials[pa].s2[1] + wb * pd::partials[pb].s2[1];
+        float lvl[2];
+        for (int mic = 0; mic < 2; ++mic)
+          lvl[mic] = 0.01f * (wa * pd::levels[pa][kLayer][mic] + wb * pd::levels[pb][kLayer][mic]);
+        float gl = dbToGain(lvl[0]), gr = dbToGain(lvl[1]);
+        float norm = std::sqrt(0.5f * (gl * gl + gr * gr));
+        int pp = hasA && hasB ? (s.w < 0.5f ? pa : pb) : pa;
+        constexpr float kPhaseStep = 3.14159265f / 127.f;
+        float st = (pd::phases[pp][kLayer][1] - pd::phases[pp][kLayer][0]) * kPhaseStep;
+        bRatio[at] = rat;
+        bDecay[at] = std::min(s2, -0.5f);
+        bDampMul[at] = 1 + 0.03f * (pn - 1);
+        bWl[at] = gl / norm;
+        bWr[at] = gr / norm * std::cos(st);
+        bWi[at] = -gr / norm * std::sin(st);
+        bIn[at] = 1;
+        int band = static_cast<int>(std::floor(std::log2(f0 * rat / pd::kNoiseBandLow[0])));
+        bBand[at] = static_cast<signed char>(std::clamp(band, 0, pd::kNoiseBands - 1));
+        ++at;
+      }
+      while ((at - keyFirst[key]) % kBankLanes) bIn[at++] = 0;   // padding lanes stay silent
+      keyLen[key] = at - keyFirst[key];
+    }
+    // the lift: each band's free strings together ring at the measured level 0.3-1.0 s after it
+    double pw[pd::kNoiseBands] = {};
+    for (int key = 21; key <= kLastDamper; ++key)
+      for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
+        if (bIn[i] == 0) continue;
+        double m = 0;
+        for (int k = 0; k < 8; ++k) m += std::pow(10.0, bDecay[i] * (0.3 + 0.1 * k) / 10.0) / 8;
+        pw[bBand[i]] += 0.5 * m;   // a unit partial's power, averaged over the two mics
+      }
+    for (int b = 0; b < pd::kNoiseBands; ++b) {
+      double target = 0.5 * (std::pow(10.0, pd::pedalRing[0][b] * 0.001) + std::pow(10.0, pd::pedalRing[1][b] * 0.001)) *
+                      std::pow(10.0, (kPedalDownDb + kTrimDb) / 10.0);
+      liftAmp[b] = pw[b] > 0 && pd::kNoiseBandLow[b] < kBankMaxHz ? static_cast<float>(std::sqrt(target / pw[b])) : 0.f;
+    }
+  }
+
+  void bankPoles(int key, float stretchPct, float sus, float dampScale) {
+    float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f - 69.f) / 12.f);
+    float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
+    float rate = 0.5f * sr, nyq = 0.47f * rate;
+    for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
+      float f = f0 * bRatio[i];
+      float db = bDecay[i] / sus - dmp * bDampMul[i];
+      float rad = bIn[i] != 0 && f < nyq ? std::pow(10.f, db * 0.05f / rate) : 0.f;
+      bPr[i] = rad * std::cos(kTwoPi * f / rate);
+      bPi[i] = rad * std::sin(kTwoPi * f / rate);
+    }
+    keyPoles[key] = true;
+  }
+
+  void clearBank() {
+    for (int i = 0; i < kBankCap; ++i) bRe[i] = bIm[i] = 0;
+    for (bool& l : keyLive) l = false;
+    dAcc = dPrevL = dPrevR = dCurL = dCurR = 0;
+    dPhase = 0;
+  }
+
+  void renderBank(GlobalContext& ctx, Buffer& io) {
+    const int n = io.frames;
+    float stretchPct = ctx.get(stretch), sus = ctx.get(sustain) * 0.01f;
+    float dampScale = std::max(ctx.get(damper) * 0.01f, 0.25f);
+    bool changed = stretchPct != lastStretch || sus != lastSus || dampScale != lastDampScale || a4Hz != lastA4;
+    if (changed) {
+      lastStretch = stretchPct; lastSus = sus; lastDampScale = dampScale; lastA4 = a4Hz;
+      for (bool& p : keyPoles) p = false;
+    }
+    float drive = kCoupling * dbToGain(ctx.get(resonance)) * 2.f / sr;   // per half-rate step
+    int applied = 0;
+    while (applied < nChanges && changes[applied].at < hostPos + n) applyChange(changes[applied++]);
+    if (applied > 0) {
+      for (int i = applied; i < nChanges; ++i) changes[i - applied] = changes[i];
+      nChanges -= applied;
+    }
+    hostPos += n;
+    float lift = liftPending ? dbToGain(ctx.get(mech)) : 0.f;
+    // the input, averaged over pairs of samples
+    int steps = 0, ph = dPhase;
+    float inPow = 0;
+    for (int i = 0; i < n; ++i) {
+      float x = 0.5f * (io.left[i] + io.right[i]);
+      inPow += x * x;
+      dAcc += x;
+      if (++ph == 2) {
+        dIn[steps] = 0.5f * dAcc;
+        dOutL[steps] = dOutR[steps] = 0;
+        ++steps;
+        dAcc = 0;
+        ph = 0;
+      }
+    }
+    dsp::Rng& rng = liftRng;
+    for (int key = 21; key <= 108; ++key) {
+      bool free = bankPedal || bankKeys[key] || key > topDamper;
+      bool driven = free && !sounding[key];
+      if (keyDamped[key] != !free) {
+        keyDamped[key] = !free;
+        keyPoles[key] = false;
+      }
+      if (lift > 0 && key <= topDamper && !bankKeys[key] && !sounding[key]) {
+        for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
+          if (bIn[i] == 0) continue;
+          float a = liftAmp[bBand[i]] * lift, phase = rng.uniform(0.f, kTwoPi);
+          bRe[i] += a * std::cos(phase);
+          bIm[i] += a * std::sin(phase);
+        }
+        keyLive[key] = true;
+      }
+      // nothing to drive it (under −120 dBFS) and nothing left ringing: skip it
+      if (!keyLive[key] && (!driven || inPow < 1e-12f * static_cast<float>(n))) continue;
+      if (!keyPoles[key]) bankPoles(key, stretchPct, sus, dampScale);
+      float c = driven ? drive : 0.f;
+      float energy = 0;
+      for (int ch = keyFirst[key]; ch < keyFirst[key] + keyLen[key]; ch += kBankLanes) {
+        constexpr int L = kBankLanes;
+        float r[L], m[L], a[L], b[L], gl[L], gr[L], gi[L], cin[L];
+        for (int k = 0; k < L; ++k) {
+          r[k] = bRe[ch + k]; m[k] = bIm[ch + k]; a[k] = bPr[ch + k]; b[k] = bPi[ch + k];
+          gl[k] = bWl[ch + k]; gr[k] = bWr[ch + k]; gi[k] = bWi[ch + k]; cin[k] = bIn[ch + k] * c;
+        }
+        for (int i = 0; i < steps; ++i) {
+          float x = dIn[i];
+          float ol[L], orr[L];
+          for (int k = 0; k < L; ++k) {
+            float nr = r[k] * a[k] - m[k] * b[k] + cin[k] * x;
+            float ni = r[k] * b[k] + m[k] * a[k];
+            r[k] = nr;
+            m[k] = ni;
+            ol[k] = nr * gl[k];
+            orr[k] = nr * gr[k] + ni * gi[k];
+          }
+          dOutL[i] += (ol[0] + ol[1]) + (ol[2] + ol[3]);
+          dOutR[i] += (orr[0] + orr[1]) + (orr[2] + orr[3]);
+        }
+        for (int k = 0; k < L; ++k) {
+          bRe[ch + k] = r[k];
+          bIm[ch + k] = m[k];
+          energy += r[k] * r[k] + m[k] * m[k];
+        }
+      }
+      keyLive[key] = energy > 1e-10f;   // −100 dBFS
+      if (!keyLive[key] && !driven)
+        for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) bRe[i] = bIm[i] = 0;
+    }
+    // back to the full rate: linear between the half-rate outputs, two samples late
+    int k = 0;
+    for (int i = 0; i < n; ++i) {
+      float l, r;
+      if (++dPhase == 2) {
+        dPhase = 0;
+        dPrevL = dCurL; dPrevR = dCurR;
+        dCurL = dOutL[k]; dCurR = dOutR[k];
+        ++k;
+        l = dPrevL; r = dPrevR;
+      } else {
+        l = 0.5f * (dPrevL + dCurL); r = 0.5f * (dPrevR + dCurR);
+      }
+      io.left[i] += l;
+      io.right[i] += r;
+    }
+    liftPending = false;
+    for (bool& v : sounding) v = false;
+  }
+
   // Which keys are down and whether the pedal is, followed here so a key's ring is damped when
   // its damper falls, whether or not its voice is still sounding (a very quiet note's voice can
   // finish while the key is held, and then its note-off has no voice to release).
   int keysDown[128] = {};
   bool pedalDown = false;
   void damperFalls(EventContext& ctx, int key) {
-    dampBody(key, damperRate(key) / std::max(ctx.get(damper) * 0.01f, 0.25f));
+    dampBody(key, damperRate(key, topDamper) / std::max(ctx.get(damper) * 0.01f, 0.25f));
   }
 
+  // the highest key with a damper: E6 on a grand (the top strings ring on after release, as recorded),
+  // or every key, as on many digital pianos (Top Dampers)
+  int topDamper = kLastDamper;
+
   void processEvents(EventContext& ctx) override {
+    topDamper = ctx.choice(topDampers) == 1 ? 108 : kLastDamper;
+    for (int i = 0; i < nChanges; ++i) applyChange(changes[i]);   // (none left over normally)
+    nChanges = 0;
+    hostPos = 0;
     for (auto& msg : ctx.messages())
       if (msg.is(velQuery)) reportCurve(ctx, static_cast<int>(msg.value()));
     for (auto& e : ctx.in()) {
+      int offset = std::max(e.sample, 0);   // within the host's block: the noises and the bank follow it
+      float mechDb = ctx.get(mech) + kTrimDb;
       if (e.isCC(120) || e.isCC(123)) {   // all sound off / all notes off (the kit's buttons too)
+        for (int k = 0; k < 128; ++k) if (keysDown[k]) queueChange(offset, 1, k);
         for (int& k : keysDown) k = 0;
-        if (e.isCC(120)) clearBody();
-        else for (int k = 0; k < 128; ++k) damperFalls(ctx, k);
+        if (e.isCC(120)) {
+          clearBody();
+          clearBank();
+          for (Mech& m : mechs) m.on = false;
+        } else {
+          for (int k = 0; k < 128; ++k) damperFalls(ctx, k);
+        }
       }
       if (e.isCC(64)) {
         bool down = e.value >= 0.5f;     // as the kit reads the pedal
-        if (pedalDown && !down)
+        if (pedalDown && !down) {
           for (int k = 0; k < 128; ++k) if (keysDown[k] == 0) damperFalls(ctx, k);
+          startMech(pd::pedalUpEnv[pedalTake & 1], pd::kPedalUpFrames, pd::pedalUpLevels[pedalTake & 1],
+                    kPedalUpDb + mechDb, offset);
+          ++pedalTake;
+        } else if (!pedalDown && down) {
+          startMech(pd::pedalDownEnv[pedalTake & 1], pd::kPedalDownFrames, pd::pedalDownLevels[pedalTake & 1],
+                    kPedalDownDb + mechDb, offset);
+        }
+        if (down != pedalDown) queueChange(offset, down ? 2 : 3, 0);
         pedalDown = down;
       }
+      int key = e.note & 127;
       if (e.isNoteOn() && e.vel > 0) {
-        keysDown[e.note & 127] = 1;
-        bodyDamp[e.note & 127] = 0;   // the damper lifts
+        keysDown[key] = 1;
+        bodyDamp[key] = 0;   // the damper lifts
+        queueChange(offset, 0, key);
+        noteVel[key] = e.vel;
       }
       else if (e.isNoteOff() || (e.isNoteOn() && e.vel <= 0)) {
-        keysDown[e.note & 127] = 0;
-        if (!pedalDown) damperFalls(ctx, e.note & 127);
+        if (keysDown[key] && key >= 21 && key <= 108) {
+          // the key coming up (and its damper landing), louder after a harder strike, as in the sfz
+          float velDb = kReleaseVelTrack * 40.f * std::log10(std::max(noteVel[key], 0.01f));
+          startMech(pd::releaseEnv[key - 21], pd::kReleaseFrames, pd::releaseLevels[key - 21],
+                    kReleaseDb + velDb + mechDb, offset);
+        }
+        keysDown[key] = 0;
+        queueChange(offset, 1, key);
+        if (!pedalDown) damperFalls(ctx, key);
       }
       if (e.isNoteOn()) {
         VelMap m = velocityMap(e.note, e.vel, ctx.get(touch), ctx.get(dynamics), ctx.get(toneRange), ctx.choice(velMap));
@@ -422,26 +786,45 @@ struct Piano : Synth {
       }
       any = true;
     }
-    if (!any) return;
+    for (Mech& m : mechs) {
+      if (!m.on) continue;
+      float e0 = mechEnvAt(m, m.pos), e1 = mechEnvAt(m, m.pos + static_cast<float>(n));
+      m.pos += static_cast<float>(n);
+      for (int c = 0; c < 2; ++c)
+        for (int b = 0; b < pd::kNoiseBands; ++b) {
+          p0[c][b] += m.pw[c][b] * e0;
+          p1[c][b] += m.pw[c][b] * e1;
+        }
+      if (m.pos > 0 && mechEnvAt(m, m.pos) == 0) m.on = false;
+      any = true;
+    }
+    // Each band and side draws its own noise every sample, sounding or not, so the noise doesn't
+    // depend on where blocks start (the host's block size).
     for (int b = 0; b < pd::kNoiseBands; ++b) {
       const Band& bd = bands[b];
-      if (bd.norm == 0) continue;
       float a0[2], a1[2];
       for (int c = 0; c < 2; ++c) {
-        a0[c] = std::sqrt(p0[c][b]) * bd.norm;
-        a1[c] = std::sqrt(p1[c][b]) * bd.norm;
+        a0[c] = any ? std::sqrt(p0[c][b]) * bd.norm : 0.f;
+        a1[c] = any ? std::sqrt(p1[c][b]) * bd.norm : 0.f;
       }
-      if (a0[0] + a0[1] + a1[0] + a1[1] < 1e-9f) continue;
+      if (bd.norm == 0 || a0[0] + a0[1] + a1[0] + a1[1] < 1e-9f) {
+        for (int i = 0; i < n; ++i) {
+          bandRng[0][b].bipolar();
+          bandRng[1][b].bipolar();
+        }
+        continue;
+      }
       for (int i = 0; i < n; ++i) {
         float u = static_cast<float>(i + 1) / static_cast<float>(n);
-        io.left[i] += bandStep(bd, bodyRng.bipolar(), bodyState[0][b]) * (a0[0] + (a1[0] - a0[0]) * u);
-        io.right[i] += bandStep(bd, bodyRng.bipolar(), bodyState[1][b]) * (a0[1] + (a1[1] - a0[1]) * u);
+        io.left[i] += bandStep(bd, bandRng[0][b].bipolar(), bodyState[0][b]) * (a0[0] + (a1[0] - a0[0]) * u);
+        io.right[i] += bandStep(bd, bandRng[1][b].bipolar(), bodyState[1][b]) * (a0[1] + (a1[1] - a0[1]) * u);
       }
     }
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
     renderBody(io);
+    renderBank(ctx, io);
     float over = static_cast<float>(compsNow - kBudget) / kBudget;
     floorDb = kFloorDb + std::clamp(over * 40.f, 0.f, 40.f);
     compsNow = 0;
@@ -493,6 +876,7 @@ void PianoVoice::start(const NoteOn& n, const StartInfo&) {
     count = 0;
     knocking = false;
     for (auto& ch : nzEnv) for (float& e : ch) e = 0;
+    for (auto& ch : nzEnv2) for (float& e : ch) e = 0;
     note = n.note;
   }
   damped = false;
@@ -542,7 +926,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   }
 
   // dampers: faster in the treble, slower and weaker in the bass
-  float dampBase = damperRate(note);
+  float dampBase = damperRate(note, synth.topDamper);
 
   // the loudest partial at this velocity, for the range cut
   float loudest = -200.f;
@@ -572,9 +956,9 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   nzRiseMul = std::exp(-1.f / (tau * sr));
   int layerNear = static_cast<int>(std::lround(lp));
 
-  dampBaseNow = dampBase;
 
   dsp::Rng& r = ctx.rng();
+  float pitchNow = static_cast<float>(ctx.pitchHz());
   int ia = ka.first, ea = ka.first + ka.count, ib = kb.first, eb = kb.first + kb.count;
   for (int pn = 1; pn <= kMaxPartials; ++pn) {
     while (ia < ea && pd::partials[ia].n < pn) ++ia;
@@ -609,7 +993,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float amp = std::sqrt(0.5f * (gl * gl + gr * gr));
     gl /= amp;
     gr /= amp;
-    float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B));
+    float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B)) * std::exp2((wa * A.dev + wb * Bp.dev) / 1200.f);
     float dmp = dampBase * (1 + 0.03f * (pn - 1));
 
     float after = drop < -0.01f ? amp * dbToGain(drop) : amp;
@@ -641,14 +1025,32 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         add(a * q, dec, rat, main + btR, phL + phBR, dmp, 0.f, gr, stereoPhase, onset);
       }
     };
-    if (prompt > amp * 1e-3f) withBeat(prompt, s1);
+    // A wide cluster (in the treble, the unison's strings tens of Hz apart, and components off to
+    // the side) plays as its measured components, from the nearer measured key, instead of one
+    // partial and its beat: they start together, as the hammer strikes the strings together, and
+    // drift apart; each reaches the two mics at its own angle, so left and right differ.
+    const pd::Partial& P = pd::partials[pp];
+    float clHz[4], clPh[4];
+    for (int j = 0; j < P.nc; ++j) {
+      clHz[j] = pitchNow * rat * (std::exp2(P.cc[j] / 1200.f) - 1.f);
+      clPh[j] = r.uniform(-0.6f, 0.6f);
+    }
+    auto part = [&](float a, float dec) {
+      if (P.nc < 2) {
+        withBeat(a, dec);
+        return;
+      }
+      for (int j = 0; j < P.nc; ++j)
+        if (P.cw[j] > 0) add(a * std::sqrt(P.cw[j]), dec, rat, clHz[j], phL, dmp, gl, gr, stereoPhase + clPh[j], onset);
+    };
+    if (prompt > amp * 1e-3f) part(prompt, s1);
     // the strike's first burst above the decay line, gone within a fraction of a second
     float x0 = wa * shape(A.x0) + wb * shape(Bp.x0), s0 = wa * shape(A.s0) + wb * shape(Bp.s0);
-    if (x0 > -40.f) withBeat(amp * dbToGain(x0), s0);
+    if (x0 > -40.f) part(amp * dbToGain(x0), s0);
     // the measured decay lines run through the beating envelope in dB, and the mean in dB of
     // |a + b·e^{jθ}| is the level of the larger component alone: so the main components carry the
     // measured levels and the partners the beat on top
-    withBeat(after, s2);
+    part(after, s2);
   }
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;
@@ -663,12 +1065,21 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         return 0.01f * (L[l0][mic][bd] + (L[l0 + 1][mic][bd] - L[l0][mic][bd]) * lf);
       };
       float db = lvl(s.a) + (lvl(s.b) - lvl(s.a)) * s.w + hg;
-      if (db > -110) nzEnv[mic][bd] += dbToGain(db) * synth.bands[bd].norm;
+      float drop = pd::noiseDrop[s.a][bd] + (pd::noiseDrop[s.b][bd] - pd::noiseDrop[s.a][bd]) * s.w;
+      float second = dbToGain(drop);
+      if (db > -110) {
+        nzEnv[mic][bd] += dbToGain(db) * synth.bands[bd].norm * (1 - second);
+        nzEnv2[mic][bd] += dbToGain(db) * synth.bands[bd].norm * second;
+      }
     }
     float dec = pd::noiseDecay[s.a][bd] + (pd::noiseDecay[s.b][bd] - pd::noiseDecay[s.a][bd]) * s.w;
+    float dec2 = pd::noiseDecay2[s.a][bd] + (pd::noiseDecay2[s.b][bd] - pd::noiseDecay2[s.a][bd]) * s.w;
     nzMul[bd] = std::pow(10.f, dec * 0.05f / sr);
+    nzMul2[bd] = std::pow(10.f, dec2 * 0.05f / sr);
+    nzDec2[bd] = dec2;
   }
   knocking = true;
+  nzDamped = false;
 
   // the body's ring, measured per key, layer, mic and band; handed to the synth's bank
   {
@@ -693,8 +1104,9 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
 }
 
 void PianoVoice::release() {
+  // the body's ring is damped by the synth, which follows keys and pedal in processEvents; damping
+  // it here too could undo that (a release that comes before the strike knows no damper rate yet)
   damped = true;
-  synth.dampBody(note, dampBaseNow / std::max(lastDamper > 0 ? lastDamper : 1.f, 0.25f));
 }
 
 void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale) {
@@ -775,16 +1187,28 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   }
   cull();
   synth.compsNow += count;
+  if (count > 0 && note >= 0 && note < 128) {
+    synth.sounding[note] = true;
+    // concert pitch, for the string bank (only a real change: rounding differs a little per voice)
+    float a4 = pitch / std::exp2((static_cast<float>(ctx.pitch()) - 69.f) / 12.f);
+    if (std::fabs(a4 - synth.a4Hz) > 0.01f) synth.a4Hz = a4;
+  }
 
   if (knocking) {
+    if (damped && !nzDamped) {   // the key is up: the knock's slower part stops with the strings
+      nzDamped = true;
+      float rate = damperRate(note, synth.topDamper) / std::max(dmp, 0.25f);
+      for (int bd = 0; bd < pd::kNoiseBands; ++bd) nzMul2[bd] = std::pow(10.f, (nzDec2[bd] - rate) * 0.05f / sr);
+    }
     dsp::Rng& rnd = ctx.rng();
     // bands that have faded below −100 dB are skipped (and their filters cleared)
     bool live[pd::kNoiseBands];
     for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
-      float g = std::max(nzEnv[0][bd], nzEnv[1][bd]) / std::max(synth.bands[bd].norm, 1e-9f);
+      float g = std::max(nzEnv[0][bd] + nzEnv2[0][bd], nzEnv[1][bd] + nzEnv2[1][bd]) /
+                std::max(synth.bands[bd].norm, 1e-9f);
       live[bd] = g > 1e-5f;
       if (!live[bd] && g > 0) {
-        nzEnv[0][bd] = nzEnv[1][bd] = 0;
+        nzEnv[0][bd] = nzEnv[1][bd] = nzEnv2[0][bd] = nzEnv2[1][bd] = 0;
         for (float& v : nzS[0][bd]) v = 0;
         for (float& v : nzS[1][bd]) v = 0;
       }
@@ -796,19 +1220,22 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
       for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
         if (!live[bd]) continue;
         const auto& band = synth.bands[bd];
-        l += Piano::bandStep(band, xl, nzS[0][bd]) * nzEnv[0][bd];
-        r += Piano::bandStep(band, xr, nzS[1][bd]) * nzEnv[1][bd];
+        l += Piano::bandStep(band, xl, nzS[0][bd]) * (nzEnv[0][bd] + nzEnv2[0][bd]);
+        r += Piano::bandStep(band, xr, nzS[1][bd]) * (nzEnv[1][bd] + nzEnv2[1][bd]);
         nzEnv[0][bd] *= nzMul[bd];
         nzEnv[1][bd] *= nzMul[bd];
+        nzEnv2[0][bd] *= nzMul2[bd];
+        nzEnv2[1][bd] *= nzMul2[bd];
       }
       out.add(i, l * rise, r * rise);
     }
     float peak = 0;
-    for (int bd = 0; bd < pd::kNoiseBands; ++bd) peak = std::max(peak, std::max(nzEnv[0][bd], nzEnv[1][bd]));
+    for (int bd = 0; bd < pd::kNoiseBands; ++bd)
+      peak = std::max(peak, std::max(nzEnv[0][bd] + nzEnv2[0][bd], nzEnv[1][bd] + nzEnv2[1][bd]));
     if (peak <= 0) {
       knocking = false;
       for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
-        nzEnv[0][bd] = nzEnv[1][bd] = 0;
+        nzEnv[0][bd] = nzEnv[1][bd] = nzEnv2[0][bd] = nzEnv2[1][bd] = 0;
         for (float& v : nzS[0][bd]) v = 0;
         for (float& v : nzS[1][bd]) v = 0;
       }

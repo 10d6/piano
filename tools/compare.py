@@ -25,8 +25,7 @@ VEL_RANGES = [(1, 26), (27, 34), (35, 36), (37, 43), (44, 46), (47, 50), (51, 56
               (65, 72), (73, 80), (81, 88), (89, 96), (97, 104), (105, 112), (113, 120), (121, 127)]
 TRIM_DB = -10.0
 CASES = [(33, 16), (33, 6), (48, 12), (60, 16), (60, 4), (69, 10), (81, 16), (93, 12), (102, 14)]
-if len(sys.argv) > 4:   # e.g. "45:16,45:6,60:16,60:4"
-    CASES = [tuple(int(v) for v in c.split(":")) for c in sys.argv[4].split(",")]
+
 
 
 def name(k):
@@ -70,7 +69,10 @@ def band_levels(x, sr, hop=0.02):
 
 
 def main():
+    global CASES
     root, tool, out_dir = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+    if len(sys.argv) > 4:   # e.g. "45:16,45:6,60:16,60:4"
+        CASES = [tuple(int(v) for v in c.split(":")) for c in sys.argv[4].split(",")]
     out_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(len(CASES), 2, figsize=(12, 2.2 * len(CASES)))
     print(f"{'note':6s}{'layer':>6s}{'vel':>5s}  band-level error (dB, median |err| where the recording is within 50 dB of its peak and 10 dB above its noise)")

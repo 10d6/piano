@@ -9,8 +9,15 @@ recordings themselves:
   - for each partial: the prompt and aftersound decay rates (two-stage decay),
     the knee between them, and the beat rate and depth of the aftersound
     (from the 2-3 strings of a unison not being exactly in tune);
+  - each partial's own frequency, where its peak in the first 0.3 s lies off
+    the stiff-string line (the treble: refine_partials), and, where a partial
+    is a cluster of the unison's strings, the cluster's components (clusters);
+  - for each partial: its first burst above the decay line (x0, s0), and the
+    decay shape separately for soft, medium and loud strikes;
   - for each of the 16 velocity layers and each microphone: every partial's
-    starting level, and the phase between the two mics.
+    starting level and phase.
+
+docs/MODEL.md describes the methods.
 
     python3 -I tools/analyze.py <Salamander dir> <out.json>
 
@@ -99,6 +106,92 @@ def spectrum_peaks(sig, sr, f0n, keyidx):
         f0 = float(np.sqrt(f02))
         B = float(max(sol[1] / f02, 1e-7))
     return f0, B, [f[0] for f in found]
+
+
+def refine_partials(sig, sr, f0, partials):
+    """Move each partial to its own peak near the stiff-string prediction, where there is a clear
+    one. In the treble the prediction can be 10-30 cents off: early in A6's note, its third
+    partial peaks 15 cents flat of it, and the predicted frequency sits in a valley 30 dB below
+    the peak. Measured there, a partial's level and decay are read beside it, and its energy is
+    counted as noise. The peak is taken from the first 0.3 s, where the string's own partial is
+    strongest (some treble partials have a weaker, longer-lasting neighbour further off, which
+    a long spectrum would pick instead). Returns the partials and, per partial number, whether
+    its frequency was measured."""
+    start = int(0.005 * sr)
+    length = min(len(sig) - start, int(0.3 * sr))
+    seg = sig[start:start + length] * np.hanning(length)
+    nfft = 1 << 20
+    spec = np.abs(np.fft.rfft(seg, nfft))
+    freqs = np.fft.rfftfreq(nfft, 1 / sr)
+    db = 20 * np.log10(spec + 1e-12)
+    floor = np.percentile(db, 50)
+    out, measured = [], {}
+    for n, fn in partials:
+        w = min(fn * (2 ** (60 / 1200) - 1), 0.3 * f0)    # ±60 cents, and well clear of the neighbours
+        lo, hi = np.searchsorted(freqs, [fn - w, fn + w])
+        measured[n] = False
+        if hi > lo + 4:
+            i = lo + int(np.argmax(spec[lo:hi]))
+            if db[i] > floor + 25 and db[i] - np.median(db[lo:hi]) > 15 and lo < i < hi - 1:
+                a, b, c = db[i - 1], db[i], db[i + 1]
+                p = 0.5 * (a - c) / (a - 2 * b + c) if (a - 2 * b + c) != 0 else 0
+                f = freqs[i] + p * (freqs[1] - freqs[0])
+                if f <= FMAX:
+                    fn, measured[n] = float(f), True
+        out.append((n, fn))
+    return out, measured
+
+
+def clusters(sig, sr, f0, partials, T):
+    """In the treble a partial is a cluster: the unison's two or three strings, tens of Hz apart
+    (A6's third partial spreads over 50 Hz; D#7's second over 70). One narrow measurement reads
+    only part of it, and what it misses would be counted as noise. Per partial, from the first
+    0.5 s: up to four components within 20 dB of the strongest (cents from the partial's
+    frequency, share of the power), where they spread over at least 4 Hz; and how much more power
+    the cluster holds than the envelope measurement (a triangular window of T) takes in, in dB."""
+    start = int(0.005 * sr)
+    length = min(len(sig) - start, int(0.5 * sr))
+    seg = sig[start:start + length] * np.hanning(length)
+    nfft = 1 << 21
+    X = np.abs(np.fft.rfft(seg, nfft)) ** 2
+    freqs = np.fft.rfftfreq(nfft, 1 / sr)
+    db = 10 * np.log10(X + 1e-30)
+    L = max(2, int(T * sr / 2))
+    out = {}
+    for n, fn in partials:
+        if fn < 1000.0:
+            continue
+        w = min(fn * (2 ** (70 / 1200) - 1), 0.3 * f0)
+        lo, hi = np.searchsorted(freqs, [fn - w, fn + w])
+        if hi <= lo + 8:
+            continue
+        s = db[lo:hi]
+        if s.max() < np.percentile(db, 50) + 25:
+            continue                                     # no clear partial here
+        floor = 10 ** (np.median(s) / 10)
+        pk = [i for i in range(1, len(s) - 1) if s[i] > s[i - 1] and s[i] >= s[i + 1] and s[i] > s.max() - 20]
+        pk.sort(key=lambda i: -s[i])
+        comps = []
+        for i in pk:
+            f = freqs[lo + i]
+            if all(abs(f - g) >= 3.0 for g, _ in comps):
+                lobe = (freqs >= f - 1.5) & (freqs <= f + 1.5)
+                comps.append((f, float(np.maximum(X[lobe] - floor, 0).sum())))
+            if len(comps) == 4:
+                break
+        if len(comps) < 2 or max(c[0] for c in comps) - min(c[0] for c in comps) < 4.0:
+            continue
+        tot = sum(c[1] for c in comps)
+        # power the cluster holds, against what the envelope's window passes around fn
+        band = np.maximum(X[lo:hi] - floor, 0)
+        df = freqs[lo:hi] - fn
+        x = np.pi * df * L / sr
+        H = np.where(np.abs(x) < 1e-9, 1.0, (np.sin(x) / (L * np.sin(np.pi * df / sr) + 1e-30))) ** 4
+        captured = float((band * np.minimum(H, 1.0)).sum())
+        gain = float(np.clip(10 * np.log10(band.sum() / max(captured, 1e-30)), 0.0, 20.0))
+        out[n] = {"cents": [1200 * np.log2(c[0] / fn) for c in comps], "share": [c[1] / tot for c in comps],
+                  "gain_db": gain}
+    return out
 
 
 def envelope(sig, sr, f, T, hop=HOP, tmax=None):
@@ -269,6 +362,8 @@ def analyze_key(root, k):
         if fn > FMAX:
             break
         partials.append((n, fn))
+    partials, measured = refine_partials(mono_loud, sr, f0, partials)
+    cl = clusters(mono_loud, sr, f0, partials, T)
 
     result = {"key": k, "name": name, "f0": f0, "cents": cents, "B": B, "window": T, "partials": []}
 
@@ -343,7 +438,7 @@ def analyze_key(root, k):
         df = float(np.median([f["df"] for f in fits]))
         if abs(df) > 0.002 * fn + 0.3:   # the phase slope locked onto something else: keep the fitted frequency
             df = 0.0
-        result["partials"].append({"n": n, "f": fn + df, "s1": s1, "s2": s2, "tk": tk, "drop": drop, "x0": x0, "s0": s0,
+        result["partials"].append({"n": n, "f": fn + df, "f_measured": measured[n], "s1": s1, "s2": s2, "tk": tk, "drop": drop, "x0": x0, "s0": s0,
                                    "shapes": shapes, "beat": beat, "beat_db": beat_db})
 
     # starting level and phase per layer and mic: the complex amplitude over an early window,
@@ -365,6 +460,9 @@ def analyze_key(root, k):
                 phv.append(float(np.angle(np.mean(zz))))
             lv.append(lvv)
             ph.append(phv)
+        if p["n"] in cl:
+            p["cluster"] = cl[p["n"]]
+            lv = [[v + cl[p["n"]]["gain_db"] for v in mics] for mics in lv]   # the whole cluster's power
         p["levels"] = lv            # [layer][mic] dB of the decay line at the strike (the transient adds x0 dB on top)
         p["phases"] = ph            # [layer][mic] phase at the strike (rad), cosine reference
         p["phase"] = float(np.angle(np.mean(np.exp(1j * (np.array(ph)[8:, 1] - np.array(ph)[8:, 0])))))
