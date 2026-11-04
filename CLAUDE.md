@@ -39,6 +39,27 @@ from CI at milestones.
   hand. The measurements are `tools/salamander*.json`; README has the
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
+- **Work against the perceptual distance** (`tools/measure/perceptual.py`, docs/TESTING.md):
+  it agrees with the owner's ears on 7 of 8 fixes in the history and with a blind listening
+  test (rank correlation −0.59). Use it on a branch instead of asking the owner to listen;
+  listening tests (`tools/listen/make_test.py`) are for PRs, with most trials in the middle
+  and upper range (the owner rarely hears the low bass alone, and rates it least reliably:
+  there, trust the distance, and never let the bass get further from its recordings). It
+  gives body-ring changes little weight: check those with `between.py` too.
+- **Partials are modes** where `tools/analyze_modes.py` fitted them (docs/MODEL.md): 1-6
+  decaying sinusoids per partial shared by all layers, with per-layer, per-mic amplitudes,
+  fitted to the envelopes in engine terms. They replace the prompt/burst/aftersound/beat
+  description, which partials without modes keep (mostly the top treble). The fit caches
+  per key in `<tmp>/piano-modes/` (delete it after changing the script); about 40 minutes on
+  two cores. After it: `analyze_noise.py`, `analyze_body.py`, `make_header.py`, build,
+  `calibrate_noise.py` ×3, then `choose_modes.py` (per key, modes or not, by the distance), then `calibrate_attack.py` ×3 (the bass's strike, which the fit can't see).
+  Lessons: the stiff-string line is far off in the bass (A0's partials reach 2 semitones
+  sharp of it; follow them up the series, `refine_long`); modes that nearly cancel can't
+  survive the header's quantisation (merge twins, refuse cancelling sets); a fit that starts
+  late (the bass's long window) must not let fast modes grow back towards the strike; the
+  noise analysis must keep subtracting the older description (with its burst), or a
+  partial's first milliseconds become knock (heard as attack noise on C5/D#5, which the
+  distance missed: it can't tell noise from tone within a band).
 - After any change to the sound, run `tools/measure/run_all.py` (every
   measurement against the recordings, about 1.5 minutes; `tools/measure/README.md`
   says what each answers and what healthy looks like) and
@@ -58,8 +79,8 @@ from CI at milestones.
   0.3 s (`refine_partials`; `dev` cents in the header) and records clusters
   (`clusters`: components within ±70 cents). Played as clusters where wide
   (≥ 15 % of the power off the main component, ≥ 6 Hz spread); otherwise the
-  beat model. Only A5 and up were re-analysed with these so far (the rest:
-  analysis from before, `f_measured` absent → `dev` 0).
+  beat model. Below A5, `analyze_modes.py` moves every partial to its peak in a 3 s
+  spectrum, following the series up (`refine_long`), so `dev` is set there too.
 - Noise bands are 2 RBJ band-pass stages (Q 1.2) and a 4th-order low-pass
   at 1.7× the lower edge (`kNoiseLpRatio`): a top key's knock falls ~35-45 dB
   over an octave or two, and plain band-passes spill it upward as hiss that no

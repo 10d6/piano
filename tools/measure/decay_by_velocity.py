@@ -44,7 +44,7 @@ def main():
                             errs.append(np.nan)
                             continue
                         rec = 10 * np.log10(pw[i0:i1].mean() + 1e-20)
-                        mdl_db = 10 * np.log10(np.mean(10 ** ((p["levels"][v - 1][ch] + M.A.shape_db(sh, t[i0:i1])) / 10)))
+                        mdl_db = 10 * np.log10(np.mean(M.A.partial_env(p, v - 1, ch, t[i0:i1]) ** 2))
                         errs.append(mdl_db - rec if rec > -95 else np.nan)
             tot[v].append(np.nanmedian(np.array(errs).reshape(-1, len(CENTRES)), 0))
     print("stored − recording (dB) at " + " / ".join(f"{c:g}" for c in CENTRES) + " s")

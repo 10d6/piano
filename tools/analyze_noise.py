@@ -36,6 +36,10 @@ def partial_power(key, layer, mic, t):
         L = p["levels"][layer][mic]
         if L < -110:
             continue
+        # analyze.py's level and decay shape, not the modes: the modes are fitted only from where
+        # the envelope's window clears the swell, so in the first milliseconds they hold less of a
+        # partial's energy than its burst (x0) does, and the difference was counted as knock:
+        # heard as noise in the attack of C5 and D#5 (knock up to 25 dB too strong at 1-2 kHz)
         env = 10 ** ((L + A.shape_db(A.shape_at(p, layer), t)) / 20)
         b = np.searchsorted(BANDS, p["f"], side="right") - 1
         if 0 <= b < len(BANDS) and p["f"] < BANDS[b] * 2:

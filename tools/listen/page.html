@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piano listening test</title>
+<style>
+  :root { --ink: #1d1d1b; --muted: #6b6a66; --line: #dddbd5; --bg: #faf9f6; --accent: #2f5d8a; --play: #e8eef5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+  button { font: inherit; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--play); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 96px 1fr 44px; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .row button { width: 100%; }
+  input[type=range] { width: 100%; }
+  .val { text-align: right; font-variant-numeric: tabular-nums; }
+  .scale { display: grid; grid-template-columns: 96px 1fr 44px; gap: 12px; font-size: 12px; color: var(--muted); }
+  .scale div:nth-child(2) { display: flex; justify-content: space-between; }
+  textarea { width: 100%; height: 200px; font: 12px/1.4 ui-monospace, monospace; }
+  .progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .progress div { height: 100%; background: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Piano listening test</h1>
+  <p class="muted" id="credit">Reference notes: Salamander Grand Piano V3 by Alexander Holm (CC BY 3.0).</p>
+
+  <section id="intro">
+    <p>Each trial is one piano note. <b>Reference</b> is a recording of a real grand. Rate each of the
+      numbered versions on how close it sounds to the reference, from 0 (nothing like it) to 100
+      (can't tell them apart). One of them is the reference itself, so give that 100 if you find it.</p>
+    <p>Switch between versions as often as you like: playback carries on from the same point. Use
+      headphones, at a fixed comfortable volume. About 10–15 minutes.</p>
+    <div class="bar"><label>Your name or initials <input id="who" autocomplete="off"></label>
+      <button class="primary" id="begin">Start</button></div>
+  </section>
+
+  <section id="trial" hidden>
+    <div class="progress"><div id="prog"></div></div>
+    <div class="bar">
+      <b id="title"></b>
+      <button id="ref">Reference</button>
+      <button id="stop">Stop</button>
+      <label class="muted"><input type="checkbox" id="loop" checked> loop</label>
+    </div>
+    <div class="scale"><div></div><div><span>0 nothing like it</span><span>50</span><span>100 identical</span></div><div></div></div>
+    <div id="rows"></div>
+    <div class="bar"><button id="back">Back</button><button class="primary" id="next">Next</button>
+      <span class="muted" id="hint"></span></div>
+  </section>
+
+  <section id="done" hidden>
+    <p><b>Thank you.</b> Copy the results below and paste them back into the chat (or download them, where the page allows it).</p>
+    <div class="bar"><button class="primary" id="copy">Copy results</button><button id="dl">Download</button><span class="muted" id="copied"></span></div>
+    <textarea id="out" readonly></textarea>
+  </section>
+</main>
+<script>
+const TRIALS = /*TRIALS*/[];
+const TEST = /*TESTID*/"";
+const KEY = "piano-listen-" + TEST;
+let ctx = null, buffers = [], cur = -1, src = null, gain = null, t0 = 0, trial = 0;
+let state = { who: "", ratings: {} };
+try { const s = localStorage.getItem(KEY); if (s) state = JSON.parse(s); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+const $ = id => document.getElementById(id);
+
+function b64(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; }
+
+async function load(i) {
+  stop();
+  const t = TRIALS[i];
+  buffers = await Promise.all([t.reference, ...t.stimuli.map(s => s.audio)].map(a => ctx.decodeAudioData(b64(a))));
+}
+
+function stop() {
+  if (src) { const g = gain, s = src; g.gain.setTargetAtTime(0, ctx.currentTime, 0.005); s.stop(ctx.currentTime + 0.03); }
+  src = null; cur = -1; mark();
+}
+
+function play(i) {
+  if (!ctx) return;
+  const dur = buffers[0].duration;
+  let pos = 0;
+  if (src) { pos = (ctx.currentTime - t0) % dur; if (!$("loop").checked && ctx.currentTime - t0 >= dur) pos = 0; }
+  if (src) { const g = gain, s = src; g.gain.setTargetAtTime(0, ctx.currentTime, 0.005); s.stop(ctx.currentTime + 0.03); }
+  src = ctx.createBufferSource(); src.buffer = buffers[i]; src.loop = $("loop").checked;
+  gain = ctx.createGain(); gain.gain.value = 0; gain.gain.setTargetAtTime(1, ctx.currentTime, 0.005);
+  src.connect(gain).connect(ctx.destination);
+  src.start(ctx.currentTime, pos);
+  t0 = ctx.currentTime - pos; cur = i;
+  const me = src; src.onended = () => { if (src === me) { src = null; cur = -1; mark(); } };
+  mark();
+}
+
+function mark() {
+  document.querySelectorAll("[data-play]").forEach(b => b.classList.toggle("on", +b.dataset.play === cur));
+}
+
+function show(i) {
+  trial = i;
+  const t = TRIALS[i];
+  $("title").textContent = `Trial ${i + 1} of ${TRIALS.length}`;
+  $("prog").style.width = `${100 * i / TRIALS.length}%`;
+  $("ref").dataset.play = 0;
+  const rows = $("rows"); rows.innerHTML = "";
+  t.stimuli.forEach((s, j) => {
+    const r = document.createElement("div"); r.className = "row";
+    const k = `${i}:${s.version}`;
+    const v = state.ratings[k];
+    r.innerHTML = `<button data-play="${j + 1}">${j + 1}</button><input type="range" min="0" max="100" step="1" value="${v ?? 50}" aria-label="rating for version ${j + 1}"><span class="val">${v ?? "–"}</span>`;
+    const inp = r.querySelector("input"), val = r.querySelector(".val");
+    inp.oninput = () => { state.ratings[k] = +inp.value; val.textContent = inp.value; save(); hint(); };
+    r.querySelector("button").onclick = () => play(j + 1);
+    rows.appendChild(r);
+  });
+  $("back").disabled = i === 0;
+  hint();
+  load(i);
+}
+
+function hint() {
+  const t = TRIALS[trial];
+  const missing = t.stimuli.filter(s => state.ratings[`${trial}:${s.version}`] === undefined).length;
+  $("hint").textContent = missing ? `${missing} not rated yet` : "";
+}
+
+function results() {
+  const rows = [];
+  TRIALS.forEach((t, i) => t.stimuli.forEach(s => {
+    const r = state.ratings[`${i}:${s.version}`];
+    if (r !== undefined) rows.push({ trial: i, key: t.key, layer: t.layer, version: s.version, rating: r });
+  }));
+  return JSON.stringify({ test: TEST, who: state.who, date: new Date().toISOString(), ratings: rows }, null, 1);
+}
+
+$("who").value = state.who || "";
+$("begin").onclick = async () => {
+  state.who = $("who").value.trim(); save();
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  $("intro").hidden = true; $("trial").hidden = false;
+  show(0);
+};
+$("ref").onclick = () => play(0);
+$("stop").onclick = stop;
+$("back").onclick = () => { if (trial > 0) show(trial - 1); };
+$("next").onclick = () => {
+  if (trial + 1 < TRIALS.length) { show(trial + 1); return; }
+  stop(); $("trial").hidden = true; $("done").hidden = false; $("out").value = results();
+};
+$("dl").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([results()], { type: "application/json" }));
+  a.download = `${TEST}-${state.who || "listener"}.json`; a.click();
+};
+$("copy").onclick = async () => {
+  $("out").select();
+  try { await navigator.clipboard.writeText($("out").value); $("copied").textContent = "Copied."; }
+  catch (e) { try { document.execCommand("copy"); $("copied").textContent = "Copied."; } catch (e2) { $("copied").textContent = "Select the text and copy it."; } }
+};
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type !== "range") return;
+  if (e.key === "r") play(0);
+  else if (e.key === " ") { e.preventDefault(); stop(); }
+  else if (/^[1-9]$/.test(e.key) && $("trial").hidden === false) { const n = +e.key; if (n < buffers.length) play(n); }
+});
+</script>
+</body>
+</html>

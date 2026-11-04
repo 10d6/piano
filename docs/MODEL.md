@@ -93,6 +93,74 @@ Everything about a component comes from measurement.
   Only A5 and up have been re-analysed with the refinement and clusters so
   far. The other keys' data predates them, and their offsets are 0.
 
+### Modes: the partial fitted as the engine plays it
+
+Most partials (about three quarters, and most of the sound below C6) are now played as their
+**modes**, fitted by `tools/analyze_modes.py`. The subsections after this one describe the
+older description, which the remaining partials keep.
+
+A struck unison's partial is a handful of modes: the two or three strings, each vibrating in
+two polarisations, coupled through the bridge. Each is a decaying sinusoid with its own
+frequency and decay rate, the same at every velocity (once the hammer has left, the strings are
+a linear system); the strike only sets how much of each mode there is, in what phase, at each
+mic. The prompt sound and the aftersound are such modes, a fast one and a slow one (Weinreich),
+and two close in frequency beat. So a partial is fitted as
+
+    z(layer, mic, t) = Σ_m c[layer, mic, m] · e^{s_m t} · (1 − e^{−(t−d)/τ})
+
+- **s_m = −α_m + j2πΔf_m** per mode: decay and offset from the partial's frequency, shared by
+  all 16 layers and both mics. 1-4 modes (6 from C5 up, where the unison's strings and their
+  polarisations spread wider), each added only while it lowers the error by more than 15 %.
+- **c** per layer, mic and mode: level and phase.
+- **The swell** (τ, d per key and layer) from the onset fit, as the engine plays it.
+
+**How it's fitted.** Against each layer's and mic's heterodyned envelope (`analyze.envelope`),
+with the envelope's triangular window applied to the model exactly, so model and recording are
+compared in the same terms. The modes start from a subspace estimate (ESPRIT) over the loudest
+layers, the best few sets of its candidates, and analyze.py's decay shape and beat; then
+**variable projection** refines them (for given modes, the amplitudes are a linear
+least-squares problem, solved for all signals at once). The error is weighted by
+level^−0.9 (each moment counts about as it's heard then, against the note at that time) and
+evenly in log time, so the first 80 ms, the next 0.4 s and the seconds after weigh alike, as
+the perceptual measure's three windows do.
+
+Guards:
+- **Where the partial really is.** Below A5 each partial is first moved to its peak in a 3 s
+  spectrum (within ±60 cents and ±0.4 f0): heterodyned a few Hz off, a partial is seen only
+  through the window's skirt. C1's 15th partial is 7 Hz (25 cents) above the stiff-string
+  line, and its old level and decay were far off for that reason.
+- **The fit window** runs from when the envelope's window has cleared the swell until the
+  partial, smoothed over 0.2 s, last stands 10 dB over the recording's floor. (Ending at the
+  first time it dips there, a beat's trough, cut some fits to a fraction of a second.)
+- **No growing back.** A fast mode may not rise more than 30 dB over its level at the fit's
+  start by t = 0, nor more than 12 dB 20 ms in. The bass's long window starts the fit ~0.1 s
+  in, and modes free to grow towards the strike made A0's attack 30 % too loud.
+- **Modes that swell** far above the fit's start before it (large modes nearly cancelling) are
+  refused, and no mode rings longer than 0.3 dB/s.
+- **The modes must beat the old description.** In dB against the recording's envelope at the
+  fit's points, weighted the same way; a partial whose modes don't keeps the older fields.
+  The median dB error is 0.5-1 dB in the bass and middle against 2-5 dB for the decay shapes.
+
+**In the engine.** Each mode is one component and its swell twin. The partial's frequency is
+the modes' energy-weighted mean (so `dev` is set for every modal partial), and the modes'
+offsets from it are the unison's spread, which **Unison** scales (0 % puts them on one
+frequency). The engine's t = 0 is the swell's start, `delay` into the recording, so each mode's
+phase is advanced to it and its level lowered along its decay. Layers where the partial was too
+weak to fit take the nearest fitted layer's modes, moved by the difference in the partial's
+measured level. Between measured keys, the modes come from the nearer key, their levels move to
+the blended partial level and their decays scale to the blended characteristic decay (the
+modes' energy-weighted mean). A modal partial is at most 4-6 modes, 8-12 components, against
+up to 18 for the older description's prompt, burst and aftersound with their beating partners.
+
+**The bass's strike, calibrated** (`calibrate_attack.py`). Below A3 the envelope's window is
+long (45 ms at A2), so the fit starts 50-100 ms in and the strike before that is extrapolated:
+it came out 2-3 dB weak on A1, D#2 and A2 and 1.5 dB weak on C3-F#3 (the owner heard less
+punch than on main). Each key is rendered at four layers, its 10-40 ms level in octave bands
+compared with the recording's, and corrected over three passes, interpolated across layers.
+The engine plays a correction as one more mode per partial in the band, on its strongest
+mode's frequency, in phase (or in opposition), fading at 100 dB/s. The strike is now within
+about ±1 dB of the recordings on most keys (C1 +2-3, A1 −2).
+
 ### Decay: prompt, aftersound and first burst
 
 A piano partial decays in two stages:
@@ -189,7 +257,10 @@ offset: 0 % is strings in perfect tune.
 ### Between the sampled keys
 
 A key between two sampled keys takes from both: weights by position, B and
-onset τ interpolated in log, cents linearly. A partial measured on only one
+onset τ interpolated in log, cents linearly. A modal partial takes its modes from the nearer
+key (see Modes, above). Each partial's level is the modes' power at the strike where it has
+modes, so the blend compares like with like (analyze.py's own was read at its own frequency,
+which in the bass could be a few Hz off the partial and up to 30 dB low). A partial measured on only one
 side fades out towards the other (−24 dB at the far end). Phases and clusters
 come from the nearer key, since phases can't be averaged meaningfully.
 
@@ -245,7 +316,11 @@ hammer's knock, the key and action, the soundboard's response.
   with the partials' τ. The levels are per key, layer and mic, interpolated
   like the partials. **Hammer** scales it.
 
-How it's measured (`analyze_noise.py`):
+How it's measured (`analyze_noise.py`). It subtracts analyze.py's partial description (level,
+decay shape and first burst), not the modes: the modes are fitted from where the envelope's
+window clears the swell, so in the first milliseconds they hold less of a partial than its
+burst does, and measured against them the difference became knock (heard as noise in the
+attack of C5 and D#5):
 
 1. **Frames.** 1024-point frames every 2 ms over 0–250 ms. In each band, the
    recording's power minus what the partial model accounts for.
@@ -408,17 +483,21 @@ aftersound decay for a medium strike.
 ## The data pipeline
 
 ```
-recordings ─ analyze.py ─────────── salamander.json ──┬─ analyze_noise.py ─ salamander_noise.json ─┐
-           │                                          ├─ analyze_onset.py ─ salamander_onset.json ─┤
-           │                                          └─ analyze_body.py ── salamander_body.json ──┤
-           └ analyze_mech.py ─────────────────────────────────────────────── salamander_mech.json ─┤
-                                                                                                   │
-                                                    make_header.py → src/PianoData.h → build ──────┘
-                                                    calibrate_noise.py (renders; adjusts salamander_noise.json; repeat)
+recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salamander_onset.json
+           │                     │                                     │
+           │                     └──── analyze_modes.py (modes into salamander.json) ──┬─ analyze_noise.py ─ salamander_noise.json ─┐
+           │                                                                           └─ analyze_body.py ── salamander_body.json ──┤
+           └ analyze_mech.py ─────────────────────────────────────────────────────────────────────────────── salamander_mech.json ─┤
+                                                                                                                                    │
+                                                    make_header.py → src/PianoData.h → build ───────────────────────────────────────┘
+                                                    calibrate_noise.py (renders; adjusts salamander_noise.json; repeat ×3)
+                                                    choose_modes.py (renders; per key, modes or not; then make_header, build)
 ```
 
 The commands are in the README. Everything downstream of `analyze.py` uses its
-partials, so rerun those steps after it. Clear the noise corrections before
+partials, so rerun those steps after it; the noise analysis uses the modes' envelopes
+(`analyze.partial_env`), so it follows `analyze_modes.py`. The modal fit takes about 40 minutes
+on two cores and caches each key in `<tmp>/piano-modes/`. Clear the noise corrections before
 recalibrating if the noise analysis changed. `analyze.py` takes about 25
 minutes on one core; run halves of the key list in parallel and `--merge`
 them.
@@ -441,4 +520,7 @@ them.
 - **C5 and nearby** is the weakest measured region (upper partials a few dB
   strong).
 - **A soft C4's 62 Hz thump** is 15–20 dB too strong.
-- **Keys below A5** haven't been re-analysed with the treble refinements.
+- **The keys between the measured ones** gain little from the modes (docs/TESTING.md, holdout):
+  what is particular to a key isn't predictable from its neighbours.
+- **The treble's partials** mostly keep the older description: above C6 the modal fit seldom
+  beats it on these noisy envelopes.

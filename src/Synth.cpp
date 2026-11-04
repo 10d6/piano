@@ -33,6 +33,10 @@
 
 #include "PianoData.h"
 
+#ifndef BY_FREQUENCY
+#define BY_FREQUENCY 0.f   // an experiment, off: inconclusive on held-out keys (docs/TESTING.md)
+#endif
+
 using namespace sk;
 namespace pd = piano_data;
 
@@ -93,6 +97,47 @@ inline float damperRate(int note, int last = kLastDamper) {
   if (note > last) return 0.f;
   float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
   return 70.f * std::pow(300.f / 70.f, t);   // A0 ≈ 70 (about 0.9 s to silence), E6 ≈ 300
+}
+
+// A partial's characteristic decay (dB/s, positive): its modes' where it has them, else its
+// aftersound's for a medium strike.
+inline float charDecay(int i) {
+  const pd::Partial& p = pd::partials[i];
+  return std::max(p.nm > 0 ? -p.dch : -p.s2[1], 0.05f);
+}
+
+// How much between-key blending goes by frequency rather than by partial number (0-1).
+constexpr float kByFrequency = BY_FREQUENCY;
+
+// Measured key k's level (per mic, dB, at layer l0 + lf) and log characteristic decay at the
+// frequency `rat` times the pitch of `note`: interpolated along k's own partials, in log frequency.
+inline void atFrequency(int k, int note, float rat, int l0, float lf, float& lvL, float& lvR, float& logDec) {
+  const pd::Key& K = pd::keys[k];
+  float x = std::log(rat) + std::log(2.f) * ((note - K.note) / 12.f + (measuredCents(note) - K.cents) / 1200.f);
+  auto level = [&](int i, int mic) {
+    const auto& L = pd::levels[i];
+    return 0.01f * (L[l0][mic] + (L[l0 + 1][mic] - L[l0][mic]) * lf);
+  };
+  int prev = -1;
+  float xp = 0;
+  for (int i = K.first; i < K.first + K.count; ++i) {
+    const pd::Partial& p = pd::partials[i];
+    float xi = std::log(p.n * std::sqrt((1 + K.B * p.n * p.n) / (1 + K.B))) + p.dev * (std::log(2.f) / 1200.f);
+    if (xi >= x) {
+      float u = prev < 0 ? 0.f : (x - xp) / std::max(xi - xp, 1e-6f);
+      int a = prev < 0 ? i : prev;
+      lvL = level(a, 0) + (level(i, 0) - level(a, 0)) * u;
+      lvR = level(a, 1) + (level(i, 1) - level(a, 1)) * u;
+      logDec = std::log(charDecay(a)) + (std::log(charDecay(i)) - std::log(charDecay(a))) * u;
+      return;
+    }
+    prev = i;
+    xp = xi;
+  }
+  int a = prev < 0 ? K.first : prev;   // above the key's last partial: its last one's
+  lvL = level(a, 0);
+  lvR = level(a, 1);
+  logDec = std::log(charDecay(a));
 }
 
 struct Piano;
@@ -975,8 +1020,26 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float missing = (hasA && hasB) ? 0.f : -24.f * (hasA ? s.w : 1 - s.w);
 
     float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn));
-    float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0) + extra;
-    float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1) + extra;
+    float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B)) * std::exp2((wa * A.dev + wb * Bp.dev) / 1200.f);
+    float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0);
+    float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1);
+    float logDecay = 0;   // the blended characteristic decay, log(dB/s), for the modes
+    if (hasA && hasB) logDecay = wa * std::log(charDecay(pa)) + wb * std::log(charDecay(pb));
+    if (hasA && hasB && kByFrequency > 0) {
+      // Between measured keys, what a partial takes from each side is partly a matter of its
+      // number (the hammer's spectrum, where it strikes the string) and partly of its frequency
+      // (the soundboard's response and the microphones', and the strings' losses, which grow
+      // with frequency). By frequency: each side's level and decay where that side has a partial
+      // at this one's frequency, interpolated along its own partials.
+      float fl[2], fr[2], fd[2];
+      atFrequency(s.a, note, rat, l0, lf, fl[0], fr[0], fd[0]);
+      atFrequency(s.b, note, rat, l0, lf, fl[1], fr[1], fd[1]);
+      Ll += kByFrequency * (wa * fl[0] + wb * fl[1] - Ll);
+      Lr += kByFrequency * (wa * fr[0] + wb * fr[1] - Lr);
+      logDecay += kByFrequency * (wa * fd[0] + wb * fd[1] - logDecay);
+    }
+    Ll += extra;
+    Lr += extra;
     if (std::max(Ll, Lr) < cut) continue;
     float s1 = wa * shape(A.s1) + wb * shape(Bp.s1);
     float s2 = wa * shape(A.s2) + wb * shape(Bp.s2);
@@ -993,7 +1056,6 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float amp = std::sqrt(0.5f * (gl * gl + gr * gr));
     gl /= amp;
     gr /= amp;
-    float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B)) * std::exp2((wa * A.dev + wb * Bp.dev) / 1200.f);
     float dmp = dampBase * (1 + 0.03f * (pn - 1));
 
     float after = drop < -0.01f ? amp * dbToGain(drop) : amp;
@@ -1030,6 +1092,27 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // partial and its beat: they start together, as the hammer strikes the strings together, and
     // drift apart; each reaches the two mics at its own angle, so left and right differ.
     const pd::Partial& P = pd::partials[pp];
+    if (P.nm > 0) {
+      // The partial as its measured modes (tools/analyze_modes.py): the unison's strings and their
+      // polarisations, each decaying at its own rate and a little apart in frequency, so the prompt
+      // sound, the aftersound and the beating all come from them, as on the recordings. They come
+      // from the nearer measured key; between keys, their levels follow the blended partial level
+      // and their decays the blended characteristic decay.
+      float shiftL = Ll - layerLevel(pp, 0), shiftR = Lr - layerLevel(pp, 1);
+      float decScale = hasA && hasB ? std::exp(logDecay - std::log(charDecay(pp))) : 1.f;
+      for (int j = P.fm; j < P.fm + P.nm; ++j) {
+        const auto& ML = pd::modeLevels[j];
+        float ml = 0.01f * (ML[l0][0] + (ML[l0 + 1][0] - ML[l0][0]) * lf) + shiftL;
+        float mr = 0.01f * (ML[l0][1] + (ML[l0 + 1][1] - ML[l0][1]) * lf) + shiftR;
+        if (std::max(ml, mr) < cut) continue;
+        float ph0 = pd::modePhases[j][layerNear][0] * kPhaseStep;
+        float sp = pd::modePhases[j][layerNear][1] * kPhaseStep - ph0;
+        float g0 = dbToGain(ml), g1 = dbToGain(mr);
+        float a = std::sqrt(0.5f * (g0 * g0 + g1 * g1));
+        add(a, pd::modes[j].decay * decScale, rat, pd::modes[j].off, ph0, dmp, g0 / a, g1 / a, sp, onset);
+      }
+      continue;
+    }
     float clHz[4], clPh[4];
     for (int j = 0; j < P.nc; ++j) {
       clHz[j] = pitchNow * rat * (std::exp2(P.cc[j] / 1200.f) - 1.f);
