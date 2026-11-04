@@ -381,10 +381,31 @@ pure partials and sound like a bell.
     mics) and a level at the strike per layer and mic.
   - Below C3 the partials are too dense to separate the ring, so those keys
     use C3's.
-- **Played** by one bank of band noise shared by all keys, in the synth rather
-  than the voice. Each key adds its band powers, which add as independent
-  noises do, with a 30 ms rise. The ring therefore outlives a short note's
-  voice.
+- **Played as tones, not noise.** Measured between the partials, the recordings'
+  spectrum there is peaky: its flatness (geometric over arithmetic mean, per third
+  of an octave, `tools/measure/tonality.py`) is a median 0.36 over 0.1-0.4 s and
+  0.31 over 0.4-1 s from C3 up, where band noise is about 0.54. Played as band
+  noise, the ring was heard as a noisy sound lingering for a quarter second
+  (C5). Now each band's noise, at the band's measured power, drives a bank of
+  **the body's resonances** instead of being heard itself: 260 resonators
+  (4-48 per octave band), shared by all keys, in the synth. Their frequencies are
+  the tones `tools/analyze_residual.py` finds between the partials (up to 24 per
+  key, peaks standing 12 dB over the spectrum around them, every partial, mode
+  and cluster component left out), wherever they recur, merged within 4 Hz, the
+  bands filled up evenly in log frequency; they are the soundboard's and case's
+  resonances, other strings ringing along, the struck strings' longitudinal and
+  phantom parts. Each rings down at 300 dB/s (about 11 Hz wide) and reaches the
+  two mics at its own angle, so one bank serves both sides. Width and count were
+  set by `tonality.py`: flatness 0.40 / 0.32 against the recordings' 0.36 / 0.31
+  (band noise: 0.53 / 0.54). The bands up to 8 kHz run at half the sample rate.
+  Each key adds its band powers, with a 30 ms rise; the ring outlives a short
+  note's voice. (`BODY_TONAL 0` in Synth.cpp and `BODY_TONAL=0` for
+  make_header.py play it as noise, as before.)
+  - Tried and kept off (`VOICE_TONES=1`): each key's 24 strongest tones played in
+    its voice, measured like partials, with the body measured without them. The
+    250 Hz attack went 10 dB strong (the knock's measurement already held them)
+    and the late ring and the sustain's balance got worse.
+  - The mechanical noises (key release, pedal) stay noise, through the same bands.
 - **Damped** with the key: the synth follows keys and the pedal in
   `processEvents`. A key's ring ends under −95 dB. **Body** scales it.
 
@@ -483,7 +504,7 @@ aftersound decay for a medium strike.
 ## The data pipeline
 
 ```
-recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salamander_onset.json
+recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salamander_onset.json   (analyze_residual.py: the tones between the partials, after the modes: the body's resonances)
            │                     │                                     │
            │                     └──── analyze_modes.py (modes into salamander.json) ──┬─ analyze_noise.py ─ salamander_noise.json ─┐
            │                                                                           └─ analyze_body.py ── salamander_body.json ──┤
@@ -512,7 +533,8 @@ them.
   output doesn't feed back into the voices.
 - **Measured coupling strength** for sympathetic resonance. It's a judgment.
 - **The body ring follows one decay per band.** It's a few dB strong at
-  0.4–1 s and weak at 2–3 s on many keys.
+  0.4–1 s and weak at 2–3 s on many keys. Over 0.4-1 s it is now a little more
+  tonal than the recordings' (the resonators' tonality matches, flatness 0.32 against 0.31).
 - **Partials 13–24** come out about 5 dB weak by 1.4 s.
 - **A6's soft strikes** have too little 8–16 kHz.
 - **D#6 and A7** keep a few dB of hiss at 8–16 kHz, at the limit of the noise

@@ -22,6 +22,7 @@ plays that layer.
 |---|---|---|
 | `perceptual.py` | **How different does it sound?** A perceptual distance from a model of the ear (ERB filterbank, loudness, ~1 dB tolerance) in the attack, early sound and sustain, against the distance between neighbouring recorded layers. The first number to look at; validated on the history (`validate_perceptual.py`) and a listening test (`../listen/`). `--compare a.json b.json` shows two runs side by side. | median well under ~15 %; the yardstick (one layer apart) is ~5 % |
 | `validate_perceptual.py <dir>` | Does the distance hear what the owner heard? Every fix in the history must rank nearer the recordings than the build before it, where the problem was. | 7 of 8 (docs/TESTING.md) |
+| `tonality.py` | Is what lies between the partials tone or noise, as in the recordings? Spectral flatness per third of an octave, recording against model. A band at the right level can still be noise where the piano has tones (the body's ring, heard as lingering noise on C5) | near the recording's (~0.36 / 0.31) |
 | `../compare.py` | Does each note match its recording, band by band over time? | median band error 2–5 dB |
 | `partials.py --key K --layer L` | For one note, partial by partial: is a gap in the **data** (stored curve ≠ recording) or the **engine** (model ≠ stored curve)? | model ≈ stored; stored ≈ recording within a few dB |
 | `levels.py` | Does the overall level fall off at the right rate? | median within ~3 dB at every time |

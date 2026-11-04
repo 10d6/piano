@@ -106,6 +106,12 @@ inline float charDecay(int i) {
   return std::max(p.nm > 0 ? -p.dch : -p.s2[1], 0.05f);
 }
 
+// The body's ring through resonances (tones, as recorded) rather than as noise.
+#ifndef BODY_TONAL
+#define BODY_TONAL 1
+#endif
+constexpr bool kBodyTonal = BODY_TONAL != 0;
+
 // How much between-key blending goes by frequency rather than by partial number (0-1).
 constexpr float kByFrequency = BY_FREQUENCY;
 
@@ -361,37 +367,109 @@ struct Piano : Synth {
     buildBank();
     for (int c = 0; c < 2; ++c)
       for (int b = 0; b < pd::kNoiseBands; ++b) bandRng[c][b].seed(0x51ed270bu + 977u * static_cast<unsigned>(b + 16 * c));
-
+    resRng[0].seed(0x2545f491u);
+    resRng[1].seed(0x9e3779b1u);
+    for (int b = 0; b < pd::kNoiseBands; ++b) designBand(bands[b], b, sr, rng);
+    // the body's resonators: the low bands run at half the sample rate (their resonances lie
+    // well below its Nyquist), with their own band filters for that rate
     for (int b = 0; b < pd::kNoiseBands; ++b) {
-      Band& bd = bands[b];
-      float fc = pd::kNoiseBandLow[b] * 1.41421356f;
-      if (fc * 1.41421356f > 0.49f * sr) { bd = Band{}; continue; }
-      float w0 = kTwoPi * fc / sr, alpha = std::sin(w0) / (2 * pd::kNoiseQ), a0 = 1 + alpha;
-      bd.b0 = alpha / a0;
-      bd.a1 = -2 * std::cos(w0) / a0;
-      bd.a2 = (1 - alpha) / a0;
-      // a 4th-order Butterworth low-pass at kNoiseLpRatio × the band's lower edge, so a loud band
-      // spills little into the quieter ones above it (the knock's spectrum falls with frequency)
-      float fl = pd::kNoiseBandLow[b] * pd::kNoiseLpRatio;
-      bd.hasLp = fl < 0.45f * sr;
-      const float qs[2] = {0.5411961f, 1.3065630f};
-      for (int k = 0; k < 2 && bd.hasLp; ++k) {
-        float wl = kTwoPi * fl / sr, al = std::sin(wl) / (2 * qs[k]), c = std::cos(wl), n0 = 1 + al;
-        bd.lp[k][0] = (1 - c) / 2 / n0;
-        bd.lp[k][1] = (1 - c) / n0;
-        bd.lp[k][2] = (1 - c) / 2 / n0;
-        bd.lp[k][3] = -2 * c / n0;
-        bd.lp[k][4] = (1 - al) / n0;
+      rStep[b] = pd::kNoiseBandLow[b] * 2 <= 0.2f * sr ? 2 : 1;
+      designBand(rbands[b], b, sr / static_cast<float>(rStep[b]), rng);
+    }
+    {
+      for (int j = 0; j < pd::kBodyModes; ++j) {
+        float rate = sr / static_cast<float>(rStep[pd::bodyModeBand[j]]);
+        float rad = std::pow(10.f, -pd::kBodyModeDecay * 0.05f / rate);
+        float w = kTwoPi * pd::bodyModeHz[j] / rate;
+        bool ok = pd::bodyModeHz[j] < 0.47f * rate;
+        bpRe[j] = ok ? rad * std::cos(w) : 0.f;
+        bpIm[j] = ok ? rad * std::sin(w) : 0.f;
+        float th = kTwoPi * std::fmod(0.6180339887f * static_cast<float>(j + 1), 1.f);   // spread evenly
+        bCos[j] = std::cos(th);
+        bSin[j] = std::sin(th);
+        brRe[j] = brIm[j] = 0;
+      }
+      for (auto& b : resState) for (float& v : b) v = 0;
+      lowPrev[0] = lowPrev[1] = lowCur[0] = lowCur[1] = 0;
+      lowPhase = 0;
+    }
+    calibrateBodyModes();
+  }
+
+  // Each band's resonators are driven by that band's noise (its filter, so their skirts don't
+  // spread white noise over the whole spectrum), and their gain is measured here, on noise, so
+  // the band's set passes it at the band noise's own power.
+  void calibrateBodyModes() {
+    dsp::Rng rng;
+    rng.seed(0x6a09e667u);
+    for (int b = 0; b < pd::kNoiseBands; ++b) {
+      int j0 = 0;
+      while (j0 < pd::kBodyModes && pd::bodyModeBand[j0] != b) ++j0;
+      int j1 = j0;
+      while (j1 < pd::kBodyModes && pd::bodyModeBand[j1] == b) ++j1;
+      if (j1 == j0) continue;
+      const Band& rb = rbands[b];
+      float rate = sr / static_cast<float>(rStep[b]);
+      if (rb.norm == 0) {
+        for (int j = j0; j < j1; ++j) bGain[j] = 0;
+        continue;
       }
       float st[2 * pd::kNoiseStages + 4] = {};
-      double var = 0;
-      int n = static_cast<int>(sr);
-      for (int i = 0; i < n + 2000; ++i) {
-        float y = bandStep(bd, rng.bipolar(), st);
-        if (i >= 2000) var += double(y) * y;
+      float zr[pd::kBodyModes] = {}, zi[pd::kBodyModes] = {};
+      double pw = 0;
+      int n = static_cast<int>(rate), warm = static_cast<int>(0.5f * rate);
+      for (int i = 0; i < n + warm; ++i) {
+        float x = bandStep(rb, rng.bipolar(), st) * rb.norm;
+        float y = 0;
+        for (int j = j0; j < j1; ++j) {
+          float nr = zr[j] * bpRe[j] - zi[j] * bpIm[j] + x;
+          float ni = zr[j] * bpIm[j] + zi[j] * bpRe[j];
+          zr[j] = nr;
+          zi[j] = ni;
+          y += nr;
+        }
+        if (i >= warm) pw += double(y) * y;
       }
-      bd.norm = static_cast<float>(1.0 / std::sqrt(var / n));
+      float g = pw > 0 ? static_cast<float>(1.0 / std::sqrt(pw / n)) : 0.f;
+      for (int j = j0; j < j1; ++j) {
+        // the half-rate bands come back up by linear interpolation, which takes sinc² of the
+        // frequency over that rate away: give it back
+        float x = 3.14159265f * pd::bodyModeHz[j] / rate, h = rStep[b] == 2 && x > 1e-6f ? std::sin(x) / x : 1.f;
+        bGain[j] = pd::bodyModeHz[j] < 0.47f * rate ? g / std::max(h * h, 0.3f) : 0.f;
+      }
     }
+  }
+
+  // one octave band's filters at a sample rate: band-pass stages and the low-pass above, and the
+  // gain that brings white noise through them to unit power
+  void designBand(Band& bd, int b, float rate, dsp::Rng& rng) {
+    float fc = pd::kNoiseBandLow[b] * 1.41421356f;
+    if (fc * 1.41421356f > 0.49f * rate) { bd = Band{}; return; }
+    float w0 = kTwoPi * fc / rate, alpha = std::sin(w0) / (2 * pd::kNoiseQ), a0 = 1 + alpha;
+    bd.b0 = alpha / a0;
+    bd.a1 = -2 * std::cos(w0) / a0;
+    bd.a2 = (1 - alpha) / a0;
+    // a 4th-order Butterworth low-pass at kNoiseLpRatio × the band's lower edge, so a loud band
+    // spills little into the quieter ones above it (the knock's spectrum falls with frequency)
+    float fl = pd::kNoiseBandLow[b] * pd::kNoiseLpRatio;
+    bd.hasLp = fl < 0.45f * rate;
+    const float qs[2] = {0.5411961f, 1.3065630f};
+    for (int k = 0; k < 2 && bd.hasLp; ++k) {
+      float wl = kTwoPi * fl / rate, al = std::sin(wl) / (2 * qs[k]), c = std::cos(wl), n0 = 1 + al;
+      bd.lp[k][0] = (1 - c) / 2 / n0;
+      bd.lp[k][1] = (1 - c) / n0;
+      bd.lp[k][2] = (1 - c) / 2 / n0;
+      bd.lp[k][3] = -2 * c / n0;
+      bd.lp[k][4] = (1 - al) / n0;
+    }
+    float st[2 * pd::kNoiseStages + 4] = {};
+    double var = 0;
+    int n = static_cast<int>(rate);
+    for (int i = 0; i < n + 2000; ++i) {
+      float y = bandStep(bd, rng.bipolar(), st);
+      if (i >= 2000) var += double(y) * y;
+    }
+    bd.norm = static_cast<float>(1.0 / std::sqrt(var / n));
   }
 
   // one sample of a band: identical band-pass stages (transposed direct form II; b1 = 0, b2 = −b0)
@@ -426,6 +504,22 @@ struct Piano : Synth {
   bool bodyOn[128] = {};
   float bodyState[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
   dsp::Rng bandRng[2][pd::kNoiseBands];
+  // The body's ring plays through resonators: the recordings hold it as tones (their spectrum
+  // between the partials is peaky, not flat), so each band's noise drives a set of the body's
+  // resonances (tools/make_header.py: the tones found between the partials, wherever they
+  // recur) instead of being heard itself. Each resonator is normalised so its band's set passes
+  // white noise at unit power, which keeps the measured band levels. BODY_TONAL 0 plays the
+  // ring as noise, as before.
+  float brRe[pd::kBodyModes] = {}, brIm[pd::kBodyModes] = {};
+  Band rbands[pd::kNoiseBands];
+  int rStep[pd::kNoiseBands] = {};
+  float lowPrev[2] = {}, lowCur[2] = {};
+  int lowPhase = 0;
+  float bpRe[pd::kBodyModes] = {}, bpIm[pd::kBodyModes] = {}, bGain[pd::kBodyModes] = {};
+  float bCos[pd::kBodyModes] = {}, bSin[pd::kBodyModes] = {};   // the right mic's angle to each
+  dsp::Rng resRng[2];
+  float resState[pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
+  bool bodyRinging = false;
 
   void addBody(int key, const float (&powL)[pd::kNoiseBands], const float (&powR)[pd::kNoiseBands],
                const float (&dec)[pd::kNoiseBands]) {
@@ -453,6 +547,8 @@ struct Piano : Synth {
       for (auto& ch : bodyPow[k]) for (float& v : ch) v = 0;
     }
     for (auto& ch : bodyState) for (auto& b : ch) for (float& v : b) v = 0;
+    for (float& v : brRe) v = 0;
+    for (float& v : brIm) v = 0;
   }
 
 
@@ -807,7 +903,8 @@ struct Piano : Synth {
 
   void renderBody(Buffer& io) {
     const int n = io.frames;
-    float p0[2][pd::kNoiseBands] = {}, p1[2][pd::kNoiseBands] = {};
+    float p0[2][pd::kNoiseBands] = {}, p1[2][pd::kNoiseBands] = {};      // the body's ring
+    float q0[2][pd::kNoiseBands] = {}, q1[2][pd::kNoiseBands] = {};      // the mechanical noises
     float riseMul = std::exp(-static_cast<float>(n) / (kBodyRiseS * sr));
     bool any = false;
     for (int k = 0; k < 128; ++k) {
@@ -837,20 +934,22 @@ struct Piano : Synth {
       m.pos += static_cast<float>(n);
       for (int c = 0; c < 2; ++c)
         for (int b = 0; b < pd::kNoiseBands; ++b) {
-          p0[c][b] += m.pw[c][b] * e0;
-          p1[c][b] += m.pw[c][b] * e1;
+          (kBodyTonal ? q0 : p0)[c][b] += m.pw[c][b] * e0;
+          (kBodyTonal ? q1 : p1)[c][b] += m.pw[c][b] * e1;
         }
       if (m.pos > 0 && mechEnvAt(m, m.pos) == 0) m.on = false;
       any = true;
     }
+    if (kBodyTonal) renderBodyTones(io, p0, p1, any);
     // Each band and side draws its own noise every sample, sounding or not, so the noise doesn't
     // depend on where blocks start (the host's block size).
     for (int b = 0; b < pd::kNoiseBands; ++b) {
       const Band& bd = bands[b];
       float a0[2], a1[2];
       for (int c = 0; c < 2; ++c) {
-        a0[c] = any ? std::sqrt(p0[c][b]) * bd.norm : 0.f;
-        a1[c] = any ? std::sqrt(p1[c][b]) * bd.norm : 0.f;
+        float x0 = kBodyTonal ? q0[c][b] : p0[c][b], x1 = kBodyTonal ? q1[c][b] : p1[c][b];
+        a0[c] = any ? std::sqrt(x0) * bd.norm : 0.f;
+        a1[c] = any ? std::sqrt(x1) * bd.norm : 0.f;
       }
       if (bd.norm == 0 || a0[0] + a0[1] + a1[0] + a1[1] < 1e-9f) {
         for (int i = 0; i < n; ++i) {
@@ -864,6 +963,93 @@ struct Piano : Synth {
         io.left[i] += bandStep(bd, bandRng[0][b].bipolar(), bodyState[0][b]) * (a0[0] + (a1[0] - a0[0]) * u);
         io.right[i] += bandStep(bd, bandRng[1][b].bipolar(), bodyState[1][b]) * (a0[1] + (a1[1] - a0[1]) * u);
       }
+    }
+  }
+
+  // The body's ring through its resonators: white noise per side, scaled per band by the ring's
+  // amplitude (ramped over the block), drives each band's resonators.
+  void renderBodyTones(Buffer& io, const float (&p0)[2][pd::kNoiseBands], const float (&p1)[2][pd::kNoiseBands], bool any) {
+    const int n = io.frames;
+    // silent and rung down: skip, drawing the noise anyway so it doesn't depend on block sizes
+    if (!any && !bodyRinging) {
+      for (int i = 0; i < n; ++i) {
+        resRng[1].bipolar();
+        if (lowPhase == 0) resRng[0].bipolar();
+        lowPhase ^= 1;
+      }
+      lowPrev[0] = lowPrev[1] = lowCur[0] = lowCur[1] = 0;
+      return;
+    }
+    float a0[2][pd::kNoiseBands], a1[2][pd::kNoiseBands];
+    for (int c = 0; c < 2; ++c)
+      for (int b = 0; b < pd::kNoiseBands; ++b) {
+        a0[c][b] = any ? std::sqrt(p0[c][b]) : 0.f;
+        a1[c][b] = any ? std::sqrt(p1[c][b]) : 0.f;
+      }
+    for (int i = 0; i < n; ++i) {
+      float u = static_cast<float>(i + 1) / static_cast<float>(n);
+      // the low bands every other sample (their own noise), linearly interpolated in between
+      bool lowNow = lowPhase == 0;
+      float xl = lowNow ? resRng[0].bipolar() : 0.f;
+      float xh = resRng[1].bipolar();
+      float hl = 0, hr = 0, ll = 0, lr = 0;
+      int j = 0;
+      while (j < pd::kBodyModes) {
+        int b = pd::bodyModeBand[j];
+        int end = j;
+        while (end < pd::kBodyModes && pd::bodyModeBand[end] == b) ++end;
+        bool low = rStep[b] == 2;
+        if (low && !lowNow) {
+          j = end;
+          continue;
+        }
+        const Band& rb = rbands[b];
+        float xb = bandStep(rb, low ? xl : xh, resState[b]) * rb.norm;
+        float al[8] = {}, ar[8] = {};
+        for (int k = j; k < end; ++k) {
+          float in = xb * bGain[k];
+          float nr = brRe[k] * bpRe[k] - brIm[k] * bpIm[k] + in;
+          float ni = brRe[k] * bpIm[k] + brIm[k] * bpRe[k];
+          brRe[k] = nr;
+          brIm[k] = ni;
+          al[k & 7] += nr;
+          ar[k & 7] += nr * bCos[k] - ni * bSin[k];
+        }
+        float sl = ((al[0] + al[1]) + (al[2] + al[3])) + ((al[4] + al[5]) + (al[6] + al[7]));
+        float sr2 = ((ar[0] + ar[1]) + (ar[2] + ar[3])) + ((ar[4] + ar[5]) + (ar[6] + ar[7]));
+        float gl = a0[0][b] + (a1[0][b] - a0[0][b]) * u, gr = a0[1][b] + (a1[1][b] - a0[1][b]) * u;
+        if (low) {
+          ll += sl * gl;
+          lr += sr2 * gr;
+        } else {
+          hl += sl * gl;
+          hr += sr2 * gr;
+        }
+        j = end;
+      }
+      float ol, orr;
+      if (lowNow) {
+        lowPrev[0] = lowCur[0];
+        lowPrev[1] = lowCur[1];
+        lowCur[0] = ll;
+        lowCur[1] = lr;
+        ol = 0.5f * (lowPrev[0] + lowCur[0]);
+        orr = 0.5f * (lowPrev[1] + lowCur[1]);
+      } else {
+        ol = lowCur[0];
+        orr = lowCur[1];
+      }
+      lowPhase ^= 1;
+      io.left[i] += ol + hl;
+      io.right[i] += orr + hr;
+    }
+    float e = 0;
+    for (int j = 0; j < pd::kBodyModes; ++j) e += brRe[j] * brRe[j] + brIm[j] * brIm[j];
+    bodyRinging = any || e > 1e-14f;
+    if (!bodyRinging) {
+      for (float& v : brRe) v = 0;
+      for (float& v : brIm) v = 0;
+      for (auto& b : resState) for (float& v : b) v = 0;
     }
   }
 
@@ -1134,6 +1320,26 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // |a + b·e^{jθ}| is the level of the larger component alone: so the main components carry the
     // measured levels and the partners the beat on top
     part(after, s2);
+  }
+  // The tones between the partials (tools/analyze_residual.py): the soundboard's and case's
+  // resonances and other strings ringing along, which the recordings hold as tones, not noise.
+  // From the nearer measured key, at their own frequencies (Hz), scaled by Body and stopped by
+  // the damper with the strings.
+  {
+    int kt = s.w < 0.5f ? s.a : s.b;
+    float tg = gainDb + ctx.get(synth.body);
+    constexpr float kStep = 3.14159265f / 127.f;
+    for (int j = pd::toneFirst[kt]; j < pd::toneFirst[kt] + pd::toneCount[kt]; ++j) {
+      const auto& TL = pd::toneLevels[j];
+      float ml = 0.01f * (TL[l0][0] + (TL[l0 + 1][0] - TL[l0][0]) * lf) + tg;
+      float mr = 0.01f * (TL[l0][1] + (TL[l0 + 1][1] - TL[l0][1]) * lf) + tg;
+      if (std::max(ml, mr) < cut) continue;
+      float ph0 = pd::tonePhases[j][layerNear][0] * kStep;
+      float sp = pd::tonePhases[j][layerNear][1] * kStep - ph0;
+      float g0 = dbToGain(ml), g1 = dbToGain(mr);
+      float a = std::sqrt(0.5f * (g0 * g0 + g1 * g1));
+      add(a, pd::tones[j].decay, pd::tones[j].hz / pitchNow, 0.f, ph0, dampBase, g0 / a, g1 / a, sp, onset);
+    }
   }
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;

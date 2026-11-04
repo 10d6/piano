@@ -60,6 +60,15 @@ from CI at milestones.
   noise analysis must keep subtracting the older description (with its burst), or a
   partial's first milliseconds become knock (heard as attack noise on C5/D#5, which the
   distance missed: it can't tell noise from tone within a band).
+- **The body's ring is tones** (docs/MODEL.md): its band noise drives 260 shared body
+  resonances (Synth.cpp `renderBodyTones`; frequencies from the tones `analyze_residual.py`
+  finds between the partials, merged and filled by make_header.py; 300 dB/s, set by
+  `tools/measure/tonality.py`). Judge it with tonality.py: the perceptual distance and
+  between.py only see levels, and band noise at the right level was heard as lingering
+  noise. The resonators' band levels are the targets themselves (no spill to solve); bands up
+  to 8 kHz run at half rate. Tried and kept off (`VOICE_TONES=1`): each key's 24 strongest
+  tones in its voice, with the body measured without them: the 250 Hz attack went 10 dB
+  strong (the knock already held them) and the late ring and balance worse.
 - After any change to the sound, run `tools/measure/run_all.py` (every
   measurement against the recordings, about 1.5 minutes; `tools/measure/README.md`
   says what each answers and what healthy looks like) and

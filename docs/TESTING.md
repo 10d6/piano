@@ -172,6 +172,7 @@ each. Run it after any change to the sound.
 | `decay_by_velocity.py`: stored curves vs recordings | within ~2 dB | within ~2–4 dB |
 | `attack.py`: attack bands at 5–500 ms | medians −7…+3 dB; worst +23 dB (62 Hz, soft C4) | no band far above |
 | `velocity.py`: even steps; soft→loud changes | even; loudness changes within ~1 dB; A6's 8–16 kHz change too large | match within a few dB |
+| `tonality.py`: spectral flatness between the partials, per third of an octave (C3 up) | recording 0.36 / 0.31 at 0.1-0.4 / 0.4-1 s; model 0.40 / 0.32 (band noise, before: 0.53 / 0.54) | near the recording's |
 | `between.py`: between the partials, mean \|diff\| | 4.9 / 3.4 / 3.2 / 6.9 dB at 0–40 ms / –150 ms / –400 ms / –1 s | ≤ ~5 dB to 0.4 s |
 | `mechanics.py`: pedal, release noise | pedal 1.0 dB, release 1.5 dB | ~1–3 dB |
 | `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 1.2 dB at 14/s) but A0's at 14/s (−0.5 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB | every strike rises (from A1) |
@@ -222,7 +223,9 @@ machine. Today:
 | Pedalled 88-key glissando (worst case) | 0.6× realtime | 0.6× |
 | Demo (ordinary playing) | 2.0× | 2.0× |
 
-(Measured on a slower machine than before: there, main's worst case had been 2.1×.) The modes
+(Measured on a slower machine than before: there, main's worst case had been 2.1×.) The body's
+resonators (260, the low bands at half rate) cost about 8 % in ordinary playing (demo 1.2× against
+1.3× on the same machine) and nothing measurable in the worst case. The modes
 cost the same as the description they replace: a modal partial is 4-12 components, where the
 prompt, burst and aftersound with their beating partners were up to 18. The cost comes from the
 sympathetic string bank and the steeper noise filters. Healthy: the worst case no slower than
@@ -237,7 +240,8 @@ layer and mic.
 | the sound (engine or data) | + `run_all.py` (the perceptual distance first), `bench-web.cjs`; report both in the PR, with a listening test from `tools/listen/make_test.py` |
 | the interpolation between keys | + `holdout.py --perceptual` over several keys at once |
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
-| the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
+| the treble or the noise | + `between.py`, `tonality.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
+| the body's ring or its tones | + `tonality.py` (is it tone or noise, as recorded?), `between.py`, `ring.py` |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
 | the page (UI) | + `browser-test.cjs`, `panel.cjs` |
@@ -246,6 +250,8 @@ layer and mic.
 
 These are tracked rather than hidden:
 
+- **C5's attack** still sounds noisy to the owner (with the tonal body ring too): the knock is
+  5-13 dB strong at 4-8 kHz in its first 40 ms. See docs/STATUS.md.
 - **The keys between the measured ones** are as far from what they should be as before the
   modes (holdout, above): the next thing to work on.
 - **The treble** (C6 up, 32.6 %): most of its partials are too noisy for the modal fit to beat

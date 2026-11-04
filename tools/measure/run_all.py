@@ -25,6 +25,7 @@ SCRIPTS = [
     ("attack", 1, True),
     ("velocity", 17, True),
     ("between", 5, True),
+    ("tonality", 1, True),
     ("mechanics", 1, True),
     ("notes", 40, False),
     ("perceptual", 1, True),

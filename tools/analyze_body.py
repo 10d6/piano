@@ -21,6 +21,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import analyze as A  # noqa: E402
 
+NO_TONES = __import__("os").environ.get("VOICE_TONES") != "1"   # make_header.py's setting
 BANDS = 31.25 * 2.0 ** np.arange(10)        # the same octave bands as the strike noise
 WINDOWS = [(0.10, 0.20), (0.20, 0.35), (0.35, 0.6), (0.6, 1.0), (1.0, 1.5), (1.5, 2.2), (2.2, 3.0)]
 N = 1 << 17
@@ -34,6 +35,10 @@ def partial_freqs(key):
         fs.append(p["f"])
         for c in (p.get("cluster") or {}).get("cents", []):
             fs.append(p["f"] * 2 ** (c / 1200))
+    # and, where the voices play each key's tones between the partials (VOICE_TONES=1), those:
+    # the body's ring is then only what's left
+    if not NO_TONES:
+        fs += [t["f"] for t in key.get("tones") or []]
     return fs
 
 

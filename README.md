@@ -4,7 +4,8 @@ A modelled grand piano built on [synthkit](https://github.com/10d6/synthkit). It
 runs in the browser (one ~2.9 MB HTML file) and as a VST3 / AU plugin.
 
 How it's modelled, in detail: [`docs/MODEL.md`](docs/MODEL.md). How it's
-tested against the real piano: [`docs/TESTING.md`](docs/TESTING.md).
+tested against the real piano: [`docs/TESTING.md`](docs/TESTING.md). Where the work stands and
+what's next: [`docs/STATUS.md`](docs/STATUS.md).
 
 There are no samples in it. Each key is a bank of decaying sine partials, and
 everything about them is **measured from recordings of a real grand**:
@@ -47,6 +48,11 @@ everything about them is **measured from recordings of a real grand**:
   0.3 s. And there, a partial is a cluster: the unison's strings tens of Hz
   apart, sometimes with a component well to the side. Where a cluster is wide,
   the model plays its measured components rather than one tone and a beat;
+- the body's ring, as tones: between the partials the recordings hold resonances (the
+  soundboard's and case's, other strings ringing along), not noise. The ring's band noise
+  drives a bank of 260 of the body's resonances, found between the partials of every key
+  (`tools/analyze_residual.py`), so it rings as the recordings do rather than hissing
+  (`tools/measure/tonality.py`). In more detail:
 - the body's ring: after each strike the soundboard, case and room ring on,
   as diffuse sound between the strings' partials a couple of dozen dB below
   the note, fading over seconds. Measured per key (from C3 up; below, the
@@ -122,6 +128,7 @@ git clone https://github.com/sfzinstruments/SalamanderGrandPiano ../salamander  
 python3 -I tools/analyze.py ../salamander tools/salamander.json          # partials (~25 min; see --merge)
 python3 -I tools/analyze_onset.py ../salamander tools/salamander.json tools/salamander_onset.json
 python3 -I tools/analyze_modes.py ../salamander tools/salamander.json --procs 2   # modes (~40 min; cached per key)
+python3 -I tools/analyze_residual.py ../salamander tools/salamander.json        # the tones between the partials
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises

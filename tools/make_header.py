@@ -34,7 +34,14 @@ def repair(keys):
 NOISE_Q = 1.2       # per stage
 NOISE_STAGES = 2    # identical band-pass stages per band
 NOISE_LP = 1.7      # then a 4th-order Butterworth low-pass at this × the band's lower edge
-NO_MODES = __import__("os").environ.get("NO_MODES") == "1"   # the older description only (choose_modes.py)
+NO_MODES = __import__("os").environ.get("NO_MODES") == "1"
+# each key's tones between the partials played in its voice (off: the body's resonances carry
+# them, which matched the recordings' tonality better and kept the attack and the late ring)
+NO_TONES = __import__("os").environ.get("VOICE_TONES") != "1"
+BODY_TONAL = __import__("os").environ.get("BODY_TONAL", "1") == "1"   # must match Synth.cpp
+BODY_BANDS = [31.25 * 2 ** i for i in range(10)]                # the noise's octave bands
+BODY_MODES = [int(x) for x in __import__("os").environ.get("BODY_MODES", "4,8,12,20,32,48,48,48,32,8").split(",")]
+BODY_MODE_DECAY = float(__import__("os").environ.get("BODY_MODE_DECAY", "300"))   # the older description only (choose_modes.py)
 BEAT_SCALE = float(__import__("os").environ.get("BEAT_SCALE", "1.8"))   # calibrated: README
 
 
@@ -359,6 +366,62 @@ def main():
     out.write("// MIDI velocity at the middle of each recorded layer\n")
     out.write("constexpr float kLayerVel[kLayers] = {" + ", ".join("%.1ff" % c for c in centers) + "};\n\n")
     out.write("constexpr Key keys[kKeys] = {\n" + ",\n".join(rows_k) + "\n};\n\n")
+    # the tones between the partials (tools/analyze_residual.py): resonances of the soundboard and
+    # case, other strings ringing along; fixed in Hz, per key, levels and phases per layer and mic at
+    # the engine's t = 0 (the swell's start, `delay` into the recording)
+    rows_t, rows_tl, rows_tp, t_first, t_count = [], [], [], [], []
+    qp = lambda x: max(-127, min(127, round(math.remainder(x, 2 * math.pi) / math.pi * 127)))
+    for k in keys:
+        dl = onset_by_key.get(k["key"], {}).get("delay", [0.0] * n_layers)
+        t_first.append(len(rows_t))
+        ts = [] if NO_TONES else (k.get("tones") or [])
+        for t in ts:
+            rows_t.append("  {%.3ff, %.3ff}" % (t["f"], t["decay"]))
+            rows_tl.append("  {" + ", ".join("{%d, %d}" % tuple(round(max(t["levels"][v][c] + t["decay"] * dl[v], -150) * 100)
+                                                                 for c in (0, 1)) for v in range(n_layers)) + "}")
+            rows_tp.append("  {" + ", ".join("{%d, %d}" % tuple(qp(t["phases"][v][c] + 2 * math.pi * t["f"] * dl[v])
+                                                                 for c in (0, 1)) for v in range(n_layers)) + "}")
+        t_count.append(len(ts))
+    # the body's resonances: the bank of resonators the body's ring plays through (its noise per
+    # band drives them, so it rings as tones, as the recordings' does). Their frequencies: the
+    # tones found between the partials, wherever they recur, merged within 4 Hz; each band filled
+    # up to BODY_MODES with frequencies spread evenly in log between them
+    import numpy as _np
+    allf = sorted(t["f"] for k in keys for t in (k.get("tones") or []))
+    merged = []
+    for f in allf:
+        if merged and f - merged[-1][-1] < 4.0:
+            merged[-1].append(f)
+        else:
+            merged.append([f])
+    found = [float(_np.mean(g)) for g in merged]
+    bm_hz, bm_band = [], []
+    for b, lo in enumerate(BODY_BANDS):
+        want = BODY_MODES[b]
+        fs = [f for f in found if lo <= f < 2 * lo]
+        fs = sorted(fs, key=lambda f: -sum(1 for g in allf if abs(g - f) < 4.0))[:want]
+        i = 1
+        while len(fs) < want:
+            f = lo * 2 ** ((i * 0.6180339887) % 1.0)
+            i += 1
+            if all(abs(f - g) > 3.0 for g in fs):
+                fs.append(f)
+        for f in sorted(fs):
+            bm_hz.append(f)
+            bm_band.append(b)
+    out.write("// the body's resonances (Hz) and their octave band; how fast they ring down (dB/s)\n")
+    out.write(f"constexpr int kBodyModes = {len(bm_hz)};\n")
+    out.write("constexpr float bodyModeHz[kBodyModes] = {" + ", ".join("%.2ff" % f for f in bm_hz) + "};\n")
+    out.write("constexpr unsigned char bodyModeBand[kBodyModes] = {" + ", ".join(map(str, bm_band)) + "};\n")
+    out.write(f"constexpr float kBodyModeDecay = {BODY_MODE_DECAY:.1f}f;\n\n")
+    out.write("// the tones between the partials: frequency (Hz) and decay (dB/s)\n")
+    out.write("struct Tone { float hz, decay; };\n")
+    out.write(f"constexpr int kTones = {max(1, len(rows_t))};\n")
+    out.write("constexpr Tone tones[kTones] = {\n" + (",\n".join(rows_t) or "  {0, 0}") + "\n};\n")
+    out.write("constexpr unsigned short toneFirst[kKeys] = {" + ", ".join(map(str, t_first)) + "};\n")
+    out.write("constexpr unsigned char toneCount[kKeys] = {" + ", ".join(map(str, t_count)) + "};\n")
+    out.write("constexpr short toneLevels[kTones][kLayers][2] = {\n" + (",\n".join(rows_tl) or "  {}") + "\n};\n")
+    out.write("constexpr signed char tonePhases[kTones][kLayers][2] = {\n" + (",\n".join(rows_tp) or "  {}") + "\n};\n\n")
     out.write(f"constexpr int kPartials = {len(rows_p)};\n")
     out.write("constexpr Partial partials[kPartials] = {\n" + ",\n".join(rows_p) + "\n};\n\n")
     out.write("// starting level of each partial per layer and mic (left, right), in hundredths of a dB\n")
@@ -455,7 +518,12 @@ def main():
             mics = []
             for mic in layer:
                 target = [(-150.0 if dead[b] or x < -95 else x + badj[b]) for b, x in enumerate(mic)]
-                g = solve_gains(Mb, target) if max(target) > -140 else [-150.0] * nb
+                # played through the body's resonators (Synth.cpp, BODY_TONAL), each band is its own
+                # and doesn't spill: its level is the target itself; through band noise, solved
+                if BODY_TONAL:
+                    g = target
+                else:
+                    g = solve_gains(Mb, target) if max(target) > -140 else [-150.0] * nb
                 mics.append("{" + ", ".join(str(round(max(v, -150) * 100)) for v in g) + "}")
             lv.append("{" + ", ".join(mics) + "}")
         rows_bl.append("  {" + ", ".join(lv) + "}")
