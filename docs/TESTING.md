@@ -162,7 +162,7 @@ each. Run it after any change to the sound.
 
 | Measure | Today | Healthy |
 |---|---|---|
-| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 9.2 %, mean 14.9 % (main before the modes: 24.4 / 26.5); bass 8.0, middle 6.6, treble 32.8 % | median well under ~15 %; yardstick 5.4 % |
+| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 9.4 %, mean 14.7 % (main before the modes: 24.4 / 26.5); bass 8.1, middle 6.3, treble 32.6 % | median well under ~15 %; yardstick 5.4 % |
 | `compare.py`: octave bands over time, median \|error\| | 0.1–3.4 dB (all), 0.1–2.6 dB (first 0.5 s) | 2–5 dB |
 | `levels.py`: overall level by time | −0.8 … −0.0 dB | within ~3 dB |
 | `groups.py`: partials 1-2 / 3-6 / 7-12 / 13-24 at 0.05 / 0.4 / 1.4 s | within ~1 dB, except 13-24 at 0.4 s (−5 dB) | within ~3 dB |
@@ -248,9 +248,15 @@ These are tracked rather than hidden:
 
 - **The keys between the measured ones** are as far from what they should be as before the
   modes (holdout, above): the next thing to work on.
-- **The treble** (C6 up, 32.8 %): most of its partials are too noisy for the modal fit to beat
-  the older description, which they keep; soft A6 (layer 4) is the one note further from its
-  recording than on main (41 % against 29 %).
+- **The treble** (C6 up, 32.6 %): most of its partials are too noisy for the modal fit to beat
+  the older description, which they keep.
+- **The distance can't tell noise from tone within a band.** In this PR's first version the
+  strike noise was re-measured against the modes, which hold less of a partial's energy in its
+  first milliseconds than the older burst does; the difference became knock, up to 25 dB too
+  strong at 1-2 kHz on C5 and D#5. The owner heard it as noise in the attack; the distance
+  said those notes were better, since the band levels were right. So after any change to the
+  noise or to how partials start, compare the knock levels per key with main's
+  (`salamander_noise.json`), not only the distance and `between.py`'s averages.
 - **Body ring:** a few dB strong at 0.4–1 s, and 5–13 dB weak at 2–3 s.
 - **Upper partials 13–24** come out ~5 dB weak at 0.4 s.
 - **A soft C4's 62 Hz thump** is ~20 dB strong.

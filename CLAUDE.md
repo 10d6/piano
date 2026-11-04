@@ -56,7 +56,10 @@ from CI at milestones.
   Lessons: the stiff-string line is far off in the bass (A0's partials reach 2 semitones
   sharp of it; follow them up the series, `refine_long`); modes that nearly cancel can't
   survive the header's quantisation (merge twins, refuse cancelling sets); a fit that starts
-  late (the bass's long window) must not let fast modes grow back towards the strike.
+  late (the bass's long window) must not let fast modes grow back towards the strike; the
+  noise analysis must keep subtracting the older description (with its burst), or a
+  partial's first milliseconds become knock (heard as attack noise on C5/D#5, which the
+  distance missed: it can't tell noise from tone within a band).
 - After any change to the sound, run `tools/measure/run_all.py` (every
   measurement against the recordings, about 1.5 minutes; `tools/measure/README.md`
   says what each answers and what healthy looks like) and

@@ -307,7 +307,11 @@ hammer's knock, the key and action, the soundboard's response.
   with the partials' τ. The levels are per key, layer and mic, interpolated
   like the partials. **Hammer** scales it.
 
-How it's measured (`analyze_noise.py`):
+How it's measured (`analyze_noise.py`). It subtracts analyze.py's partial description (level,
+decay shape and first burst), not the modes: the modes are fitted from where the envelope's
+window clears the swell, so in the first milliseconds they hold less of a partial than its
+burst does, and measured against them the difference became knock (heard as noise in the
+attack of C5 and D#5):
 
 1. **Frames.** 1024-point frames every 2 ms over 0–250 ms. In each band, the
    recording's power minus what the partial model accounts for.
