@@ -1,7 +1,7 @@
 # Piano
 
 A modelled grand piano built on [synthkit](https://github.com/10d6/synthkit). It
-runs in the browser (one ~2.8 MB HTML file) and as a VST3 / AU plugin.
+runs in the browser (one ~2.9 MB HTML file) and as a VST3 / AU plugin.
 
 How it's modelled, in detail: [`docs/MODEL.md`](docs/MODEL.md). How it's
 tested against the real piano: [`docs/TESTING.md`](docs/TESTING.md).

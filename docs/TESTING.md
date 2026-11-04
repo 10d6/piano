@@ -226,7 +226,7 @@ machine. Today:
 cost the same as the description they replace: a modal partial is 4-12 components, where the
 prompt, burst and aftersound with their beating partners were up to 18. The cost comes from the
 sympathetic string bank and the steeper noise filters. Healthy: the worst case no slower than
-main's on the same machine. The page is 2.8 MB (main 2.3 MB): the modes' levels and phases per
+main's on the same machine. The page is 2.9 MB (main 2.3 MB): the modes' levels and phases per
 layer and mic.
 
 ## What to run after which change
