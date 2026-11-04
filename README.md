@@ -131,6 +131,7 @@ python3 -I tools/calibrate_noise.py ../salamander build/piano_render tools/salam
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/choose_modes.py ../salamander build/piano_render tools/salamander.json   # per key: modes or not
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h                    # and build again
+python3 -I tools/calibrate_attack.py ../salamander build/piano_render tools/salamander.json  # the bass's strike (3 passes, make_header and a build between)
 python3 -I tools/measure/perceptual.py --sal ../salamander                              # how different it sounds
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch

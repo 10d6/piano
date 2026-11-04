@@ -172,7 +172,20 @@ def write_mech(out, path):
               ", ".join("{" + ", ".join(str(round(v * 100)) for v in mic) + "}" for mic in mech["ring"]) + "};\n\n")
 
 
-def emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp):
+ATTACK_BANDS = [62.5 * 2 ** i for i in range(9)]   # lower edges, as calibrate_attack.py measures
+FAST_DB = -30.0                                      # modes decaying faster than this make the strike
+
+
+def attack_gain(k, p, v):
+    """calibrate_attack.py's correction (dB) for this partial's fast modes at layer v."""
+    adj = k.get("attack_adjust")
+    if not adj:
+        return 0.0
+    b = max(0, min(len(ATTACK_BANDS) - 1, int(math.floor(math.log2(max(p["f"], 62.5) / 62.5)))))
+    return adj[v][b]
+
+
+def emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp, k=None):
     """A partial's modes (tools/analyze_modes.py) as the engine plays them. Returns the first mode's
     index, the count, the characteristic decay and the partial's dev (cents).
 
@@ -210,12 +223,35 @@ def emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp):
         rows_m.append("  {%.4ff, %.3ff}" % (m["df"] - mean_df, min(m["decay"], -0.8)))
         rows_ml.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100)) for a in lev) + "}")
         rows_mp.append("  {" + ", ".join("{%d, %d}" % (q(a[0]), q(a[1])) for a in ph) + "}")
+    # the strike's correction (calibrate_attack.py): one more mode, on the strongest one's
+    # frequency and in its phase (or against it, to take away), fading at 100 dB/s, sized so
+    # the partial's power at 25 ms changes by the correction
+    if k is not None and k.get("attack_adjust"):
+        gains = [attack_gain(k, p, v) for v in range(len(lv))]
+        if any(abs(g) > 0.05 for g in gains):
+            strong = max(range(len(ms)), key=lambda i: en[i])
+            m = ms[strong]
+            lev, ph = [], []
+            for v in range(len(lv)):
+                src = v if v in fitted else min(fitted, key=lambda u: abs(u - v))
+                shift = [lv[v][c] - lv[src][c] for c in (0, 1)] if src != v else [0.0, 0.0]
+                g = math.sqrt(10 ** (gains[v] / 10)) - 1
+                row_l, row_p = [], []
+                for c in (0, 1):
+                    a25 = m["levels"][src][c] + shift[c] + m["decay"] * (dl[v] + 0.025)   # strongest mode at 25 ms
+                    row_l.append(a25 + 20 * math.log10(abs(g) + 1e-9) + 100 * 0.025 if abs(g) > 1e-3 else -150.0)
+                    row_p.append(m["phases"][src][c] + 2 * math.pi * (p["f"] + m["df"]) * dl[v] + (math.pi if g < 0 else 0.0))
+                lev.append(row_l)
+                ph.append(row_p)
+            rows_m.append("  {%.4ff, %.3ff}" % (m["df"] - mean_df, -100.0))
+            rows_ml.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100)) for a in lev) + "}")
+            rows_mp.append("  {" + ", ".join("{%d, %d}" % (q(a[0]), q(a[1])) for a in ph) + "}")
     # the partial's level becomes the modes' (summed as powers): what blending between keys, the
     # range cut and the key's loudness work from. analyze.py's was read at its own frequency, which
     # in the bass was often a few Hz off the partial, and up to 30 dB low there
     for v in range(len(lv)):
         lv[v] = [10 * math.log10(eff[v][c] + 1e-30) for c in (0, 1)]
-    return first, len(ms), dch, dev
+    return first, len(rows_m) - first, dch, dev
 
 
 def main():
@@ -268,7 +304,7 @@ def main():
             dl = onset_by_key.get(k["key"], {}).get("delay", [0.0] * len(lv))
             fm, nm, dch = len(rows_m), 0, 0.0
             if p.get("modes") and not k.get("modes_off") and not NO_MODES:
-                fm, nm, dch, dev = emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp)
+                fm, nm, dch, dev = emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp, k)
             # a wide cluster (the treble's unisons: at least 15 % of the power off the main component,
             # spread over 6 Hz or more) is played as its components; narrower ones keep the beat model
             cl = p.get("cluster")

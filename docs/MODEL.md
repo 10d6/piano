@@ -152,6 +152,15 @@ the blended partial level and their decays scale to the blended characteristic d
 modes' energy-weighted mean). A modal partial is at most 4-6 modes, 8-12 components, against
 up to 18 for the older description's prompt, burst and aftersound with their beating partners.
 
+**The bass's strike, calibrated** (`calibrate_attack.py`). Below A3 the envelope's window is
+long (45 ms at A2), so the fit starts 50-100 ms in and the strike before that is extrapolated:
+it came out 2-3 dB weak on A1, D#2 and A2 and 1.5 dB weak on C3-F#3 (the owner heard less
+punch than on main). Each key is rendered at four layers, its 10-40 ms level in octave bands
+compared with the recording's, and corrected over three passes, interpolated across layers.
+The engine plays a correction as one more mode per partial in the band, on its strongest
+mode's frequency, in phase (or in opposition), fading at 100 dB/s. The strike is now within
+about ±1 dB of the recordings on most keys (C1 +2-3, A1 −2).
+
 ### Decay: prompt, aftersound and first burst
 
 A piano partial decays in two stages:

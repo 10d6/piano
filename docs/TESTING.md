@@ -162,7 +162,7 @@ each. Run it after any change to the sound.
 
 | Measure | Today | Healthy |
 |---|---|---|
-| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 9.4 %, mean 14.7 % (main before the modes: 24.4 / 26.5); bass 8.1, middle 6.3, treble 32.6 % | median well under ~15 %; yardstick 5.4 % |
+| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 9.8 %, mean 15.0 % (main before the modes: 24.4 / 26.5); bass 8.3, middle 6.8, treble 32.6 % | median well under ~15 %; yardstick 5.4 % |
 | `compare.py`: octave bands over time, median \|error\| | 0.1–3.4 dB (all), 0.1–2.6 dB (first 0.5 s) | 2–5 dB |
 | `levels.py`: overall level by time | −0.8 … −0.0 dB | within ~3 dB |
 | `groups.py`: partials 1-2 / 3-6 / 7-12 / 13-24 at 0.05 / 0.4 / 1.4 s | within ~1 dB, except 13-24 at 0.4 s (−5 dB) | within ~3 dB |
@@ -174,7 +174,7 @@ each. Run it after any change to the sound.
 | `velocity.py`: even steps; soft→loud changes | even; loudness changes within ~1 dB; A6's 8–16 kHz change too large | match within a few dB |
 | `between.py`: between the partials, mean \|diff\| | 4.9 / 3.4 / 3.2 / 6.9 dB at 0–40 ms / –150 ms / –400 ms / –1 s | ≤ ~5 dB to 0.4 s |
 | `mechanics.py`: pedal, release noise | pedal 1.0 dB, release 1.5 dB | ~1–3 dB |
-| `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 0.7 dB at 14/s) but A0's at 14/s (−1.0 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB | every strike rises (from A1) |
+| `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 1.2 dB at 14/s) but A0's at 14/s (−0.5 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB | every strike rises (from A1) |
 
 Also:
 
@@ -239,7 +239,7 @@ layer and mic.
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
-| `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, then `perceptual.py` and `holdout.py --perceptual` |
+| `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
 | the page (UI) | + `browser-test.cjs`, `panel.cjs` |
 
 ## Known gaps in the numbers
@@ -250,6 +250,10 @@ These are tracked rather than hidden:
   modes (holdout, above): the next thing to work on.
 - **The treble** (C6 up, 32.6 %): most of its partials are too noisy for the modal fit to beat
   the older description, which they keep.
+- **The bass's strike correction** (`calibrate_attack.py`) matches the recordings' 10-40 ms
+  level, and the owner heard the strike as weak without it, but the distance's attack score
+  for C3-F#3 went slightly up with it (9.0 → 10.1 %): it places the energy as a fast mode on
+  each partial, which isn't quite where the recording has it.
 - **The distance can't tell noise from tone within a band.** In this PR's first version the
   strike noise was re-measured against the modes, which hold less of a partial's energy in its
   first milliseconds than the older burst does; the difference became knock, up to 25 dB too

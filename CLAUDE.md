@@ -52,7 +52,7 @@ from CI at milestones.
   description, which partials without modes keep (mostly the top treble). The fit caches
   per key in `<tmp>/piano-modes/` (delete it after changing the script); about 40 minutes on
   two cores. After it: `analyze_noise.py`, `analyze_body.py`, `make_header.py`, build,
-  `calibrate_noise.py` ×3, then `choose_modes.py` (per key, modes or not, by the distance).
+  `calibrate_noise.py` ×3, then `choose_modes.py` (per key, modes or not, by the distance), then `calibrate_attack.py` ×3 (the bass's strike, which the fit can't see).
   Lessons: the stiff-string line is far off in the bass (A0's partials reach 2 semitones
   sharp of it; follow them up the series, `refine_long`); modes that nearly cancel can't
   survive the header's quantisation (merge twins, refuse cancelling sets); a fit that starts
