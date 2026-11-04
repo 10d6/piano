@@ -36,7 +36,7 @@ def partial_power(key, layer, mic, t):
         L = p["levels"][layer][mic]
         if L < -110:
             continue
-        env = 10 ** ((L + A.shape_db(A.shape_at(p, layer), t)) / 20)
+        env = A.partial_env(p, layer, mic, t)
         b = np.searchsorted(BANDS, p["f"], side="right") - 1
         if 0 <= b < len(BANDS) and p["f"] < BANDS[b] * 2:
             out[b] += env ** 2 / 2

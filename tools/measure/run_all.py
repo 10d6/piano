@@ -27,6 +27,7 @@ SCRIPTS = [
     ("between", 5, True),
     ("mechanics", 1, True),
     ("notes", 40, False),
+    ("perceptual", 1, True),
 ]
 
 

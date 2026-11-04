@@ -284,6 +284,28 @@ def shape_db(sh, tt):
                          + 10 ** (sh["x0"] / 20) * 10 ** (sh["s0"] * tt / 20))
 
 
+def mode_layer(p, layer):
+    """The layer whose modes stand for `layer` (the nearest fitted one), and the level shift to it
+    per mic (from the partial's measured levels), as tools/make_header.py plays them."""
+    fitted = p.get("fit_layers") or [v for v in range(LAYERS) if p["modes"][0]["levels"][v][0] > -190]
+    src = min(fitted, key=lambda u: abs(u - layer))
+    return src, [p["levels"][layer][c] - p["levels"][src][c] for c in (0, 1)]
+
+
+def partial_env(p, layer, mic, t):
+    """A partial's amplitude envelope at times t (recording time, s), as the model has it: the sum
+    of its modes (tools/analyze_modes.py), beating included, where it has them; else its level and
+    decay shape. Without the swell."""
+    if p.get("modes"):
+        src, shift = mode_layer(p, layer)
+        z = np.zeros(len(t), complex)
+        for m in p["modes"]:
+            c = 10 ** ((m["levels"][src][mic] + shift[mic]) / 20) * np.exp(1j * m["phases"][src][mic])
+            z += c * np.exp((m["decay"] / (20 / np.log(10)) + 2j * np.pi * m["df"]) * t)
+        return np.abs(z)
+    return 10 ** ((p["levels"][layer][mic] + shape_db(shape_at(p, layer), t)) / 20)
+
+
 def smooth_beats(e, t):
     """Average an envelope's power over a window that grows with time (half the time since the
     start, up to 0.4 s): the strike keeps its detail, and later the unison beats (1-3 Hz in the

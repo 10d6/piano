@@ -34,6 +34,7 @@ def repair(keys):
 NOISE_Q = 1.2       # per stage
 NOISE_STAGES = 2    # identical band-pass stages per band
 NOISE_LP = 1.7      # then a 4th-order Butterworth low-pass at this × the band's lower edge
+NO_MODES = __import__("os").environ.get("NO_MODES") == "1"   # the older description only (choose_modes.py)
 BEAT_SCALE = float(__import__("os").environ.get("BEAT_SCALE", "1.8"))   # calibrated: README
 
 
@@ -171,6 +172,52 @@ def write_mech(out, path):
               ", ".join("{" + ", ".join(str(round(v * 100)) for v in mic) + "}" for mic in mech["ring"]) + "};\n\n")
 
 
+def emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp):
+    """A partial's modes (tools/analyze_modes.py) as the engine plays them. Returns the first mode's
+    index, the count, the characteristic decay and the partial's dev (cents).
+
+    - The partial's frequency moves to the modes' energy-weighted mean, so the modes' offsets are
+      only the unison's spread (Unison scales them; 0 % puts them on one frequency).
+    - The engine's t = 0 is the swell's start, `delay` into the recording: each mode is advanced
+      to it (its phase turns, its level falls).
+    - Layers where the partial was too weak to fit take their nearest fitted layer's modes, moved
+      by the difference in the partial's measured level (analyze.py's levels)."""
+    ms = p["modes"]
+    fitted = p.get("fit_layers") or [v for v in range(len(lv)) if ms[0]["levels"][v][0] > -190]
+    # energy of each mode at a medium strike (power over its decay)
+    vref = min(fitted, key=lambda v: abs(v - 9))
+    en = [sum(10 ** (m["levels"][vref][c] / 10) for c in (0, 1)) / max(-m["decay"], 0.05) for m in ms]
+    tot = sum(en) or 1.0
+    mean_df = sum(e * m["df"] for e, m in zip(en, ms)) / tot
+    dch = -math.exp(sum(e * math.log(max(-m["decay"], 0.05)) for e, m in zip(en, ms)) / tot)
+    dev = max(-300.0, min(300.0, 1200 * math.log2((p["f"] + mean_df) / f_eng)))
+    q = lambda x: max(-127, min(127, round(math.remainder(x, 2 * math.pi) / math.pi * 127)))
+    first = len(rows_m)
+    eff = [[0.0, 0.0] for _ in lv]          # the modes' power at the strike, per layer and mic
+    for m in ms:
+        f = p["f"] + m["df"]
+        lev, ph = [], []
+        for v in range(len(lv)):
+            src = v if v in fitted else min(fitted, key=lambda u: abs(u - v))
+            shift = [lv[v][c] - lv[src][c] for c in (0, 1)] if src != v else [0.0, 0.0]
+            lev.append([m["levels"][src][c] + shift[c] + m["decay"] * dl[v] for c in (0, 1)])
+            ph.append([m["phases"][src][c] + 2 * math.pi * f * dl[v] for c in (0, 1)])
+        for v in range(len(lv)):
+            for c in (0, 1):
+                eff[v][c] += 10 ** (lev[v][c] / 10)
+        # no mode rings on slower than 0.8 dB/s: the few the fit left slower (28 of ~4100, at its
+        # bound) are tails near the recordings' floor, and kept pedalled notes alive past 45 s
+        rows_m.append("  {%.4ff, %.3ff}" % (m["df"] - mean_df, min(m["decay"], -0.8)))
+        rows_ml.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100)) for a in lev) + "}")
+        rows_mp.append("  {" + ", ".join("{%d, %d}" % (q(a[0]), q(a[1])) for a in ph) + "}")
+    # the partial's level becomes the modes' (summed as powers): what blending between keys, the
+    # range cut and the key's loudness work from. analyze.py's was read at its own frequency, which
+    # in the bass was often a few Hz off the partial, and up to 30 dB low there
+    for v in range(len(lv)):
+        lv[v] = [10 * math.log10(eff[v][c] + 1e-30) for c in (0, 1)]
+    return first, len(ms), dch, dev
+
+
 def main():
     d = json.load(open(sys.argv[1]))
     n_layers = d["layers"]
@@ -198,10 +245,11 @@ def main():
     onset_by_key = {o["key"]: o for o in json.load(open(opath))["keys"]} if os.path.exists(opath) else {}
     clean_onsets(onset_by_key, [k["key"] for k in keys])
     rows_k, rows_p, rows_l, rows_ph = [], [], [], []
+    rows_m, rows_ml, rows_mp = [], [], []
     for k in keys:
         first = len(rows_p)
         for p in sorted(k["partials"], key=lambda p: p["n"]):
-            lv = p["levels"]
+            lv = [list(a) for a in p["levels"]]
             if max(max(a) for a in lv) < -96:
                 continue                       # never above the noise
             drop = min(0.0, max(-60.0, p["drop"]))
@@ -217,6 +265,10 @@ def main():
             f_eng = (440 * 2 ** ((k["key"] - 69) / 12) * 2 ** (cents[k["key"]] / 1200) *
                      n * math.sqrt((1 + k["B"] * n * n) / (1 + k["B"])))
             dev = max(-100.0, min(100.0, 1200 * math.log2(p["f"] / f_eng))) if p.get("f_measured") else 0.0
+            dl = onset_by_key.get(k["key"], {}).get("delay", [0.0] * len(lv))
+            fm, nm, dch = len(rows_m), 0, 0.0
+            if p.get("modes") and not k.get("modes_off") and not NO_MODES:
+                fm, nm, dch, dev = emit_modes(p, lv, dl, f_eng, rows_m, rows_ml, rows_mp)
             # a wide cluster (the treble's unisons: at least 15 % of the power off the main component,
             # spread over 6 Hz or more) is played as its components; narrower ones keep the beat model
             cl = p.get("cluster")
@@ -227,23 +279,24 @@ def main():
                 if 1 - max(cl["share"]) >= 0.15 and max(hz) - min(hz) >= 6.0:
                     nc = len(cl["cents"])
                     cc[:nc], cw[:nc] = cl["cents"], cl["share"]
-            rows_p.append("  {%d, %s, %s, %s, %.3ff, %.2ff, %.4ff, %s, %s, %.2ff, %d, {%s}, {%s}}" % (
+            rows_p.append("  {%d, %s, %s, %s, %.3ff, %.2ff, %.4ff, %s, %s, %.2ff, %d, {%s}, {%s}, %d, %d, %.3ff}" % (
                 p["n"], arr("s1", "%.3ff"), arr("s2", "%.3ff"), arr("drop", "%.2ff", lambda x: min(0.0, max(-60.0, x))),
                 p["beat"], beat_db, p["phase"], arr("x0", "%.2ff"), arr("s0", "%.1ff"), dev, nc,
-                ", ".join("%.2ff" % c for c in cc), ", ".join("%.3ff" % w for w in cw)))
+                ", ".join("%.2ff" % c for c in cc), ", ".join("%.3ff" % w for w in cw), fm, nm, dch))
+            p["_levels"] = lv
             rows_l.append("  {" + ", ".join("{%d, %d}" % (round(max(a[0], -150) * 100), round(max(a[1], -150) * 100))
                                              for a in lv) + "}")
             phs = p.get("phases") or [[-math.pi / 2, -math.pi / 2 + p["phase"]]] * len(lv)
             # the engine starts the swell at its t = 0; the recordings' swell starts `delay` in,
             # so advance each phase to that moment
-            dl = onset_by_key.get(k["key"], {}).get("delay", [0.0] * len(lv))
             phs = [[a[0] + 2 * math.pi * p["f"] * dl[i], a[1] + 2 * math.pi * p["f"] * dl[i]] for i, a in enumerate(phs)]
             q = lambda x: max(-127, min(127, round(math.remainder(x, 2 * math.pi) / math.pi * 127)))
             rows_ph.append("  {" + ", ".join("{%d, %d}" % (q(a[0]), q(a[1])) for a in phs) + "}")
         # loudness of each layer: the power sum of every partial, both mics averaged
         loud = []
         for v in range(d["layers"]):
-            pw = sum((10 ** (p["levels"][v][0] / 10) + 10 ** (p["levels"][v][1] / 10)) / 2 for p in k["partials"])
+            pw = sum((10 ** (p.get("_levels", p["levels"])[v][0] / 10) + 10 ** (p.get("_levels", p["levels"])[v][1] / 10)) / 2
+                     for p in k["partials"])
             loud.append(10 * math.log10(pw + 1e-15))
         rows_k.append("  {%d, %.3ff, %.4ef, %d, %d, {%s}}" % (k["key"], cents[k["key"]] - ref, k["B"], first,
                                                            len(rows_p) - first, ", ".join("%.2ff" % x for x in loud)))
@@ -259,8 +312,12 @@ def main():
               "// centred on 0-based layers 3, 9 and 14): soft notes sustain relatively longer\n")
     out.write("// dev: cents off the stiff-string frequency, where the partial was measured elsewhere\n")
     out.write("// nc, cc, cw: a wide cluster's components (cents from the partial, share of its power)\n")
+    out.write("// fm, nm: the partial's modes (tools/analyze_modes.py), nm = 0 where it has none (then the fields\n"
+              "// above describe it); dch: their characteristic decay (dB/s), for blending between keys\n")
     out.write("struct Partial { unsigned char n; float s1[3], s2[3], drop[3], beat, beatDb, phase, x0[3], s0[3], dev;\n"
-              "                 signed char nc; float cc[4], cw[4]; };\n")
+              "                 signed char nc; float cc[4], cw[4]; unsigned short fm; unsigned char nm; float dch; };\n")
+    out.write("// a mode: its offset from the partial's frequency (Hz, the unison's spread) and its decay (dB/s)\n")
+    out.write("struct Mode { float off, decay; };\n")
     out.write("constexpr float kShapeLayer[3] = {3.f, 9.f, 14.f};\n\n")
     out.write(f"constexpr int kKeys = {len(keys)};\nconstexpr int kLayers = {d['layers']};\n")
     out.write("// MIDI velocity at the middle of each recorded layer\n")
@@ -272,6 +329,12 @@ def main():
     out.write("constexpr short levels[kPartials][kLayers][2] = {\n" + ",\n".join(rows_l) + "\n};\n\n")
     out.write("// phase of each partial at the strike per layer and mic (cosine reference), in steps of pi/127\n")
     out.write("constexpr signed char phases[kPartials][kLayers][2] = {\n" + ",\n".join(rows_ph) + "\n};\n\n")
+    out.write(f"constexpr int kModes = {max(1, len(rows_m))};\n")
+    out.write("constexpr Mode modes[kModes] = {\n" + (",\n".join(rows_m) or "  {0, 0}") + "\n};\n")
+    out.write("// each mode's level per layer and mic at the engine's t = 0 (the swell's start), hundredths of a dB\n")
+    out.write("constexpr short modeLevels[kModes][kLayers][2] = {\n" + (",\n".join(rows_ml) or "  {}") + "\n};\n")
+    out.write("// and its phase there (cosine reference), in steps of pi/127\n")
+    out.write("constexpr signed char modePhases[kModes][kLayers][2] = {\n" + (",\n".join(rows_mp) or "  {}") + "\n};\n\n")
     # the strike's noise (tools/analyze_noise.py), if measured
     import os
     npath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_noise.json")

@@ -38,7 +38,7 @@ def main():
             t, pw = M.env_power(x, 48000, p["f"], max(k["window"], 0.02), 3.0)
             rows.append([M.at(t, pw, c) if c + 0.1 < t[-1] else np.nan for c in TIMES])
         sh = M.A.shape_at(p, a.layer - 1)
-        stored = 10 * np.log10(np.mean([10 ** ((p["levels"][a.layer - 1][c] + M.A.shape_db(sh, ts)) / 10) for c in (0, 1)], 0))
+        stored = 10 * np.log10(np.mean([M.A.partial_env(p, a.layer - 1, c, ts) ** 2 for c in (0, 1)], 0))
         print(f"n{p['n']:<2d} recording " + " ".join("%6.1f" % v for v in rows[0]))
         print(f"    model     " + " ".join("%6.1f" % v for v in rows[1]))
         print(f"    stored    " + " ".join("%6.1f" % v for v in stored) +
