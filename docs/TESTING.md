@@ -116,7 +116,7 @@ and keep the bass from getting further from its recordings on the distance alone
   G#3 up. Lower down it measures the partials' own spill.
 - **Calibration by resynthesis.** Where an analysis can't be made exact,
   render the model and correct it towards the recording on the same measure
-  the error shows on. `calibrate_noise.py` does this for the strike noise.
+  the error shows on. `calibrate_noise.py` does this for the band-noise strike (below A2).
   Calibrate only what the measure can see. Calibrating A2 on a window too short
   for its partials raised its noise to match their spill, and fast repeats lost
   their attack.
@@ -171,16 +171,16 @@ each. Run it after any change to the sound.
 | Measure | Today | Healthy |
 |---|---|---|
 | `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 8.5 %, mean 11.8 %, attack 8.6 (main before the recorded strike: 9.8 / 15.0 / 12.8; before the modes: 24.4 / 26.5); bass 8.7, middle 4.9, treble 22.3 % (main: 8.7 / 6.9 / 29.2, split at C3 and C6); no note more than 0.3 points further from its recording than on main | median well under ~15 %; yardstick 5.4 % |
-| `compare.py`: octave bands over time, median \|error\| | 0.2–3.2 dB (all), 0.2–2.3 dB (first 0.5 s) | 2–5 dB |
+| `compare.py`: octave bands over time, median \|error\| | 0.2–3.0 dB (all), 0.2–2.1 dB (first 0.5 s) | 2–5 dB |
 | `levels.py`: overall level by time | −0.8 … −0.0 dB | within ~3 dB |
 | `groups.py`: partials 1-2 / 3-6 / 7-12 / 13-24 at 0.05 / 0.4 / 1.4 s | within ~1 dB, except 13-24 at 0.4 s (−5 dB) | within ~3 dB |
 | `ring.py`: body ring between partials | +0…+7 dB to 1.5 s; −5…−13 dB at 2–3 s | within ~5 dB to 1.5 s |
 | `balance.py`: sustain spectrum vs fundamental | 5.1 dB mean \|diff\| | ~5–7 dB |
 | `fluctuation.py`: beating, L/R independence | 4.1 dB vs 3.6; correlation 0.55 vs 0.36 | ~3.6 dB; low correlation |
 | `decay_by_velocity.py`: stored curves vs recordings | within ~2 dB | within ~2–4 dB |
-| `attack.py`: attack bands at 5–500 ms | medians −6…+0 dB (62 Hz −1.1, was −4.1); worst +19 dB (62 Hz, soft C4), +8 dB at 8 kHz (was +18) | no band far above |
+| `attack.py`: attack bands at 5–500 ms | medians −6…+0 dB (62 Hz −1.1, was −4.1); worst +20 dB (62 Hz, soft C4), +8 dB at 8 kHz (was +18) | no band far above |
 | `velocity.py`: even steps; soft→loud changes | even; loudness changes within ~1 dB; the attack brightens from soft to loud within ~4-10 dB of the recordings at 2–8 kHz (A6 still ~10-15 dB short at 2-4 kHz) | match within a few dB |
-| `between.py`: between the partials, mean \|diff\| | 1.9 / 2.3 / 2.7 / 6.5 dB at 0–40 ms / –150 ms / –400 ms / –1 s (main: 4.6 / 3.8 / 3.1 / 6.9) | ≤ ~5 dB to 0.4 s |
+| `between.py`: between the partials, mean \|diff\| | 1.7 / 2.2 / 2.7 / 6.5 dB at 0–40 ms / –150 ms / –400 ms / –1 s (before the recorded strike: 4.6 / 3.8 / 3.1 / 6.9) | ≤ ~5 dB to 0.4 s |
 | `mechanics.py`: pedal, release noise | pedal 1.0 dB, release 1.5 dB | ~1–3 dB |
 | `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 1.2 dB at 14/s; A2-C5 now 2.2-7.9 dB, were 1.3-6.6) but A0's at 14/s (−0.5 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB; the same strike repeated now varies by 0.0-0.1 dB in its first 40 ms from A2 up (was 0.3-1.8 with random noise) | every strike rises (from A1) |
 
@@ -195,8 +195,8 @@ Also:
   semitones from its neighbours, twice the real gap) are 26.3 % from their
   recordings, the same as main before the modes (26.3 %), against 5.5 % when
   measured (main: 18 %). With the recorded strike (left-out keys take the nearer
-  key's response): 25.3 % mean, attack 19.8 (26.0 / 21.0 before it, measured on the same
-  machine), measured 7.9 % (9.2). **The modes made the 30 measured keys much nearer
+  key's response): 25.1 % mean, attack 19.5 (26.0 / 21.0 before it, measured on the same
+  machine), measured 7.6 % (9.2). **The modes made the 30 measured keys much nearer
   their recordings, but not yet the 58 between them**: what a key holds of its
   own (where the hammer strikes against its partials, how its unison beats) its
   neighbours can't predict, and the per-partial levels of a key differ from its
@@ -258,6 +258,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
 | a control that changes the model (Hardness, Strike Point) | + renders at default against the previous build, byte for byte; a sweep and a page of renders |
+| the body's ring | + `between.py` and `ring.py`, and `tools/listen/ab_ring.py` for an A/B against the recording's own ring |
 | the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
@@ -269,14 +270,15 @@ These are tracked rather than hidden:
 
 - **The keys between the measured ones** are as far from what they should be as before the
   modes (holdout, above): the next thing to work on.
-- **The treble** (C6 up, 32.6 %): most of its partials are too noisy for the modal fit to beat
-  the older description, which they keep.
+- **The treble** (C6 up, 22.3 %; C8 42 %, D#7 32 %, C#8 28 %) is now the weakest measured region:
+  most of its partials are too noisy for the modal fit to beat the older description, which they
+  keep. (C5 and nearby, long the weakest, is at 5.5 % since the recorded strike.)
 - **The bass's strike correction** (`calibrate_attack.py`) matches the recordings' 10-40 ms
   level, and the owner heard the strike as weak without it, but the distance's attack score
   for C3-F#3 went slightly up with it (9.0 → 10.1 %): it places the energy as a fast mode on
   each partial, which isn't quite where the recording has it.
 - **The distance can't tell noise from tone within a band.** In this PR's first version the
-  strike noise was re-measured against the modes, which hold less of a partial's energy in its
+  strike's band noise was re-measured against the modes, which hold less of a partial's energy in its
   first milliseconds than the older burst does; the difference became knock, up to 25 dB too
   strong at 1-2 kHz on C5 and D#5. The owner heard it as noise in the attack; the distance
   said those notes were better, since the band levels were right. So after any change to the
@@ -284,11 +286,12 @@ These are tracked rather than hidden:
   (`salamander_noise.json`), not only the distance and `between.py`'s averages.
 - **Body ring:** a few dB strong at 0.4–1 s, and 5–13 dB weak at 2–3 s.
 - **Upper partials 13–24** come out ~5 dB weak at 0.4 s.
-- **A soft C4's 62 Hz thump** is ~20 dB strong.
+- **A soft C4's 62 Hz thump** is ~20 dB strong (attack.py's worst case).
 - **The strike's finer changes with velocity.** One response per key (velocity 100), shaped by
   a shelf and two gains: exact at velocity 100, ~2 points of attack distance short of the
   exact per-layer strikes in the middle and ~4 in the treble at other velocities (offline).
 - **A6:** the attack brightens less from soft to loud than the recordings at 2-4 kHz.
 - **A7 at 8 kHz:** a little too much between the partials 40-150 ms in, from the body ring's
   band noise (it is there with the strike off too).
-- **Sympathetic coupling strength** is a judgment, not a measurement.
+- **Sympathetic coupling strength** is a judgment, not a measurement. The free strings above E6
+  ring in every recording (MODEL.md, What the ring is), so it could be measured from them.

@@ -40,8 +40,8 @@ from CI at milestones.
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
 - **Work against the perceptual distance** (`tools/measure/perceptual.py`, docs/TESTING.md):
-  it agrees with the owner's ears on 7 of 8 fixes in the history and with a blind listening
-  test (rank correlation −0.59). Use it on a branch instead of asking the owner to listen;
+  it agrees with the owner's ears on 7 of 8 fixes in the history and with two blind listening
+  tests (rank correlation −0.59; −0.78 for the recorded strike). Use it on a branch instead of asking the owner to listen;
   listening tests (`tools/listen/make_test.py`) are for PRs, with most trials in the middle
   and upper range (the owner rarely hears the low bass alone, and rates it least reliably:
   there, trust the distance, and never let the bass get further from its recordings). It
@@ -101,8 +101,10 @@ from CI at milestones.
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
   (`analyze_mech.py` is independent of them), then `make_header.py`, build,
   and `calibrate_noise.py` (2-3 passes, `make_header.py` and a build between):
-  it renders keys and corrects the strike noise's two stages per band
-  against the recordings, between the partials. Re-analysing resets nothing:
+  it renders keys and corrects the band noise's two stages per band
+  against the recordings, between the partials (it skips keys with a recorded
+  strike, so today it changes nothing).  Then `analyze_strike.py` (needs a build)
+  and `analyze_hammer.py`, `make_header.py`, build. Re-analysing resets nothing:
   the corrections live in salamander_noise.json (`adjust1`, `adjust2`); clear
   them first if the noise analysis changes.
 - Treble partials: `analyze.py` moves each partial to its peak in the first
@@ -117,7 +119,7 @@ from CI at milestones.
   gain solve or calibration can undo. Lower ratios cut the spill further but
   dig 12-17 dB notches at the octave edges. (D#6 and A7's hiss at 8-16 kHz went with the recorded strike.) Gains are solved in dB (`solve_gains`):
   solving in power let a quiet band switch its loud neighbour off.
-- Strike noise is measured between the partials only where they stand well
+- The band-noise strike (below A2 today) is measured between the partials only where they stand well
   apart (`between_ratio`: f0 from about G#3), and calibration uses each
   window only where it can see between them (knock from ~D5, slower part
   from ~G#3; below the fundamental, the whole band from A2). Lower keys keep
@@ -153,7 +155,8 @@ from CI at milestones.
   per control block): anything else that must follow events in
   `processGlobal` needs the same. The pedal's lift ring is calibrated
   against pedalD (`tools/measure/mechanics.py`); the note coupling
-  (`kCoupling`) isn't measurable from these recordings.
+  (`kCoupling`) is a judgment (no two notes sound together in these recordings), though the
+  free strings above E6 ring along in every one and could measure it.
 - Velocity: `Piano::velocityMap` is the one place velocity becomes tone layer
   and level; the strike and the page's graph (`ui/custom.js`, messages
   `vel.query` / `vel.point` / `vel.note`) both use it.
@@ -167,9 +170,10 @@ from CI at milestones.
 - After any change to voices, notes or pedal handling, run
   `tools/stress.py build/piano_render 300` (and with `overlap`): random fast
   passages must all go silent after release.
-- C5 (and nearby) is the weakest measured region: upper partials a few dB
-  strong, body ring weak late. Known, not yet fixed. Soft low-mid strikes
-  (C4 layer 4) have a 62 Hz thump 15-20 dB too strong (attack.py's worst case). The body ring is a few
+- The top octave and a half (C6 up) is the weakest measured region (22 %; C8 42 %, D#7 32 %);
+  C5 and nearby, long the weakest, is at 5.5 % since the recorded strike. Keys between the
+  measured ones are ~25 % (holdout). Soft low-mid strikes (C4 layer 4) have a 62 Hz thump
+  ~20 dB too strong (attack.py's worst case). The body ring is a few
   dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
