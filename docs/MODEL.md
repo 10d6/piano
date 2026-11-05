@@ -466,6 +466,34 @@ the nodes (|sin| no lower than 0.03). Nearer the end is thinner and brighter (C4
 point is unknown (it moves towards the end on most grands), so there it changes the tone around
 the recordings without claiming where the hammer was.
 
+## The strings: Stiffness and Overtone Decay
+
+Two controls change the strings around what was measured; at their defaults (100 % and 0 %) the
+output is exactly the measured piano's (bit for bit). Both reach the voices and the sympathetic
+string bank alike.
+
+**Stiffness** (`string.stiffness`, 0-300 %) scales the strings' inharmonicity. Partial n of a
+string is at n·√((1 + B n²) / (1 + B)) times its fundamental, then `dev` cents off that line where
+it was measured elsewhere (`partialRatio`); Stiffness scales B and those offsets alike. At 0 % the
+strings are ideal, the partials at whole multiples of the fundamental (harp-like; organ-like in the
+bass); at 300 % they spread three times as far (C4's 12th partial: +33 cents as measured, +253 at
+300 %), towards bells. It applies at the strike, so to the notes struck next; the stretch tuning
+(Stretch) is kept as it is.
+
+**Overtone Decay** (`string.overtonedecay`, −100…+100 %) changes how long the upper partials ring
+against the fundamental: each component's measured decay times (its frequency / the
+fundamental)^γ, γ = the setting / 100, the factor kept within ¼…4 and no component slower than
+0.3 dB/s (`overtoneDecayDb`, applied where the poles are set, so it acts on sounding notes too).
+Below 0 the upper partials ring on (bright, steely: on C3 at −100 % the 6th partial fades at
+2 dB/s against the fundamental's 5.7); above, they die sooner (dark, like gut or nylon: C5's 6th
+at 27 dB/s, measured 16). Even at Sustain 400 % and −100 %, the undamped top keys are silent
+within 20 s.
+
+A physical loss law was tried first: string losses as b1 + b3 f² (air and internal friction),
+fitted per key to the partials' decays. It doesn't hold on these recordings (each partial's decay
+mixes a fast and a slow mode of the unison; the fit's error is 50-90 %, and b3's sign changes from
+key to key), so Overtone Decay scales the measured decays instead of moving a fitted law.
+
 ## The body's ring
 
 After each strike the soundboard, case and room ring on. This is diffuse
@@ -493,6 +521,18 @@ pure partials and sound like a bell.
 
 The noise generators draw a fresh sample every time, sounding or not, so the
 output doesn't depend on the host's block size.
+
+### What the ring is (measured for a string-based model, not adopted)
+
+Between the partials, 0.5-2.5 s after the strike, the recordings hold mostly **tones** (30-93 % of
+the energy in narrow peaks, by band) fading at **5-20 dB/s**, far slower than a soundboard's or a
+room's: strings ringing along. Part of it is the free strings above E6 (on C6 at velocity 100,
+half the tonal power lies on their partials, against 1 % by chance); the rest is likely the damped
+strings' imperfect stop and their back lengths. The model's own free strings (the sympathetic
+bank) give 20-60 dB less than that ring, and the band noise is 5-9 dB strong at 0.3-1 s, 7-19 dB
+weak at 2-3 s and almost all noise. But with the recording's own ring in its place
+(`tools/listen/ab_ring.py`) the owner heard no difference from today's, so it was left as it is.
+A string-based ring would make the coupling (`kCoupling`) measurable from the free strings' ring.
 
 ## Mechanical noises
 
@@ -575,6 +615,8 @@ aftersound decay for a medium strike.
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
 | Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
 | Strike Point | `tone.strikepoint` | where the hammer meets the string, % of its length (12 %: as recorded) |
+| Stiffness | `string.stiffness` | the strings' inharmonicity, % of measured (0: harmonic) |
+| Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |

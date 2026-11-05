@@ -97,6 +97,24 @@ float measuredCents(int note) {
 
 
 // The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
+// Stiffness: partial n of a string with inharmonicity B is at n·√((1 + B n²) / (1 + B)) times its
+// fundamental, then `dev` cents off that line where it was measured elsewhere. Stiffness scales B
+// and those offsets alike (0 %: an ideal, harmonic string; 100 %: as measured).
+inline float partialRatio(int n, float B, float devCents, float stiff) {
+  if (stiff == 1.f) return n * std::sqrt((1 + B * n * n) / (1 + B)) * std::exp2(devCents / 1200.f);
+  float b = B * stiff;
+  return n * std::sqrt((1 + b * n * n) / (1 + b)) * std::exp2(stiff * devCents / 1200.f);
+}
+
+// Overtone Decay: each component's measured decay times (its frequency / the fundamental)^γ, γ
+// from −1 to +1: upper partials ring on longer (bright, steely) or die sooner (dark, gut-like)
+// than measured; the fundamental's is kept. The factor stays within ¼…4, so the top keys, which
+// have no dampers, still fade within seconds, and no component rings longer than 0.3 dB/s.
+inline float overtoneDecayDb(float decayDb, float ratio, float gamma) {
+  if (gamma == 0.f || ratio <= 0.f) return decayDb;
+  return std::min(decayDb * std::clamp(std::pow(ratio, gamma), 0.25f, 4.f), -0.3f);
+}
+
 inline float damperRate(int note, int last = kLastDamper) {
   if (note > last) return 0.f;
   float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
@@ -161,7 +179,7 @@ struct PianoVoice : Voice {
            float stereoPhase, float onset);
   void addOne(float amp, float decayDb, float ratio, float offsetHz, float phase, float damp, float wl, float wr,
               float stereoPhase, float extraDb);
-  void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale);
+  void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma);
   void cull();
 
   Piano& synth;
@@ -183,7 +201,7 @@ struct PianoVoice : Voice {
   float damp[kCapacity];      // extra decay with the damper down (dB/s, positive)
 
   // pole inputs last used, to recompute only on change
-  float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1;
+  float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
   bool lastDamped = false;
 
   // the strike's noise: octave bands of noise, per mic, each fading at its measured rate
@@ -216,7 +234,7 @@ struct PianoVoice : Voice {
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, sustain, damper,
+  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room;
 
   void defineParams(ParamBuilder& b) override {
@@ -234,6 +252,8 @@ struct Piano : Synth {
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
+    stiffness = b.add("string.stiffness").name("Stiffness").range(0, 300).def(100).unit("%").group("Strings");
+    overtoneDecay = b.add("string.overtonedecay").name("Overtone Decay").range(-100, 100).def(0).unit("%").group("Strings");
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").group("Strings");
     topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
@@ -539,6 +559,8 @@ struct Piano : Synth {
   alignas(32) float bRe[kBankCap] = {}, bIm[kBankCap] = {}, bPr[kBankCap] = {}, bPi[kBankCap] = {};
   alignas(32) float bWl[kBankCap] = {}, bWr[kBankCap] = {}, bWi[kBankCap] = {}, bIn[kBankCap] = {};
   float bRatio[kBankCap] = {}, bDecay[kBankCap] = {}, bDampMul[kBankCap] = {};
+  float bB[kBankCap] = {}, bDev[kBankCap] = {};   // for Stiffness: the string's B and the partial's offset
+  unsigned char bPn[kBankCap] = {};
   signed char bBand[kBankCap] = {};
   int keyFirst[128] = {}, keyLen[128] = {};      // lanes per key (a multiple of kBankLanes; the padding has bIn = 0)
   bool keyLive[128] = {}, keyPoles[128] = {}, keyDamped[128] = {};
@@ -566,7 +588,7 @@ struct Piano : Synth {
     if (nChanges < kMaxChanges) changes[nChanges++] = c;
     else applyChange(c);
   }
-  float lastStretch = -1, lastSus = -1, lastDampScale = -1, lastA4 = -1;
+  float lastStretch = -1, lastSus = -1, lastDampScale = -1, lastA4 = -1, lastStiff = -1, lastGamma = -2;
 
   // string partial frequencies and decays, as the voices' strikes compute them (medium strike)
   void buildBank() {
@@ -582,14 +604,15 @@ struct Piano : Synth {
       constexpr int kLayer = 9;
       for (int pn = 1; pn <= kBankMaxPartial; ++pn) {
         float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B));
-        if (f0 * rat > kBankMaxHz) break;
+        if (f0 * rat > kBankMaxHz) break;   // (at Stiffness 100 %: the bank keeps the same partials at any setting)
         while (ia < ea && pd::partials[ia].n < pn) ++ia;
         while (ib < eb && pd::partials[ib].n < pn) ++ib;
         bool hasA = ia < ea && pd::partials[ia].n == pn, hasB = ib < eb && pd::partials[ib].n == pn;
         if (!hasA && !hasB) continue;
         float wa = hasA && hasB ? 1 - s.w : (hasA ? 1.f : 0.f), wb = 1 - wa;
         int pa = hasA ? ia : ib, pb = hasB ? ib : ia;
-        rat *= std::exp2((wa * pd::partials[pa].dev + wb * pd::partials[pb].dev) / 1200.f);   // as the voices play it
+        float dev = wa * pd::partials[pa].dev + wb * pd::partials[pb].dev;
+        rat = partialRatio(pn, B, dev, 1.f);   // as the voices play it
         float s2 = wa * pd::partials[pa].s2[1] + wb * pd::partials[pb].s2[1];
         float lvl[2];
         for (int mic = 0; mic < 2; ++mic)
@@ -600,6 +623,9 @@ struct Piano : Synth {
         constexpr float kPhaseStep = 3.14159265f / 127.f;
         float st = (pd::phases[pp][kLayer][1] - pd::phases[pp][kLayer][0]) * kPhaseStep;
         bRatio[at] = rat;
+        bPn[at] = static_cast<unsigned char>(pn);
+        bB[at] = B;
+        bDev[at] = dev;
         bDecay[at] = std::min(s2, -0.5f);
         bDampMul[at] = 1 + 0.03f * (pn - 1);
         bWl[at] = gl / norm;
@@ -629,13 +655,14 @@ struct Piano : Synth {
     }
   }
 
-  void bankPoles(int key, float stretchPct, float sus, float dampScale) {
+  void bankPoles(int key, float stretchPct, float sus, float dampScale, float stiff, float gamma) {
     float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f - 69.f) / 12.f);
     float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
     float rate = 0.5f * sr, nyq = 0.47f * rate;
     for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
-      float f = f0 * bRatio[i];
-      float db = bDecay[i] / sus - dmp * bDampMul[i];
+      float rat = stiff == 1.f || bIn[i] == 0 ? bRatio[i] : partialRatio(bPn[i], bB[i], bDev[i], stiff);
+      float f = f0 * rat;
+      float db = overtoneDecayDb(bDecay[i], rat, gamma) / sus - dmp * bDampMul[i];
       float rad = bIn[i] != 0 && f < nyq ? std::pow(10.f, db * 0.05f / rate) : 0.f;
       bPr[i] = rad * std::cos(kTwoPi * f / rate);
       bPi[i] = rad * std::sin(kTwoPi * f / rate);
@@ -654,9 +681,11 @@ struct Piano : Synth {
     const int n = io.frames;
     float stretchPct = ctx.get(stretch), sus = ctx.get(sustain) * 0.01f;
     float dampScale = std::max(ctx.get(damper) * 0.01f, 0.25f);
-    bool changed = stretchPct != lastStretch || sus != lastSus || dampScale != lastDampScale || a4Hz != lastA4;
+    float stiff = ctx.get(stiffness) * 0.01f, gamma = ctx.get(overtoneDecay) * 0.01f;
+    bool changed = stretchPct != lastStretch || sus != lastSus || dampScale != lastDampScale || a4Hz != lastA4 ||
+                   stiff != lastStiff || gamma != lastGamma;
     if (changed) {
-      lastStretch = stretchPct; lastSus = sus; lastDampScale = dampScale; lastA4 = a4Hz;
+      lastStretch = stretchPct; lastSus = sus; lastDampScale = dampScale; lastA4 = a4Hz; lastStiff = stiff; lastGamma = gamma;
       for (bool& p : keyPoles) p = false;
     }
     float drive = kCoupling * dbToGain(ctx.get(resonance)) * 2.f / sr;   // per half-rate step
@@ -702,7 +731,7 @@ struct Piano : Synth {
       }
       // nothing to drive it (under −120 dBFS) and nothing left ringing: skip it
       if (!keyLive[key] && (!driven || inPow < 1e-12f * static_cast<float>(n))) continue;
-      if (!keyPoles[key]) bankPoles(key, stretchPct, sus, dampScale);
+      if (!keyPoles[key]) bankPoles(key, stretchPct, sus, dampScale, stiff, gamma);
       float c = driven ? drive : 0.f;
       float energy = 0;
       for (int ch = keyFirst[key]; ch < keyFirst[key] + keyLen[key]; ch += kBankLanes) {
@@ -982,6 +1011,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   };
   float gainDb = vm.gainDb + kTrimDb;
   float bright = ctx.get(synth.bright);
+  float stiff = ctx.get(synth.stiffness) * 0.01f;
   // The hammer (tools/analyze_hammer.py): its force spectrum 1 / (1 + (f / fc)²), with the corner
   // measured per key and layer from how the partials brighten as the felt is struck harder.
   // Hardness moves the corner (a harder felt, a shorter contact: ±3 octaves at ±100 %), and every
@@ -1070,7 +1100,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // a partial measured on only one side fades out towards the other
     float missing = (hasA && hasB) ? 0.f : -24.f * (hasA ? s.w : 1 - s.w);
 
-    float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B)) * std::exp2((wa * A.dev + wb * Bp.dev) / 1200.f);
+    float rat = partialRatio(pn, B, wa * A.dev + wb * Bp.dev, stiff);
     float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn)) +
                   hammerDb(pitchNow * rat) + pointDb(pn);
     float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0);
@@ -1303,11 +1333,11 @@ void PianoVoice::release() {
   damped = true;
 }
 
-void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale) {
+void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma) {
   float nyq = 0.47f * sr;
   for (int i = 0; i < count; ++i) {
     float f = pitchHz * ratio[i] + offset[i] * unisonScale;
-    float db = decay[i] / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f);
+    float db = overtoneDecayDb(decay[i], ratio[i], gamma) / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f);
     float rad = f < nyq ? std::pow(10.f, db * 0.05f / sr) : 0.f;
     float w = kTwoPi * f / sr;
     pr[i] = rad * std::cos(w);
@@ -1349,9 +1379,11 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   float sus = ctx.get(synth.sustain) * 0.01f;
   float uni = ctx.get(synth.unison) * 0.01f;
   float dmp = ctx.get(synth.damper) * 0.01f;
-  if (pitch != lastPitch || sus != lastSustain || uni != lastUnison || dmp != lastDamper || damped != lastDamped) {
-    updatePoles(pitch, sus, uni, dmp);
-    lastPitch = pitch; lastSustain = sus; lastUnison = uni; lastDamper = dmp; lastDamped = damped;
+  float gam = ctx.get(synth.overtoneDecay) * 0.01f;
+  if (pitch != lastPitch || sus != lastSustain || uni != lastUnison || dmp != lastDamper || damped != lastDamped ||
+      gam != lastGamma) {
+    updatePoles(pitch, sus, uni, dmp, gam);
+    lastPitch = pitch; lastSustain = sus; lastUnison = uni; lastDamper = dmp; lastDamped = damped; lastGamma = gam;
   }
 
   const int frames = out.frames;

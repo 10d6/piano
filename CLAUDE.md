@@ -90,6 +90,13 @@ from CI at milestones.
   x = 12 %. Defaults are bit-identical to the measured piano: keep them so (check with `cmp` on
   renders against the previous build). Harder saturates (+4-6 dB above 2 kHz): the measured
   hammer is already flat to its corner. Rerun `analyze_hammer.py` after `analyze.py`.
+- **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
+  scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
+  `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and
+  `bankPoles`. Defaults bit-identical (`cmp`). A b1 + b3 f² loss law doesn't fit these decays
+  (50-90 % error; b3's sign varies), hence the scaling. The body's ring is mostly strings (tones
+  fading 5-20 dB/s; partly the free strings above E6), but the recorded ring sounded no different
+  to the owner from today's, so it stays band noise (MODEL.md).
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
   (`analyze_mech.py` is independent of them), then `make_header.py`, build,

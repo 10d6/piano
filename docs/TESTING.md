@@ -243,7 +243,7 @@ recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-b
 
 ### Controls that change the model: defaults stay exact
 
-Hardness and Strike Point change the piano around what was measured, so their defaults must leave
+Hardness, Strike Point, Stiffness and Overtone Decay change the piano around what was measured, so their defaults must leave
 it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
 byte for byte (`cmp`). What they do is checked by sweeping them (attack level, centroid and share
 above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).

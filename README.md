@@ -89,6 +89,11 @@ duller and slower to swell in, down to a felt-piano mute; harder, brighter), and
 the strike change with it. **Strike Point** moves where the hammer meets the string (the recorded
 piano: about 1/8 of its length). At their defaults the piano is as measured.
 
+**The strings.** **Stiffness** scales their measured inharmonicity, from ideal harmonic strings
+(harp-like) through the recorded piano to three times as stiff (bell-like). **Overtone Decay**
+makes the upper partials ring on longer than the fundamental (bright, steely) or die sooner
+(dark, gut-like). At their defaults the piano is as measured.
+
 **Velocity.** Velocity is mapped onto each key's measured loudness range
 (its softest recording to its loudest) along a smooth curve, whatever the
 recorded layers' own velocity spacing, and the tone comes from the recorded
