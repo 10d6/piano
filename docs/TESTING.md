@@ -241,6 +241,13 @@ shelf per mic, against ten bands of filtered noise). The page is 4.6 MB (2.9 MB 
 recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-bit samples;
 2.3 MB before the modes).
 
+### Controls that change the model: defaults stay exact
+
+Hardness and Strike Point change the piano around what was measured, so their defaults must leave
+it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
+byte for byte (`cmp`). What they do is checked by sweeping them (attack level, centroid and share
+above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).
+
 ## What to run after which change
 
 | Change | Run |
@@ -250,6 +257,7 @@ recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-b
 | the interpolation between keys | + `holdout.py --perceptual` over several keys at once |
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
+| a control that changes the model (Hardness, Strike Point) | + renders at default against the previous build, byte for byte; a sweep and a page of renders |
 | the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |

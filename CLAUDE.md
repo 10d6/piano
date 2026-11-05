@@ -80,6 +80,14 @@ from CI at milestones.
   the partials) and after anything that moves the engine's attack (it measures where the strike
   starts in a render). `calibrate_noise.py` skips keys with a recorded strike.
   `tools/listen/ab_strike.py` makes the A/B (current, strike off, recorded strike, recording).
+- **Hardness and Strike Point** (`tone.hardness`, `tone.strikepoint`): the hammer's force
+  spectrum 1/(1+(f/fc)²), its corner per key and layer (`hammerFc`, `tools/analyze_hammer.py`,
+  fitted to how the partials brighten across the 16 layers: 70-86 % of that change from A0 to C6).
+  Hardness moves the corner ±3 octaves; partials, the recorded strike (two first-order sections)
+  and the swell (τ × (fc/fc')^½) change by the ratio of spectra. Strike Point: |sin(nπx)| against
+  x = 12 %. Defaults are bit-identical to the measured piano: keep them so (check with `cmp` on
+  renders against the previous build). Harder saturates (+4-6 dB above 2 kHz): the measured
+  hammer is already flat to its corner. Rerun `analyze_hammer.py` after `analyze.py`.
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
   (`analyze_mech.py` is independent of them), then `make_header.py`, build,

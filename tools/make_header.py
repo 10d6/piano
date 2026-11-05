@@ -471,6 +471,17 @@ def main():
         taus = onset_by_key.get(k["key"], {}).get("tau", [0.003] * n_layers)
         rows_o.append("  {" + ", ".join("%.2ff" % (t * 1000) for t in taus) + "}")
     out.write("constexpr float onsetMs[kKeys][kLayers] = {\n" + ",\n".join(rows_o) + "\n};\n\n")
+    # the hammer's spectral corner per key and layer (tools/analyze_hammer.py); keys it couldn't
+    # fit (too few partials) take the nearest fitted key's
+    hpath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_hammer.json")
+    hk = {h["key"]: h["fc"] for h in json.load(open(hpath))["keys"]} if os.path.exists(hpath) else {}
+    rows_h = []
+    for k in keys:
+        fc = hk.get(k["key"]) or (hk[min(hk, key=lambda x: abs(x - k["key"]))] if hk else [24000.0] * n_layers)
+        rows_h.append("  {" + ", ".join("%.1ff" % v for v in fc) + "}")
+    out.write("// the hammer's spectrum, 1 / (1 + (f / fc)^2): its corner per key and layer (Hz), from how the\n"
+              "// partials brighten from soft to loud (a faster hammer is a shorter contact); Hardness moves it\n")
+    out.write("constexpr float hammerFc[kKeys][kLayers] = {\n" + ",\n".join(rows_h) + "\n};\n\n")
     write_mech(out, os.path.join(os.path.dirname(sys.argv[1]), "salamander_mech.json"))
     out.write("}  // namespace piano_data\n")
     write_strike(os.path.join(os.path.dirname(sys.argv[1]), "salamander_strike.npz"), [k["key"] for k in keys],

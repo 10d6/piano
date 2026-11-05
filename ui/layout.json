@@ -42,6 +42,12 @@
           "param": "tone.hammer"
         },
         {
+          "param": "tone.hardness"
+        },
+        {
+          "param": "tone.strikepoint"
+        },
+        {
           "param": "tone.body"
         },
         {
@@ -91,7 +97,7 @@
     "play.touch": "How hard you have to play. Light: quiet playing already reaches the loud, bright end. Heavy: you need to dig in.",
     "play.dynamics": "The loudness range between the softest and hardest strike. 100% is the recorded piano's own range; lower keeps soft notes louder.",
     "tone.bright": "Tilts every note's partials: more or less treble per octave of overtones, like harder or softer hammers.",
-    "tone.hammer": "The knock of the hammer and key at the start of each note, and the slower noise after it. 0 dB is as measured.",
+    "tone.hammer": "The strike at the start of each note: the hammer, key and soundboard's own response, as recorded from A2 up (octave bands of noise below). 0 dB is as measured.",
     "string.unison": "How far the two or three strings of each note are out of tune with each other: the slow beating in a sustained note, and in the treble the spread of each partial's cluster. 100% is as measured; 0% is a perfectly tuned unison.",
     "string.stretch": "The recorded piano's stretch tuning: low notes flatter and high notes sharper, as a tuner sets a real piano to match its stiff strings. 0% is plain equal temperament.",
     "string.sustain": "How long notes ring. 100% is as measured.",
@@ -104,8 +110,10 @@
     "play.softattack": "How much softer notes swell in more slowly, as the hammer's felt stays on the string longer at gentle blows. 0% swells in at the measured speed whatever the velocity.",
     "play.velmap": "Smooth: velocity moves evenly through this piano's loudness range, with the tone that goes with each loudness. As Recorded: the sample library's own velocity layers, unevenly spaced as recorded.",
     "tone.mech": "The piano's mechanical sounds: each key's own noise as it comes back up and its damper lands, and the sustain pedal's thump going down and up. Measured from the recordings; 0 dB is the level the sample library mixes them at.",
-    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; −40 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",
-    "string.topdampers": "A grand has no dampers above E6: those notes ring on after you let go, fading as they would held. All keys: every key is damped on release, as on many digital pianos."
+    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; \u221240 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",
+    "string.topdampers": "A grand has no dampers above E6: those notes ring on after you let go, fading as they would held. All keys: every key is damped on release, as on many digital pianos.",
+    "tone.hardness": "The hammer's felt. Softer dulls the partials and the strike and swells in more slowly, down to a felt-piano mute at -100%; harder brightens them and swells in faster. It moves the corner of the hammer's spectrum, measured per key and velocity from the recordings, up to three octaves either way. 0% is the recorded piano.",
+    "tone.strikepoint": "Where along the string the hammer strikes, as a share of its length. Nearer the end (lower) is thinner and brighter; further in is darker and hollower, as the partials with a node there go quiet. The recorded piano strikes at about 12% (1/8)."
   },
   "keyboard": true
 }

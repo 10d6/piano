@@ -81,6 +81,14 @@ voice per key: striking a key that is still sounding hands its vibration over
 to the new strike. As on a grand, keys above E6 have no dampers and ring on
 after release (**Top Dampers** can damp every key instead).
 
+**The hammer.** How a key brightens from soft to loud is mostly the felt: a faster hammer
+stays on the string for less time, and its spectrum reaches higher. One spectral corner per key,
+rising with the hammer's speed, explains 70-86 % of how the recordings' partials change with
+velocity from A0 to C6 (`tools/analyze_hammer.py`). **Hardness** moves that corner (softer felt,
+duller and slower to swell in, down to a felt-piano mute; harder, brighter), and the partials and
+the strike change with it. **Strike Point** moves where the hammer meets the string (the recorded
+piano: about 1/8 of its length). At their defaults the piano is as measured.
+
 **Velocity.** Velocity is mapped onto each key's measured loudness range
 (its softest recording to its loudest) along a smooth curve, whatever the
 recorded layers' own velocity spacing, and the tone comes from the recorded
@@ -129,6 +137,7 @@ python3 -I tools/analyze_modes.py ../salamander tools/salamander.json --procs 2 
 python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/salamander_noise.json
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
+python3 -I tools/analyze_hammer.py tools/salamander.json tools/salamander_hammer.json   # the hammer's spectrum (from the partials)
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 # then build, and calibrate the strike noise against the recordings (3 passes, make_header and a build between):
 python3 -I tools/calibrate_noise.py ../salamander build/piano_render tools/salamander_noise.json
