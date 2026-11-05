@@ -78,6 +78,14 @@ Checks of the measure itself:
   as the listener did (71 % leaving out the hiss build). The listener told the recording from
   the model least well in the low bass, which they rarely hear alone; there the distance is
   the better guide.
+- **The recorded strike's test** (PR #10: 12 notes from A2 up, a chord and an arpeggio; main,
+  the branch, the recording hidden, an anchor): mean ratings recording 94.9, branch 93.9, main
+  88.1, anchor 21.3; rank correlation −0.78 (−0.58 over the builds alone); of the 7 trials where
+  the listener rated the builds differently, the distance ordered 6 as they did. The clear
+  differences were where main's hiss could be heard: C5 at layers 8 and 13 (95 against 73 and
+  68) and the arpeggio (98 against 71), which the distance also put furthest apart. The one
+  pair it ordered otherwise was C3 at layer 13 (86 against 96; distance 3.4 against 3.8 %).
+  The listener found the test hard: elsewhere the two builds and the recording sounded alike.
 
 So the distance is what to work against while a change is in progress, and listening is for
 pull requests: `tools/listen/make_test.py` builds the page (the recording hidden among the
