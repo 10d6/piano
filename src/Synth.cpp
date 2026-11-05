@@ -15,8 +15,10 @@
 //     recording's microphones, and the phase between them, so loudness,
 //     tone and the stereo picture all change with how hard a key is struck,
 //     as on the recordings;
-//   - how each note swells in, and the strike's noise (the knock and a slower
-//     part after it, in octave bands).
+//   - how each note swells in, and the strike: from A2 up each measured key's
+//     own, recorded at velocity 100 with its partials notched out
+//     (PianoStrike.h), brightened by velocity through a shelf as the felt
+//     does; below A2 octave bands of noise (the knock and a slower part).
 //
 // One voice per key, as on a piano: striking a key that is still sounding
 // hands its vibration over to the new strike. docs/MODEL.md describes every
@@ -32,6 +34,7 @@
 #include <cmath>
 
 #include "PianoData.h"
+#include "PianoStrike.h"
 
 #ifndef BY_FREQUENCY
 #define BY_FREQUENCY 0.f   // an experiment, off: inconclusive on held-out keys (docs/TESTING.md)
@@ -149,7 +152,7 @@ struct PianoVoice : Voice {
   void strike(VoiceContext& ctx, float vel);
   void release() override;
   void render(VoiceContext& ctx, Buffer& out) override;
-  bool active() const override { return pending || count > 0 || knocking; }
+  bool active() const override { return pending || count > 0 || knocking || striking; }
 
   // adds a component; with onset > 0 (dB/s) also a short-lived negative twin, so the
   // component swells in as 1 − e^{−t/τ} over the hammer's contact instead of starting at full level
@@ -190,6 +193,21 @@ struct PianoVoice : Voice {
   bool nzDamped = false;
   float nzS[2][pd::kNoiseBands][2 * pd::kNoiseStages + 4] = {};
   float nzRise = 0, nzRiseMul = 0;   // the noise swells in with the partials: × (1 − nzRise)
+
+  // the strike as recorded (tools/analyze_strike.py), from A2 up: the key's response, played back
+  // at its level for this velocity, the knock's (0-40 ms) crossing over to its slower part's
+  // (30-50 ms). A few at once, so a fast repeat doesn't cut the last one off.
+  struct StrikePlay {
+    bool on = false, damped = false;
+    int index = 0;
+    float pos = 0, step = 1;      // in the response's samples
+    float g1[2] = {}, g2[2] = {}, env = 1, envMul = 1;
+    float b0 = 1, b1 = 0, a1 = 0, x1[2] = {}, y1[2] = {};   // the brightness shelf, per mic
+  };
+  static constexpr int kStrikeSlots = 4;
+  StrikePlay plays[kStrikeSlots];
+  bool striking = false;
+  void renderStrikes(Buffer& out, int frames, float damperDbPerS);
 };
 
 struct Piano : Synth {
@@ -1138,9 +1156,54 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;
 
-  // the strike's noise, measured per key, layer, mic and band
   float hg = ctx.get(synth.hammer) + gainDb;
-  for (int bd = 0; bd < pd::kNoiseBands; ++bd) {
+  // the strike as recorded, where the nearer measured key has one: its response, at the level
+  // measured for this layer, mic and window, blended between the two keys where both have one
+  int kn = s.w < 0.5f ? s.a : s.b, ko = kn == s.a ? s.b : s.a;
+  int si = pd::strikeIndex[kn];
+  if (si >= 0) {
+    int so = pd::strikeIndex[ko];
+    float wo = kn == s.a ? s.w : 1.f - s.w;   // the other key's weight
+    auto at = [&](const short (&L)[16][2][2], int mic, int win) {
+      return 0.01f * (L[l0][mic][win] + (L[l0 + 1][mic][win] - L[l0][mic][win]) * lf);
+    };
+    int slot = 0;
+    for (int i = 0; i < kStrikeSlots; ++i) {
+      if (!plays[i].on) { slot = i; break; }
+      if (plays[i].pos > plays[slot].pos) slot = i;   // all busy: the one furthest along
+    }
+    StrikePlay& p = plays[slot];
+    p.on = true;
+    p.damped = false;
+    p.index = si;
+    p.step = static_cast<float>(pd::kStrikeRate) / sr;
+    p.pos = -static_cast<float>(pd::strikeStart[si]);
+    p.env = 1;
+    p.envMul = 1;
+    // brightness: the felt's, a first-order high shelf with its gain for this layer
+    float shelfDb = 0.01f * (pd::strikeShelf[si][l0] + (pd::strikeShelf[si][l0 + 1] - pd::strikeShelf[si][l0]) * lf);
+    float g = dbToGain(shelfDb), K = std::tan(0.5f * kTwoPi * std::min(pd::strikeFc[si], 0.45f * sr) / sr);
+    p.b0 = (g + K) / (1 + K);
+    p.b1 = (K - g) / (1 + K);
+    p.a1 = (K - 1) / (1 + K);
+    for (int mic = 0; mic < 2; ++mic) {
+      p.x1[mic] = p.y1[mic] = 0;
+      float gw[2];
+      for (int win = 0; win < 2; ++win) {
+        float db = at(pd::strikeGain[si], mic, win);
+        if (so >= 0) {   // between two keys with a response: the level blended, the nearer key's response
+          float own = at(pd::strikeLevels[si], mic, win);
+          db += (own + (at(pd::strikeLevels[so], mic, win) - own) * wo) - own;
+        }
+        gw[win] = dbToGain(db + hg) * pd::strikeScale[si];
+      }
+      p.g1[mic] = gw[0];
+      p.g2[mic] = gw[1];
+    }
+    striking = true;
+  }
+  // otherwise the strike's noise, measured per key, layer, mic and band
+  for (int bd = 0; si < 0 && bd < pd::kNoiseBands; ++bd) {
     if (synth.bands[bd].norm == 0) continue;
     for (int mic = 0; mic < 2; ++mic) {
       auto lvl = [&](int k) {
@@ -1161,8 +1224,10 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     nzMul2[bd] = std::pow(10.f, dec2 * 0.05f / sr);
     nzDec2[bd] = dec2;
   }
-  knocking = true;
-  nzDamped = false;
+  if (si < 0) {
+    knocking = true;
+    nzDamped = false;
+  }
 
   // the body's ring, measured per key, layer, mic and band; handed to the synth's bank
   {
@@ -1277,6 +1342,8 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
     if (std::fabs(a4 - synth.a4Hz) > 0.01f) synth.a4Hz = a4;
   }
 
+  if (striking) renderStrikes(out, frames, damperRate(note, synth.topDamper) / std::max(dmp, 0.25f));
+
   if (knocking) {
     if (damped && !nzDamped) {   // the key is up: the knock's slower part stops with the strings
       nzDamped = true;
@@ -1324,6 +1391,42 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
       }
     }
   }
+}
+
+void PianoVoice::renderStrikes(Buffer& out, int frames, float damperDbPerS) {
+  constexpr float kCross0 = 0.03f * pd::kStrikeRate, kCross1 = 0.05f * pd::kStrikeRate;
+  bool any = false;
+  for (StrikePlay& p : plays) {
+    if (!p.on) continue;
+    if (damped && !p.damped) {   // the key is up: what's left of the strike stops with the strings
+      p.damped = true;
+      p.envMul = std::pow(10.f, -damperDbPerS * 0.05f / sr);
+    }
+    const short* dl = pd::strikeData[p.index][0];
+    const short* dr = pd::strikeData[p.index][1];
+    for (int i = 0; i < frames; ++i) {
+      float pos = p.pos;
+      p.pos += p.step;
+      if (pos < 0) continue;
+      int j = static_cast<int>(pos);
+      if (j + 1 >= pd::kStrikeLen || p.env < 1e-5f) {
+        p.on = false;
+        break;
+      }
+      float fr = pos - static_cast<float>(j);
+      float w = std::clamp((pos - kCross0) / (kCross1 - kCross0), 0.f, 1.f);
+      float xl = (dl[j] + (dl[j + 1] - dl[j]) * fr) * (p.g1[0] + (p.g2[0] - p.g1[0]) * w) * p.env;
+      float xr = (dr[j] + (dr[j + 1] - dr[j]) * fr) * (p.g1[1] + (p.g2[1] - p.g1[1]) * w) * p.env;
+      float l = p.b0 * xl + p.b1 * p.x1[0] - p.a1 * p.y1[0];
+      float r = p.b0 * xr + p.b1 * p.x1[1] - p.a1 * p.y1[1];
+      p.x1[0] = xl; p.y1[0] = l;
+      p.x1[1] = xr; p.y1[1] = r;
+      p.env *= p.envMul;
+      out.add(i, l, r);
+    }
+    any = any || p.on;
+  }
+  striking = any;
 }
 
 SK_SYNTH(Piano)

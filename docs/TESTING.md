@@ -78,6 +78,14 @@ Checks of the measure itself:
   as the listener did (71 % leaving out the hiss build). The listener told the recording from
   the model least well in the low bass, which they rarely hear alone; there the distance is
   the better guide.
+- **The recorded strike's test** (PR #10: 12 notes from A2 up, a chord and an arpeggio; main,
+  the branch, the recording hidden, an anchor): mean ratings recording 94.9, branch 93.9, main
+  88.1, anchor 21.3; rank correlation −0.78 (−0.58 over the builds alone); of the 7 trials where
+  the listener rated the builds differently, the distance ordered 6 as they did. The clear
+  differences were where main's hiss could be heard: C5 at layers 8 and 13 (95 against 73 and
+  68) and the arpeggio (98 against 71), which the distance also put furthest apart. The one
+  pair it ordered otherwise was C3 at layer 13 (86 against 96; distance 3.4 against 3.8 %).
+  The listener found the test hard: elsewhere the two builds and the recording sounded alike.
 
 So the distance is what to work against while a change is in progress, and listening is for
 pull requests: `tools/listen/make_test.py` builds the page (the recording hidden among the
@@ -162,19 +170,19 @@ each. Run it after any change to the sound.
 
 | Measure | Today | Healthy |
 |---|---|---|
-| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 9.8 %, mean 15.0 % (main before the modes: 24.4 / 26.5); bass 8.3, middle 6.8, treble 32.6 % | median well under ~15 %; yardstick 5.4 % |
-| `compare.py`: octave bands over time, median \|error\| | 0.1–3.4 dB (all), 0.1–2.6 dB (first 0.5 s) | 2–5 dB |
+| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 8.5 %, mean 12.1 %, attack 8.9 (main before the recorded strike: 9.8 / 15.0 / 12.8; before the modes: 24.4 / 26.5); bass 8.7, middle 5.0, treble 23.0 % (main: 8.7 / 6.9 / 29.2, split at C3 and C6); no note more than 0.3 points further from its recording than on main | median well under ~15 %; yardstick 5.4 % |
+| `compare.py`: octave bands over time, median \|error\| | 0.2–3.2 dB (all), 0.2–2.3 dB (first 0.5 s) | 2–5 dB |
 | `levels.py`: overall level by time | −0.8 … −0.0 dB | within ~3 dB |
 | `groups.py`: partials 1-2 / 3-6 / 7-12 / 13-24 at 0.05 / 0.4 / 1.4 s | within ~1 dB, except 13-24 at 0.4 s (−5 dB) | within ~3 dB |
-| `ring.py`: body ring between partials | +1…+7 dB to 1.5 s; −5…−13 dB at 2–3 s | within ~5 dB to 1.5 s |
-| `balance.py`: sustain spectrum vs fundamental | 5.2 dB mean \|diff\| | ~5–7 dB |
+| `ring.py`: body ring between partials | +0…+7 dB to 1.5 s; −5…−13 dB at 2–3 s | within ~5 dB to 1.5 s |
+| `balance.py`: sustain spectrum vs fundamental | 5.1 dB mean \|diff\| | ~5–7 dB |
 | `fluctuation.py`: beating, L/R independence | 4.1 dB vs 3.6; correlation 0.55 vs 0.36 | ~3.6 dB; low correlation |
 | `decay_by_velocity.py`: stored curves vs recordings | within ~2 dB | within ~2–4 dB |
-| `attack.py`: attack bands at 5–500 ms | medians −7…+3 dB; worst +23 dB (62 Hz, soft C4) | no band far above |
-| `velocity.py`: even steps; soft→loud changes | even; loudness changes within ~1 dB; A6's 8–16 kHz change too large | match within a few dB |
-| `between.py`: between the partials, mean \|diff\| | 4.9 / 3.4 / 3.2 / 6.9 dB at 0–40 ms / –150 ms / –400 ms / –1 s | ≤ ~5 dB to 0.4 s |
+| `attack.py`: attack bands at 5–500 ms | medians −6…+0 dB (62 Hz −1.1, was −4.1); worst +19 dB (62 Hz, soft C4), +8 dB at 8 kHz (was +18) | no band far above |
+| `velocity.py`: even steps; soft→loud changes | even; loudness changes within ~1 dB; the attack brightens from soft to loud within ~4-10 dB of the recordings at 2–8 kHz (A6 still ~10-15 dB short at 2-4 kHz) | match within a few dB |
+| `between.py`: between the partials, mean \|diff\| | 1.9 / 2.3 / 2.7 / 6.5 dB at 0–40 ms / –150 ms / –400 ms / –1 s (main: 4.6 / 3.8 / 3.1 / 6.9) | ≤ ~5 dB to 0.4 s |
 | `mechanics.py`: pedal, release noise | pedal 1.0 dB, release 1.5 dB | ~1–3 dB |
-| `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 1.2 dB at 14/s) but A0's at 14/s (−0.5 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB | every strike rises (from A1) |
+| `notes.py`: repeats, orderings, release, lifetime, consistency | every restrike rises (≥ 1.2 dB at 14/s; A2-C5 now 2.2-7.9 dB, were 1.3-6.6) but A0's at 14/s (−0.5 dB: the A0 recordings themselves build for ~60 ms, 1.5-1.8 dB louder at 50-68 ms than at 10-40 ms, and now the model does too); strikes steady within ~1.5 dB; the same strike repeated now varies by 0.0-0.1 dB in its first 40 ms from A2 up (was 0.3-1.8 with random noise) | every strike rises (from A1) |
 
 Also:
 
@@ -186,7 +194,9 @@ Also:
   With `--perceptual`, six keys left out at once (F#1 … F#6, each then 6
   semitones from its neighbours, twice the real gap) are 26.3 % from their
   recordings, the same as main before the modes (26.3 %), against 5.5 % when
-  measured (main: 18 %). **The modes made the 30 measured keys much nearer
+  measured (main: 18 %). With the recorded strike (left-out keys take the nearer
+  key's response): 25.3 % mean, attack 19.8 (26.0 / 21.0 before it, measured on the same
+  machine), measured 7.9 % (9.2). **The modes made the 30 measured keys much nearer
   their recordings, but not yet the 58 between them**: what a key holds of its
   own (where the hammer strikes against its partials, how its unison beats) its
   neighbours can't predict, and the per-partial levels of a key differ from its
@@ -219,15 +229,17 @@ machine. Today:
 
 | Scenario | This build | Main, same machine |
 |---|---|---|
-| Pedalled 88-key glissando (worst case) | 0.6× realtime | 0.6× |
-| Demo (ordinary playing) | 2.0× | 2.0× |
+| Pedalled 88-key glissando (worst case) | 0.6× realtime (10.9 s for 7 s) | 0.6× (12.0 s) |
+| Demo (ordinary playing) | 2.1× | 1.9× |
 
 (Measured on a slower machine than before: there, main's worst case had been 2.1×.) The modes
 cost the same as the description they replace: a modal partial is 4-12 components, where the
 prompt, burst and aftersound with their beating partners were up to 18. The cost comes from the
 sympathetic string bank and the steeper noise filters. Healthy: the worst case no slower than
-main's on the same machine. The page is 2.9 MB (main 2.3 MB): the modes' levels and phases per
-layer and mic.
+main's on the same machine. The recorded strike is about 9 % cheaper than the band noise it replaces (a sample read and a
+shelf per mic, against ten bands of filtered noise). The page is 4.6 MB (2.9 MB before the
+recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-bit samples;
+2.3 MB before the modes).
 
 ## What to run after which change
 
@@ -238,6 +250,7 @@ layer and mic.
 | the interpolation between keys | + `holdout.py --perceptual` over several keys at once |
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
+| the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
 | the page (UI) | + `browser-test.cjs`, `panel.cjs` |
@@ -264,7 +277,10 @@ These are tracked rather than hidden:
 - **Body ring:** a few dB strong at 0.4–1 s, and 5–13 dB weak at 2–3 s.
 - **Upper partials 13–24** come out ~5 dB weak at 0.4 s.
 - **A soft C4's 62 Hz thump** is ~20 dB strong.
-- **D#6 and A7:** a few dB of hiss at 8–16 kHz, the limit of the noise filters.
-- **A6:** its soft strikes have too little 8–16 kHz, so its soft→loud
-  brightening there is exaggerated.
+- **The strike's finer changes with velocity.** One response per key (velocity 100), shaped by
+  a shelf and two gains: exact at velocity 100, ~2 points of attack distance short of the
+  exact per-layer strikes in the middle and ~4 in the treble at other velocities (offline).
+- **A6:** the attack brightens less from soft to loud than the recordings at 2-4 kHz.
+- **A7 at 8 kHz:** a little too much between the partials 40-150 ms in, from the body ring's
+  band noise (it is there with the strike off too).
 - **Sympathetic coupling strength** is a judgment, not a measurement.

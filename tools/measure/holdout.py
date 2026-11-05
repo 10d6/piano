@@ -41,6 +41,13 @@ def main():
         d["keys"] = [k for k in d["keys"] if k["key"] not in keys]
         json.dump(d, open(work / "data" / f, "w"))
     shutil.copy(M.TOOLS / "salamander_mech.json", work / "data")   # per release key, not per sampled key
+    sp = M.TOOLS / "salamander_strike.npz"           # the recorded strikes (analyze_strike.py)
+    if sp.exists():
+        import numpy as np
+        z = dict(np.load(sp))
+        keep = np.array([int(k) not in keys for k in z["keys"]])
+        np.savez_compressed(work / "data" / "salamander_strike.npz",
+                            **{n: (v[keep] if v.ndim and len(v) == len(keep) else v) for n, v in z.items()})
     repo = work / "repo"
     repo.mkdir()
     for item in ("CMakeLists.txt", "synth.json", "src", "presets", "tests", "ui"):
