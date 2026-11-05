@@ -1,13 +1,14 @@
 # Piano
 
 A modelled grand piano built on [synthkit](https://github.com/10d6/synthkit). It
-runs in the browser (one ~2.9 MB HTML file) and as a VST3 / AU plugin.
+runs in the browser (one ~4.6 MB HTML file) and as a VST3 / AU plugin.
 
 How it's modelled, in detail: [`docs/MODEL.md`](docs/MODEL.md). How it's
 tested against the real piano: [`docs/TESTING.md`](docs/TESTING.md).
 
-There are no samples in it. Each key is a bank of decaying sine partials, and
-everything about them is **measured from recordings of a real grand**:
+Each key is a bank of decaying sine partials, and everything about them is **measured from
+recordings of a real grand**. The one thing taken from the recordings as sound is each key's
+strike, 0.3 s with its partials removed (below):
 
 - partial frequencies, from each string's stiffness (inharmonicity), and the
   instrument's stretch tuning (bass up to 22 cents flat, top octave up to 34 sharp);
@@ -33,14 +34,15 @@ everything about them is **measured from recordings of a real grand**:
   independently, as with the recording's spaced pair;
 - how each note swells in (hammer contact, soundboard response): fitted per
   key from the first 40 ms of the recordings, 2–15 ms;
-- the strike's noise (hammer, action and soundboard knock): what the
-  recordings hold beyond the partials in the first quarter second (from G#3
-  up, only what lies between them), in octave bands per key, velocity and
-  microphone, as the knock itself and a slower part after it, smoothed across
-  velocities. The bands' filters are steep above (a top key's knock falls
-  ~35-45 dB over an octave or two) and their gains are solved against the
-  filters' overlap. Then each key is rendered, its knock compared with the
-  recording's, and corrected (`tools/calibrate_noise.py`);
+- **the strike** (hammer, action and soundboard): from A2 up, each measured key's own, as
+  recorded at velocity 100 with its partials notched out (0.3 s per mic). It is the same
+  response every time a key is struck (its waveform correlates 0.9-0.99 between neighbouring
+  velocities), so it is played as that response, not as noise: noise was heard as hiss in the
+  attack of C5, D#5, D#6 and A7. Velocity brightens it as the felt does, through a shelf
+  measured per key and layer (a soft strike has 15-30 dB less at 2-4 kHz), and sets its
+  level, per mic, for the knock and the slower part after it. Below A2, where the strike is
+  masked by the dense partials, it is octave bands of noise measured per key, velocity and
+  microphone;
 - in the treble, where each partial really is: the stiff-string formula puts
   some top-key partials 10-30 cents off (A6's third partial is 11 cents flat
   of it, F#7's 60 sharp), so they're measured from the recordings' first
@@ -93,11 +95,12 @@ velocity 100; use a MIDI keyboard to play dynamics.
 its recording, from a model of the ear (an ERB filterbank, loudness, a ~1 dB tolerance), in the
 attack, the early sound and the sustain. It agrees with the owner's ears on 7 of the 8 problems
 fixed in the history and with a blind listening test (`tools/listen/`). The 30 measured keys
-are a median 9 % from their recordings (bass 8 %, middle 7 %, treble 33 %), against 24 % before
-the modes; two neighbouring velocity layers of the recordings are 5 % apart. In octave bands
-(`tools/compare.py`) measured keys land within 0.1–3.4 dB. Keys the model never heard (held
-out and interpolated) are no nearer their recordings than before (26 %): what is particular to
-a key isn't predictable from its neighbours, and that is the next thing to work on.
+are a median 8.5 % from their recordings (bass 8.7 %, middle 5.0 %, treble 23 %), against 9.8 %
+with the strike as noise and 24 % before the modes; two neighbouring velocity layers of the
+recordings are 5 % apart. In octave bands (`tools/compare.py`) measured keys land within
+0.2–3.2 dB. Keys the model never heard (held out and interpolated) are 25 % from their
+recordings: what is particular to a key isn't predictable from its neighbours, and that is the
+next thing to work on.
 `docs/TESTING.md` has every measure, today's numbers and the known gaps.
 
 For the partials that keep the older description, the unison beat's depth is measured as one
@@ -114,8 +117,9 @@ load guard drops the quietest partials first if more than 4000 are sounding.
 The model data (`src/PianoData.h`) is derived from the **Salamander Grand
 Piano V3** by Alexander Holm, licensed under
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). It was changed
-from audio recordings into measured model parameters; no audio from it is
-included. To measure again:
+from audio recordings into measured model parameters, except for each
+measured key's strike from A2 up (`src/PianoStrike.h`): 0.3 s per microphone of
+its velocity-100 recording with the partials notched out. To measure again:
 
 ```
 git clone https://github.com/sfzinstruments/SalamanderGrandPiano ../salamander   # ~700 MB
@@ -132,6 +136,8 @@ python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/choose_modes.py ../salamander build/piano_render tools/salamander.json   # per key: modes or not
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h                    # and build again
 python3 -I tools/calibrate_attack.py ../salamander build/piano_render tools/salamander.json  # the bass's strike (3 passes, make_header and a build between)
+python3 -I tools/analyze_strike.py ../salamander build/piano_render tools/salamander.json tools/salamander_strike.npz  # the recorded strike, A2 up
+python3 -I tools/make_header.py tools/salamander.json src/PianoData.h                    # writes PianoStrike.h too; build again
 python3 -I tools/measure/perceptual.py --sal ../salamander                              # how different it sounds
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
@@ -168,7 +174,7 @@ The browser page and the plugins are built the same way as in synthkit: see
 | | |
 |---|---|
 | `synth.json` | identity (name, IDs, plugin codes) and kit features |
-| `src/` | the sound engine (`Synth.cpp`) and the measured data (`PianoData.h`, generated) |
+| `src/` | the sound engine (`Synth.cpp`), the measured data (`PianoData.h`) and the recorded strikes (`PianoStrike.h`), both generated |
 | `docs/` | how it's modelled (`MODEL.md`) and tested (`TESTING.md`) |
 | `tools/` | measuring the recordings, calibrating, comparing with them, stress test, browser benchmark |
 | `tools/measure/` | every measurement against the recordings (`README.md` there), the perceptual distance first |

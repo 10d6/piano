@@ -35,8 +35,8 @@ from CI at milestones.
   reference. Keep them, README and `tools/measure/README.md` current with every
   change to the model or the tests: a PR that changes the sound updates the
   numbers it changes.
-- `src/PianoData.h` is generated (`tools/make_header.py`); never edit it by
-  hand. The measurements are `tools/salamander*.json`; README has the
+- `src/PianoData.h` and `src/PianoStrike.h` are generated (`tools/make_header.py`); never edit
+  them by hand. The measurements are `tools/salamander*.json`; README has the
   pipeline. The Salamander recordings are CC BY 3.0: keep the attribution in
   README and in the plugin/release notes.
 - **Work against the perceptual distance** (`tools/measure/perceptual.py`, docs/TESTING.md):
@@ -67,6 +67,19 @@ from CI at milestones.
   detail, `tools/measure/partials.py --key K --layer L` separates data
   problems from engine problems. Compare per mic and averaged over ~0.2 s:
   single mono snapshots are thrown off by beating and the mics' phase.
+- **The strike is recorded from A2 up** (`tools/analyze_strike.py` → `salamander_strike.npz` →
+  `PianoStrike.h`): each measured key's velocity-100 recording with every partial notched out,
+  0.3 s per mic, through a first-order high shelf per key and layer (the felt's brightening:
+  15-30 dB less at 2-4 kHz on a soft strike) and two gains per layer and mic (knock 0-40 ms,
+  slower part 40-150 ms). It replaced band noise there, which was heard as hiss: the strike
+  isn't noise (waveform correlation 0.9-0.99 between neighbouring layers). Below A2 the band
+  noise stays (the strike is masked by the partials; recorded, it was no better). Lessons: fit
+  the velocity shelf on unweighted bands (weighting by level hid the 2-8 kHz change that
+  `velocity.py` shows); a flexible shelf, timing gains or per-layer offsets didn't help, only
+  more stored layers would. Rerun it after `analyze.py`/`analyze_modes.py` (its notches follow
+  the partials) and after anything that moves the engine's attack (it measures where the strike
+  starts in a render). `calibrate_noise.py` skips keys with a recorded strike.
+  `tools/listen/ab_strike.py` makes the A/B (current, strike off, recorded strike, recording).
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
   (`analyze_mech.py` is independent of them), then `make_header.py`, build,
@@ -81,12 +94,11 @@ from CI at milestones.
   (≥ 15 % of the power off the main component, ≥ 6 Hz spread); otherwise the
   beat model. Below A5, `analyze_modes.py` moves every partial to its peak in a 3 s
   spectrum, following the series up (`refine_long`), so `dev` is set there too.
-- Noise bands are 2 RBJ band-pass stages (Q 1.2) and a 4th-order low-pass
+- Noise bands (the strike below A2, the body's ring, the mechanism) are 2 RBJ band-pass stages (Q 1.2) and a 4th-order low-pass
   at 1.7× the lower edge (`kNoiseLpRatio`): a top key's knock falls ~35-45 dB
   over an octave or two, and plain band-passes spill it upward as hiss that no
   gain solve or calibration can undo. Lower ratios cut the spill further but
-  dig 12-17 dB notches at the octave edges. What's left: D#6 and A7 a few dB
-  hissy at 8-16 kHz (as before PR #8). Gains are solved in dB (`solve_gains`):
+  dig 12-17 dB notches at the octave edges. (D#6 and A7's hiss at 8-16 kHz went with the recorded strike.) Gains are solved in dB (`solve_gains`):
   solving in power let a quiet band switch its loud neighbour off.
 - Strike noise is measured between the partials only where they stand well
   apart (`between_ratio`: f0 from about G#3), and calibration uses each

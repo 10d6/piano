@@ -52,8 +52,13 @@ def main():
     sal, render, path = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
     model = {k["key"]: k for k in json.load(open(M.TOOLS / "salamander.json"))["keys"]}
     nz = json.load(open(path))
+    # keys with a recorded strike (tools/analyze_strike.py, A2 up) don't play the band noise
+    sp = M.TOOLS / "salamander_strike.npz"
+    recorded = {int(x) for x in np.load(sp)["keys"]} if sp.exists() else set()
     for k in nz["keys"]:
         key = model[k["key"]]
+        if k["key"] in recorded:
+            continue
         adj = [k.get("adjust1", [0.0] * 10), k.get("adjust2", [0.0] * 10)]
         diffs = [[[] for _ in BANDS] for _ in STAGES]
         # a window can measure between the partials only where they stand well apart next to its
