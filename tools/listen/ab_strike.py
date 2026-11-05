@@ -77,7 +77,7 @@ def band_metrics(x, fs, width):
         w = np.hanning(len(seg))[:, None]
         sp = (np.abs(np.fft.rfft(seg * w, n, axis=0)) ** 2).mean(1)
         f = np.fft.rfftfreq(n, 1 / SR)
-        g = notch_mask(n, fs, width) > 0.99
+        g = notch_mask(n, fs, width, hum=True) > 0.99
         lv, fl = [], []
         for lo in BANDS:
             sel = (f >= lo) & (f < 2 * lo) & g
