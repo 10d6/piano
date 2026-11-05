@@ -80,6 +80,8 @@ from CI at milestones.
   the partials) and after anything that moves the engine's attack (it measures where the strike
   starts in a render). `calibrate_noise.py` skips keys with a recorded strike.
   `tools/listen/ab_strike.py` makes the A/B (current, strike off, recorded strike, recording).
+  Never notch the mains hum out of a signal that is kept (only out of measurements): a 5 Hz-wide
+  notch smears the attack into faint 50 Hz-harmonic tones for hundreds of ms.
 - **Hardness and Strike Point** (`tone.hardness`, `tone.strikepoint`): the hammer's force
   spectrum 1/(1+(f/fc)²), its corner per key and layer (`hammerFc`, `tools/analyze_hammer.py`,
   fitted to how the partials brighten across the 16 layers: 70-86 % of that change from A0 to C6).
