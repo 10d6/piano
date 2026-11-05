@@ -23,8 +23,9 @@ The finer changes of its spectrum with velocity are not kept (they would need a 
 layer).
 
   - Partials notched: every partial and cluster component the model plays, then the stiff-string
-    series up to 22 kHz, ±max(16 Hz, 4 % of f0, the modes' spread), raised-cosine edges, and the
-    mains hum below 1 kHz; zero-phase, over one long FFT, so nothing between them is touched.
+    series up to 22 kHz, ±max(16 Hz, 4 % of f0, the modes' spread), raised-cosine edges;
+    zero-phase, over one long FFT, so nothing between them is touched. (Not the mains hum: see
+    notch_mask.)
   - Faded out from 0.15 s to 0.30 s: after that the body's ring (analyze_body.py) carries on.
   - Keys from A2 up. Lower, the partials are too dense to leave much between them (30-47 % of the
     spectrum is notched at A0-F#2) and the strike is masked by them: there, it made no audible
@@ -81,16 +82,21 @@ def partial_freqs(key):
     return np.array(fs), width
 
 
-def notch_mask(n, fs, width):
-    """A zero-phase gain per FFT bin: 0 at the partials, 1 between, raised-cosine edges, and the
-    50 Hz hum (below 1 kHz) out too."""
+def notch_mask(n, fs, width, hum=False):
+    """A zero-phase gain per FFT bin: 0 at the partials, 1 between, raised-cosine edges; with hum,
+    the 50 Hz hum's bins (below 1 kHz) out too, for measuring only. Never notch the hum out of a
+    signal that is kept: a notch that narrow smears the strike's burst at those frequencies over
+    hundreds of ms, as faint tones at 250, 300, 350 Hz… (in PR #10's strikes they stood only
+    1-6 dB under the strike's own 125 Hz-1 kHz from 40 ms on). The recordings' hum is far under
+    the strike."""
     f = np.fft.rfftfreq(n, 1 / SR)
     g = np.ones_like(f)
     edge = 0.5 * width
     for fc in fs:
         d = np.abs(f - fc)
         g *= np.where(d < width, 0.0, np.where(d < width + edge, 0.5 - 0.5 * np.cos(np.pi * (d - width) / edge), 1.0))
-    g[(np.abs(f - 50 * np.round(f / 50)) < 2.5) & (f < 1000)] = 0
+    if hum:
+        g[(np.abs(f - 50 * np.round(f / 50)) < 2.5) & (f < 1000)] = 0
     return g
 
 

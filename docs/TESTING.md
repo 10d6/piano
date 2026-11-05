@@ -170,7 +170,7 @@ each. Run it after any change to the sound.
 
 | Measure | Today | Healthy |
 |---|---|---|
-| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 8.5 %, mean 12.1 %, attack 8.9 (main before the recorded strike: 9.8 / 15.0 / 12.8; before the modes: 24.4 / 26.5); bass 8.7, middle 5.0, treble 23.0 % (main: 8.7 / 6.9 / 29.2, split at C3 and C6); no note more than 0.3 points further from its recording than on main | median well under ~15 %; yardstick 5.4 % |
+| `perceptual.py`: perceptual distance, 30 keys × 4 layers | median 8.5 %, mean 11.8 %, attack 8.6 (main before the recorded strike: 9.8 / 15.0 / 12.8; before the modes: 24.4 / 26.5); bass 8.7, middle 4.9, treble 22.3 % (main: 8.7 / 6.9 / 29.2, split at C3 and C6); no note more than 0.3 points further from its recording than on main | median well under ~15 %; yardstick 5.4 % |
 | `compare.py`: octave bands over time, median \|error\| | 0.2–3.2 dB (all), 0.2–2.3 dB (first 0.5 s) | 2–5 dB |
 | `levels.py`: overall level by time | −0.8 … −0.0 dB | within ~3 dB |
 | `groups.py`: partials 1-2 / 3-6 / 7-12 / 13-24 at 0.05 / 0.4 / 1.4 s | within ~1 dB, except 13-24 at 0.4 s (−5 dB) | within ~3 dB |
@@ -243,7 +243,7 @@ recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-b
 
 ### Controls that change the model: defaults stay exact
 
-Hardness and Strike Point change the piano around what was measured, so their defaults must leave
+Hardness, Strike Point, Stiffness and Overtone Decay change the piano around what was measured, so their defaults must leave
 it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
 byte for byte (`cmp`). What they do is checked by sweeping them (attack level, centroid and share
 above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).
