@@ -61,6 +61,7 @@ constexpr float kPedalUpDb = -19.f;
 constexpr float kReleaseVelTrack = 0.82f; // how much the release noise follows the strike's velocity, as in the sfz
 constexpr int kBankMaxPartial = 16;       // the string bank: each string's partials up to the 16th…
 constexpr float kBankMaxHz = 4000.f;      // …and 4 kHz
+constexpr float kStrikePointRef = 0.12f;  // where the recordings' hammers strike (≈ 1/8.3 of the string): Strike Point's default
 constexpr float kCoupling = 0.015f;       // how strongly sound at a free string's partial drives it (1/s)
 
 inline float dbToGain(float db) { return std::pow(10.f, db * 0.05f); }
@@ -203,6 +204,10 @@ struct PianoVoice : Voice {
     float pos = 0, step = 1;      // in the response's samples
     float g1[2] = {}, g2[2] = {}, env = 1, envMul = 1;
     float b0 = 1, b1 = 0, a1 = 0, x1[2] = {}, y1[2] = {};   // the brightness shelf, per mic
+    // Hardness: the hammer spectrum's ratio, (1 + (f/fc)²) / (1 + (f/fc')²), as two first-order
+    // sections, per mic
+    bool hard = false;
+    float hb0 = 1, hb1 = 0, ha1 = 0, hx[2][2] = {}, hy[2][2] = {};
   };
   static constexpr int kStrikeSlots = 4;
   StrikePlay plays[kStrikeSlots];
@@ -211,7 +216,7 @@ struct PianoVoice : Voice {
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, body, mech, unison, stretch, sustain, damper,
+  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, sustain, damper,
       resonance, topDampers, width, room;
 
   void defineParams(ParamBuilder& b) override {
@@ -224,6 +229,8 @@ struct Piano : Synth {
     attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").group("Tone");
     body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").group("Tone");
     hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").group("Tone");
+    hardness = b.add("tone.hardness").name("Hardness").range(-100, 100).def(0).unit("%").group("Tone");
+    strikePoint = b.add("tone.strikepoint").name("Strike Point").range(4, 25).def(12).unit("%").group("Tone");
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
@@ -975,6 +982,29 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   };
   float gainDb = vm.gainDb + kTrimDb;
   float bright = ctx.get(synth.bright);
+  // The hammer (tools/analyze_hammer.py): its force spectrum 1 / (1 + (f / fc)²), with the corner
+  // measured per key and layer from how the partials brighten as the felt is struck harder.
+  // Hardness moves the corner (a harder felt, a shorter contact: ±3 octaves at ±100 %), and every
+  // partial, and the strike, changes by the ratio of the moved spectrum to the measured one.
+  float hard = ctx.get(synth.hardness) * 0.01f;
+  auto fcAt = [&](int k) { return pd::hammerFc[k][l0] + (pd::hammerFc[k][l0 + 1] - pd::hammerFc[k][l0]) * lf; };
+  float hammerFc = std::exp(std::log(fcAt(s.a)) + (std::log(fcAt(s.b)) - std::log(fcAt(s.a))) * s.w);
+  float hammerFcNew = hammerFc * std::exp2(3.f * hard);
+  auto hammerDb = [&](float f) {
+    if (hard == 0) return 0.f;
+    float a = f / hammerFc, b = f / hammerFcNew;
+    return 20.f * std::log10((1 + a * a) / (1 + b * b));
+  };
+  // Strike Point: where along the string the hammer strikes (fraction of its length). Partial n is
+  // excited as |sin(nπx)|; the recordings' x is about 1/8.3 (docs/TESTING.md), so the partials
+  // change by the ratio to that, kept within −30…+12 dB near the nodes.
+  float strikeAt = ctx.get(synth.strikePoint) * 0.01f;
+  auto pointDb = [&](int n) {
+    if (std::fabs(strikeAt - kStrikePointRef) < 1e-6f) return 0.f;
+    float a = std::max(std::fabs(std::sin(0.5f * kTwoPi * n * strikeAt)), 0.03f);
+    float b = std::max(std::fabs(std::sin(0.5f * kTwoPi * n * kStrikePointRef)), 0.03f);
+    return std::clamp(20.f * std::log10(a / b), -30.f, 12.f);
+  };
   // keep a note's loudness when Brightness tilts it: compare the power with and without the tilt
   float brightComp = 0;
   if (std::fabs(bright) > 1e-3f) {
@@ -1007,7 +1037,10 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // Soft Attack: softer strikes swell in more slowly (the felt stays on the string longer);
   // at 100 % a strike at half velocity takes twice as long as the hardest
   float soft = ctx.get(synth.softAttack) * 0.01f * 2.f * (1.f - (v - 1.f) / 126.f);
-  float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft), 0.05f) * 0.001f;
+  // Hardness: a harder felt leaves the string sooner, so the note swells in faster (the contact
+  // time goes as 1 / the hammer's corner; the swell is partly the soundboard's, so half that)
+  float hardSwell = std::exp2(-1.5f * ctx.get(synth.hardness) * 0.01f);
+  float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft) * hardSwell, 0.05f) * 0.001f;
   float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
   // Struck again while still sounding: the old vibration hands over to the new one, fading as the
   // new strike swells in. Adding the new partials on top of the old ones would let them cancel
@@ -1037,8 +1070,9 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // a partial measured on only one side fades out towards the other
     float missing = (hasA && hasB) ? 0.f : -24.f * (hasA ? s.w : 1 - s.w);
 
-    float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn));
     float rat = pn * std::sqrt((1 + B * pn * pn) / (1 + B)) * std::exp2((wa * A.dev + wb * Bp.dev) / 1200.f);
+    float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn)) +
+                  hammerDb(pitchNow * rat) + pointDb(pn);
     float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0);
     float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1);
     float logDecay = 0;   // the blended characteristic decay, log(dB/s), for the modes
@@ -1186,6 +1220,18 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     p.b0 = (g + K) / (1 + K);
     p.b1 = (K - g) / (1 + K);
     p.a1 = (K - 1) / (1 + K);
+    // Hardness: the strike is the body's answer to the hammer's force, so it changes as the
+    // partials do (the same ratio of spectra)
+    p.hard = hard != 0;
+    if (p.hard) {
+      float K1 = std::tan(0.5f * kTwoPi * std::min(hammerFc, 0.45f * sr) / sr);
+      float K2 = std::tan(0.5f * kTwoPi * std::min(hammerFcNew, 0.45f * sr) / sr);
+      p.hb0 = K2 / K1 * (K1 + 1) / (K2 + 1);
+      p.hb1 = K2 / K1 * (K1 - 1) / (K2 + 1);
+      p.ha1 = (K2 - 1) / (K2 + 1);
+      for (auto& v : p.hx) v[0] = v[1] = 0;
+      for (auto& v : p.hy) v[0] = v[1] = 0;
+    }
     for (int mic = 0; mic < 2; ++mic) {
       p.x1[mic] = p.y1[mic] = 0;
       float gw[2];
@@ -1421,6 +1467,16 @@ void PianoVoice::renderStrikes(Buffer& out, int frames, float damperDbPerS) {
       float r = p.b0 * xr + p.b1 * p.x1[1] - p.a1 * p.y1[1];
       p.x1[0] = xl; p.y1[0] = l;
       p.x1[1] = xr; p.y1[1] = r;
+      if (p.hard) {
+        for (int st = 0; st < 2; ++st) {
+          float nl = p.hb0 * l + p.hb1 * p.hx[st][0] - p.ha1 * p.hy[st][0];
+          float nr = p.hb0 * r + p.hb1 * p.hx[st][1] - p.ha1 * p.hy[st][1];
+          p.hx[st][0] = l; p.hy[st][0] = nl;
+          p.hx[st][1] = r; p.hy[st][1] = nr;
+          l = nl;
+          r = nr;
+        }
+      }
       p.env *= p.envMul;
       out.add(i, l, r);
     }

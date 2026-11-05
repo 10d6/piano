@@ -415,6 +415,54 @@ lowest key move:
 first second the same way. One line can't follow it, and the long tail high
 notes need came out 17–27 dB too weak at 2–3 s.
 
+## The hammer: Hardness and Strike Point
+
+Two controls change the hammer itself, around what was measured. At their defaults (0 % and 12 %)
+the output is exactly that of the measured piano (bit for bit).
+
+**The hammer's spectrum** (`tools/analyze_hammer.py`). A felt hammer's force on the string is a
+pulse lasting a millisecond or a few. Its spectrum is flat up to a corner near the inverse of the
+contact time and falls above it. The felt stiffens as it is compressed, so a faster hammer stays
+on the string for less time and the corner moves up: that is why a piano brightens as it is
+played harder. Modelled as
+
+    |F(f)| ∝ 1 / (1 + (f / fc)²)          (−12 dB per octave above fc)
+    fc = fc13 · (v / v13)^α               (v: the hammer's speed, against layer 13's)
+
+and fitted per measured key to the 16 layers' partial levels: each layer's change against layer
+13, partial by partial, up to a level per layer. The hammer's speed per layer is read from the two
+lowest partials, well below the corner. **One corner and one exponent per key explain 70-86 % of
+how the partials change from soft to loud from A0 to C6** (rms 4.6-9.3 dB → 1.9-4.9 dB); above C6,
+where the top keys have few, noisy partials, 20-94 %. α is near 2 up to C6 (1.4-2.8) and near 1
+above; the corner at layer 13 is 3-12 kHz, at layer 1 a few hundred Hz. Both are smoothed across
+the keys (running medians), and the corner per layer (`hammerFc`) kept rising with the layer and
+within 300 Hz-24 kHz; C8 takes A7's.
+
+**Hardness** (`tone.hardness`, −100…+100 %) moves the corner, ±3 octaves at ±100 %: a harder felt
+is a shorter contact. Everything the hammer drives changes by the ratio of the moved spectrum to
+the measured one, (1 + (f/fc)²) / (1 + (f/fc')²):
+
+- each partial, at its frequency, at the strike;
+- the recorded strike (the body's answer to the hammer's force), through that ratio as two
+  first-order sections;
+- the swell: contact time goes as 1 / fc, and the swell is partly the soundboard's, so τ is
+  scaled by (fc / fc')^½ (2.8 times slower at −100 %, faster at +100 %).
+
+Softer is strong: at velocity 80, −100 % takes 18-28 dB off the attack above 2 kHz from C2 to C5,
+and the treble's fundamentals, above the moved corner, lose 14-18 dB (a felt-piano mute). Harder
+saturates: +100 % adds 4-6 dB above 2 kHz, since the measured hammer is already flat up to its
+corner at medium velocity, and a spectrum can't brighten past flat. A harder surface than felt (a
+hammer that rings, or partials above the recordings' floor) would need more than this model.
+The strike below A2 (band noise) isn't changed by it.
+
+**Strike Point** (`tone.strikepoint`, 4-25 % of the string's length) moves where the hammer meets
+the string. Partial n is excited as |sin(nπx)|; the recordings' x is about 1/8.3 from A0 to C4
+(docs/TESTING.md), so each partial changes by the ratio to x = 12 %, kept within −30…+12 dB near
+the nodes (|sin| no lower than 0.03). Nearer the end is thinner and brighter (C4's attack centroid
+500 → 940 Hz at 4 %), further in darker and hollower (440 Hz at 25 %). Above C4 the real strike
+point is unknown (it moves towards the end on most grands), so there it changes the tone around
+the recordings without claiming where the hammer was.
+
 ## The body's ring
 
 After each strike the soundboard, case and room ring on. This is diffuse
@@ -522,6 +570,8 @@ aftersound decay for a medium strike.
 | Brightness | `tone.bright` | partial tilt, dB per octave of partial number |
 | Attack | `tone.attack` | swell time τ |
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
+| Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
+| Strike Point | `tone.strikepoint` | where the hammer meets the string, % of its length (12 %: as recorded) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |
@@ -544,6 +594,7 @@ recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salama
                                                     make_header.py → src/PianoData.h → build ───────────────────────────────────────┘
                                                     calibrate_noise.py (renders; adjusts salamander_noise.json; repeat ×3; keys below A2 only)
                                                     analyze_strike.py (recordings + a build → salamander_strike.npz; then make_header, build)
+          salamander.json ─ analyze_hammer.py ─ salamander_hammer.json (the hammer's corner; into make_header)
                                                     choose_modes.py (renders; per key, modes or not; then make_header, build)
 ```
 
