@@ -175,7 +175,10 @@ from CI at milestones.
   measured piano. Off must stay bit-identical (`cmp` the renders). It scales each component's
   output gain per control block by its partial (`pnum`, set from `curPn` in `strike`), never its
   state. Its own RNG (`arpRng`): drawing from the voice's would move every beat and noise.
-  `tests/arp.json` and the *Harmonic Arp* preset exercise it.
+  Group Single + Width 0 is the first version's sound: keep it so (`cmp`). Boosting one partial
+  alone sounds resonant and artificial to the owner; negative Boost (a notch) or Octaves +
+  Width sound more natural. `tests/arp.json` and the *Harmonic Arp* / *Partial Notch* presets
+  exercise it.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for

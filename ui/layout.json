@@ -111,6 +111,12 @@
           "param": "arp.high"
         },
         {
+          "param": "arp.group"
+        },
+        {
+          "param": "arp.width"
+        },
+        {
           "param": "arp.rate"
         },
         {
@@ -166,8 +172,10 @@
     "arp.sync": "Lock the step length to the tempo, at Division.",
     "arp.division": "The step length when Sync is on.",
     "arp.overlap": "How long each partial's swell lasts against the step. 100%: it takes two steps, so one partial rises while the last one falls. 0%: each has its step to itself, a pulse. 200%: three at once, a smear.",
-    "arp.boost": "How far a partial rises at the top of its turn, against its natural level. Negative digs it out instead: a moving notch.",
-    "arp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual."
+    "arp.boost": "How far a featured partial rises at the top of its turn, against its natural level. Negative digs it out instead: a moving notch, often the more natural sound.",
+    "arp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual.",
+    "arp.group": "Single: each step features one partial (sharp, whistle-like when boosted). Octaves: a step is a pitch of the scale, and every partial of it in range moves together (E: 5, 10 and 20), so the melody comes from across the spectrum rather than one sine.",
+    "arp.width": "Spreads each featured partial to its neighbours within this many octaves either side, fading with distance: a moving formant rather than a single partial. 0: only the featured partials."
   },
   "keyboard": true
 }

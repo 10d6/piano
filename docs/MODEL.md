@@ -640,11 +640,20 @@ out, a melody inside the note (`PianoVoice::arpBlock`).
   flat) as its seventh; also Major Triad, every harmonic, odd harmonics. Only between Lowest
   and Highest, and only partials the voice is playing (a high key's top partials are absent or
   above Nyquist). The pitches are the strings' own, so stiffness sharpens the upper ones.
+- **Grouping.** Single features one partial per step (as first built: a boosted partial
+  stands out as a sine, resonant and electronic). Octaves (the default) makes each step a
+  pitch class, named by its odd harmonic and walked in scale order (C D E G over C, from
+  harmonics 3-16), and moves all its partials in range together: C is 4, 8 and 16, G is 3, 6
+  and 12. **Width** spreads each featured partial to its neighbours within ±Width octaves,
+  weighted cos² of the distance; a neighbour outside the pattern goes from its own level
+  (not Rest) towards Boost. Single with Width 0 renders exactly as the first version did.
 - **Timing.** Steps run from the strike, at Rate (Hz) or synced to the tempo at Division. Step
   k's partial rises and falls as sin²(π x / W) over W = 1 + Overlap steps: at 100 % one
   partial is rising while the last falls, and the two sum to a steady level.
 - **Level.** A featured partial goes from Rest to Boost (dB against its natural level); the
-  pattern's other partials sit at Rest; partials outside it are untouched.
+  pattern's other partials sit at Rest; partials outside it are untouched. Negative Boost
+  digs a moving notch instead (the *Partial Notch* preset), which the owner found the more
+  natural of the two; *Harmonic Arp* is Octaves, Width ¼ octave, +8 dB, Rest 0.
 - **How.** Each component keeps its partial number (`pnum`). Per control block, the gain each
   partial should have at the block's end is computed, and each component's output to the mics
   ramps to it from the last block's gain. Only the output is scaled, not the oscillator's state,

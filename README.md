@@ -174,7 +174,7 @@ Playwright with Chromium)
 
 **Partial Arp** (a creative extra, off by default): each note's partials take turns standing
 out, in a pentatonic, triad or harmonic pattern, as a melody inside the note. Try the
-*Harmonic Arp* preset; docs/MODEL.md has how it works.
+*Harmonic Arp* and *Partial Notch* presets; docs/MODEL.md has how it works.
 
 ## Building
 
