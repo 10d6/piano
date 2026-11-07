@@ -293,7 +293,7 @@ struct Piano : Synth {
     arpDivision = b.add("arp.division").name("Arp Division")
                       .choices({"1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}).def(4).group("Partial Arp");
     arpOverlap = b.add("arp.overlap").name("Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
-    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(8).unit("dB").group("Partial Arp");
+    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(-20).unit("dB").group("Partial Arp");
     arpOthers = b.add("arp.others").name("Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
     arpGroup = b.add("arp.group").name("Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
     arpWidth = b.add("arp.width").name("Arp Width").range(0, 1).def(0).unit("oct").group("Partial Arp");

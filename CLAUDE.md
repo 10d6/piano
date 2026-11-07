@@ -180,8 +180,8 @@ from CI at milestones.
   output gain per control block by its partial (`pnum`, set from `curPn` in `strike`), never its
   state. Its own RNG (`arpRng`): drawing from the voice's would move every beat and noise.
   Group Single + Width 0 is the first version's sound: keep it so (`cmp`). Boosting one partial
-  alone sounds resonant and artificial to the owner; negative Boost (a notch) or Octaves +
-  Width sound more natural. `tests/arp.json` and the *Harmonic Arp* / *Partial Notch* presets
+  alone sounds resonant and artificial to the owner; negative Boost (a notch, the default:
+  −20 dB) or Octaves + Width sound more natural. `tests/arp.json` and the *Harmonic Arp* / *Partial Notch* presets
   exercise it.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).

@@ -653,9 +653,9 @@ out, a melody inside the note (`PianoVoice::arpBlock`).
   k's partial rises and falls as sin²(π x / W) over W = 1 + Overlap steps: at 100 % one
   partial is rising while the last falls, and the two sum to a steady level.
 - **Level.** A featured partial goes from Rest to Boost (dB against its natural level); the
-  pattern's other partials sit at Rest; partials outside it are untouched. Negative Boost
-  digs a moving notch instead (the *Partial Notch* preset), which the owner found the more
-  natural of the two; *Harmonic Arp* is Octaves, Width ¼ octave, +8 dB, Rest 0.
+  pattern's other partials sit at Rest; partials outside it are untouched. Boost defaults to
+  −20 dB, a moving notch, which the owner found more natural than boosting (the *Partial
+  Notch* preset is that with the first version's sustain and room); *Harmonic Arp* is Octaves, Width ¼ octave, +8 dB, Rest 0.
 - **How.** Each component keeps its partial number (`pnum`). Per control block, the gain each
   partial should have at the block's end is computed, and each component's output to the mics
   ramps to it from the last block's gain. Only the output is scaled, not the oscillator's state,
