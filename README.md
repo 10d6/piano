@@ -172,6 +172,10 @@ Playwright with Chromium)
   Unzip it and follow `INSTALL.md` inside. Tagging a version (`v0.2.0`)
   publishes them as a release.
 
+**Partial Arp** (a creative extra, off by default): each note's partials take turns standing
+out, in a pentatonic, triad or harmonic pattern, as a melody inside the note. Try the
+*Harmonic Arp* preset; docs/MODEL.md has how it works.
+
 ## Building
 
 ```

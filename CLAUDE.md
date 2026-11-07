@@ -171,6 +171,11 @@ from CI at milestones.
   strong, body ring weak late. Known, not yet fixed. Soft low-mid strikes
   (C4 layer 4) have a 62 Hz thump 15-20 dB too strong (attack.py's worst case). The body ring is a few
   dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
+- **Partial Arp** (`arp.*`, `PianoVoice::arpBlock`): a creative feature, not part of the
+  measured piano. Off must stay bit-identical (`cmp` the renders). It scales each component's
+  output gain per control block by its partial (`pnum`, set from `curPn` in `strike`), never its
+  state. Its own RNG (`arpRng`): drawing from the voice's would move every beat and noise.
+  `tests/arp.json` and the *Harmonic Arp* preset exercise it.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for

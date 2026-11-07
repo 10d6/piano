@@ -165,7 +165,10 @@ inline void atFrequency(int k, int note, float rat, int l0, float lf, float& lvL
 struct Piano;
 
 struct PianoVoice : Voice {
-  explicit PianoVoice(Piano& s) : synth(s) {}
+  explicit PianoVoice(Piano& s) : synth(s) {
+    for (float& g : gPrev) g = 1;
+    for (float& g : pnGain) g = 1;
+  }
   void prepare(const PrepareInfo& info) override { sr = static_cast<float>(info.sampleRate); }
   void start(const NoteOn& n, const StartInfo& s) override;
   void strike(VoiceContext& ctx, float vel);
@@ -181,6 +184,8 @@ struct PianoVoice : Voice {
               float stereoPhase, float extraDb);
   void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma);
   void cull();
+  void arpBlock(VoiceContext& ctx, int frames, int pattern);
+  void arpSequence(int scale, int lo, int hi);
 
   Piano& synth;
   float sr = 48000;
@@ -199,6 +204,20 @@ struct PianoVoice : Voice {
   float decay[kCapacity];     // natural decay (dB/s, negative), scaled by Sustain
   float extra[kCapacity];     // extra decay not scaled by Sustain (dB/s, positive): the onset twins
   float damp[kCapacity];      // extra decay with the damper down (dB/s, positive)
+
+  // The partial arpeggiator (arp.*): each component's output gain, ramped across the control
+  // block from gPrev to its partial's pnGain. It scales what the component sends to the mics, not
+  // its state, so a partial comes back to exactly its natural level when its step has passed.
+  unsigned char pnum[kCapacity];   // the partial number each component belongs to
+  float gPrev[kCapacity];          // its output gain at the end of the last block (1 when idle)
+  float pnGain[kMaxPartials + 1];  // per partial number, this block's target gain
+  int curPn = 0;                   // the partial strike() is adding
+  bool gainsLive = false;          // gains differ from 1 (or are ramping back): the slower path
+  double arpPh = 0;                // steps since the strike
+  int arpNext = 0;                 // the next step to choose a partial for
+  unsigned char arpHist[4] = {};   // the partial of step k, at k & 3 (0: none)
+  unsigned arpRng = 1, strikes = 0;
+  int seq[kMaxPartials] = {}, seqN = 0, seqKey = -1;
 
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
@@ -235,7 +254,8 @@ struct PianoVoice : Voice {
 
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
-      resonance, topDampers, width, room;
+      resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
+      arpOverlap, arpBoost, arpOthers;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -260,6 +280,20 @@ struct Piano : Synth {
     resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
     room = b.add("space.room").name("Room").range(0, 100).def(12).unit("%").group("Space");
+    // the partial arpeggiator (PianoVoice::arpBlock): Off leaves the piano bit-identical
+    arpPattern = b.add("arp.pattern").name("Arp Pattern").choices({"Off", "Up", "Down", "Up & Down", "Random"}).group("Partial Arp");
+    arpScale = b.add("arp.scale").name("Arp Partials")
+                   .choices({"Major Pentatonic", "Minor Pentatonic", "Major Triad", "All Harmonics", "Odd Harmonics"})
+                   .group("Partial Arp");
+    arpLow = b.add("arp.low").name("Lowest Partial").range(1, 48).def(3).integer().group("Partial Arp");
+    arpHigh = b.add("arp.high").name("Highest Partial").range(2, 96).def(16).integer().group("Partial Arp");
+    arpRate = b.add("arp.rate").name("Arp Rate").range(0.25, 20).log().def(5).unit("Hz").group("Partial Arp");
+    arpSync = b.add("arp.sync").name("Arp Sync").toggle().group("Partial Arp");
+    arpDivision = b.add("arp.division").name("Arp Division")
+                      .choices({"1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}).def(4).group("Partial Arp");
+    arpOverlap = b.add("arp.overlap").name("Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
+    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(12).unit("dB").group("Partial Arp");
+    arpOthers = b.add("arp.others").name("Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<PianoVoice>(*this); }
@@ -968,6 +1002,8 @@ void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float 
   extra[i] = extraDb;
   damp[i] = dmp;
   pr[i] = pi[i] = 0;
+  pnum[i] = static_cast<unsigned char>(curPn);
+  gPrev[i] = pnGain[curPn];
 }
 
 void PianoVoice::start(const NoteOn& n, const StartInfo&) {
@@ -987,6 +1023,12 @@ void PianoVoice::start(const NoteOn& n, const StartInfo&) {
 
 void PianoVoice::strike(VoiceContext& ctx, float vel) {
   lastPitch = -1;         // recompute every pole
+  // the arpeggiator starts its pattern again with each strike; its own random stream, so the
+  // voice's (the beats, the noise) is the same with it on or off
+  arpPh = 0;
+  arpNext = 0;
+  seqKey = -1;
+  arpRng = 0x9E3779B9u * static_cast<unsigned>(note + 1) + 0x7F4A7C15u * ++strikes;
 
   // velocity → tone layer and level (Piano::velocityMap)
   Piano::VelMap vm = synth.velocityMap(note, vel, ctx.get(synth.touch), ctx.get(synth.dynamics),
@@ -1087,6 +1129,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   float pitchNow = static_cast<float>(ctx.pitchHz());
   int ia = ka.first, ea = ka.first + ka.count, ib = kb.first, eb = kb.first + kb.count;
   for (int pn = 1; pn <= kMaxPartials; ++pn) {
+    curPn = pn;
     while (ia < ea && pd::partials[ia].n < pn) ++ia;
     while (ib < eb && pd::partials[ib].n < pn) ++ib;
     bool hasA = ia < ea && pd::partials[ia].n == pn;
@@ -1327,6 +1370,100 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   }
 }
 
+// ---------------------------------------------------------------- the partial arpeggiator
+
+namespace {
+// Whether harmonic n's pitch class (relative to the note) is in the scale: within ±35 cents of one
+// of its degrees. The 7th harmonic (31 cents flat of the minor seventh) counts; the 11th and 13th,
+// halfway between semitones, don't.
+bool inScale(int n, int scale) {
+  if (scale == 3) return true;               // all harmonics
+  if (scale == 4) return (n & 1) == 1;        // odd harmonics
+  float c = 1200.f * std::log2(static_cast<float>(n));
+  float semi = std::round(c / 100.f);
+  if (std::fabs(c - 100.f * semi) > 35.f) return false;
+  int pc = static_cast<int>(semi) % 12;
+  static constexpr unsigned kSets[3] = {
+      (1u << 0) | (1u << 2) | (1u << 4) | (1u << 7) | (1u << 9),    // major pentatonic
+      (1u << 0) | (1u << 3) | (1u << 5) | (1u << 7) | (1u << 10),   // minor pentatonic
+      (1u << 0) | (1u << 4) | (1u << 7)};                           // major triad
+  return (kSets[scale] >> pc) & 1u;
+}
+}  // namespace
+
+// The partials the pattern walks through, ascending: those in the scale, between Lowest and
+// Highest, that this voice is playing (a key's top partials can be missing or above Nyquist).
+void PianoVoice::arpSequence(int scale, int lo, int hi) {
+  bool has[kMaxPartials + 1] = {};
+  for (int i = 0; i < count; ++i) has[pnum[i]] = true;
+  seqN = 0;
+  for (int n = std::max(lo, 1); n <= std::min(hi, kMaxPartials); ++n)
+    if (has[n] && inScale(n, scale)) seq[seqN++] = n;
+}
+
+// One control block: advance the pattern and set pnGain, every partial's gain at the block's end.
+// Step k starts at k (in steps since the strike) and its partial swells and falls back as
+// sin²(π x / W) over W = 1 + Overlap steps, so at 100 % one partial is rising while the last one
+// falls (and the two sum to a steady level), at 0 % each has the step to itself, at 200 % three
+// sound at once. A featured partial goes from Rest to Boost (dB, against its natural level); the
+// sequence's other partials sit at Rest; partials outside the sequence are left alone.
+void PianoVoice::arpBlock(VoiceContext& ctx, int frames, int pattern) {
+  for (float& g : pnGain) g = 1;
+  if (pattern == 0) return;
+  int scale = ctx.choice(synth.arpScale);
+  int lo = static_cast<int>(ctx.get(synth.arpLow) + 0.5f), hi = static_cast<int>(ctx.get(synth.arpHigh) + 0.5f);
+  int key = ((scale * 128 + lo) * 128 + hi) * 8 + pattern;
+  if (key != seqKey) {
+    seqKey = key;
+    arpSequence(scale, lo, hi);
+  }
+  float rate;   // steps per second
+  if (ctx.on(synth.arpSync)) {
+    static constexpr float kBeats[7] = {2.f, 1.f, 0.5f, 1.f / 3.f, 0.25f, 1.f / 6.f, 0.125f};
+    float bpm = static_cast<float>(ctx.transport().bpm);
+    rate = std::max(bpm, 1.f) / 60.f / kBeats[std::clamp(ctx.choice(synth.arpDivision), 0, 6)];
+  } else {
+    rate = ctx.get(synth.arpRate);
+  }
+  arpPh += static_cast<double>(frames) * rate / sr;
+  float ph = static_cast<float>(arpPh);
+  int now = static_cast<int>(std::floor(ph));
+  while (arpNext <= now) {   // choose each new step's partial as it begins
+    int k = arpNext++, n = seqN, pick = 0;
+    if (n > 0) {
+      int idx = 0;
+      if (pattern == 1) {
+        idx = k % n;
+      } else if (pattern == 2) {
+        idx = n - 1 - k % n;
+      } else if (pattern == 3) {
+        int per = std::max(2 * n - 2, 1);
+        int i = k % per;
+        idx = i < n ? i : per - i;
+      } else {   // random, never the same partial twice running
+        arpRng = arpRng * 1664525u + 1013904223u;
+        idx = static_cast<int>((arpRng >> 8) % static_cast<unsigned>(n));
+        if (n > 1 && seq[idx] == arpHist[(k - 1) & 3] && k > 0) idx = (idx + 1) % n;
+      }
+      pick = seq[std::min(idx, n - 1)];
+    }
+    arpHist[k & 3] = static_cast<unsigned char>(pick);
+  }
+  float W = 1.f + std::clamp(ctx.get(synth.arpOverlap), 0.f, 200.f) * 0.01f;
+  float boost = ctx.get(synth.arpBoost), rest = ctx.get(synth.arpOthers);
+  float e[kMaxPartials + 1] = {};
+  for (int k = std::max(0, static_cast<int>(std::floor(ph - W)) + 1); k <= now; ++k) {
+    int p = arpHist[k & 3];
+    if (p == 0) continue;
+    float s = std::sin(3.14159265f * (ph - static_cast<float>(k)) / W);
+    e[p] = std::max(e[p], s * s);
+  }
+  for (int i = 0; i < seqN; ++i) {
+    int p = seq[i];
+    pnGain[p] = dbToGain(rest + (boost - rest) * e[p]);
+  }
+}
+
 void PianoVoice::release() {
   // the body's ring is damped by the synth, which follows keys and pedal in processEvents; damping
   // it here too could undo that (a release that comes before the strike knows no damper rate yet)
@@ -1351,7 +1488,10 @@ void PianoVoice::cull() {
   float total = 0;
   for (int k = 0; k < count; ++k) total += re[k] * re[k] + im[k] * im[k];
   if (count > 0 && total < dbToGain(kVoiceEndDb) * dbToGain(kVoiceEndDb)) {
-    for (int k = 0; k < count; ++k) re[k] = im[k] = pr[k] = pi[k] = wl[k] = wrr[k] = wri[k] = 0;
+    for (int k = 0; k < count; ++k) {
+      re[k] = im[k] = pr[k] = pi[k] = wl[k] = wrr[k] = wri[k] = 0;
+      gPrev[k] = 1;
+    }
     count = 0;
     return;
   }
@@ -1363,7 +1503,9 @@ void PianoVoice::cull() {
       re[i] = re[j]; im[i] = im[j]; pr[i] = pr[j]; pi[i] = pi[j];
       wl[i] = wl[j]; wrr[i] = wrr[j]; wri[i] = wri[j];
       ratio[i] = ratio[j]; offset[i] = offset[j]; decay[i] = decay[j]; damp[i] = damp[j]; extra[i] = extra[j];
+      pnum[i] = pnum[j]; gPrev[i] = gPrev[j];
       re[j] = im[j] = pr[j] = pi[j] = wl[j] = wrr[j] = wri[j] = 0;
+      gPrev[j] = 1;
     } else {
       ++i;
     }
@@ -1388,6 +1530,40 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
 
   const int frames = out.frames;
   const int padded = (count + kLanes - 1) & ~(kLanes - 1);
+  int arpPattern = ctx.choice(synth.arpPattern);
+  if (arpPattern > 0 || gainsLive) {
+    arpBlock(ctx, frames, arpPattern);
+    gainsLive = arpPattern > 0;   // off: this block ramps every gain back to 1, then the plain path
+    const float inv = 1.f / static_cast<float>(std::max(frames, 1));
+    for (int c = 0; c < padded; c += kLanes) {
+      float r[kLanes], m[kLanes], a[kLanes], b[kLanes], gl[kLanes], gr[kLanes], gi[kLanes], g[kLanes], dg[kLanes];
+      for (int k = 0; k < kLanes; ++k) {
+        r[k] = re[c + k]; m[k] = im[c + k]; a[k] = pr[c + k]; b[k] = pi[c + k];
+        gl[k] = wl[c + k]; gr[k] = wrr[c + k]; gi[k] = wri[c + k];
+        float to = c + k < count ? pnGain[pnum[c + k]] : 1.f;
+        g[k] = gPrev[c + k];
+        dg[k] = (to - g[k]) * inv;
+        gPrev[c + k] = to;
+      }
+      for (int i = 0; i < frames; ++i) {
+        float ol[kLanes], orr[kLanes];
+        for (int k = 0; k < kLanes; ++k) {
+          float nr = r[k] * a[k] - m[k] * b[k];
+          float ni = r[k] * b[k] + m[k] * a[k];
+          r[k] = nr;
+          m[k] = ni;
+          g[k] += dg[k];
+          ol[k] = nr * gl[k] * g[k];
+          orr[k] = (nr * gr[k] + ni * gi[k]) * g[k];
+        }
+        float sl = ((ol[0] + ol[1]) + (ol[2] + ol[3])) + ((ol[4] + ol[5]) + (ol[6] + ol[7]));
+        float sr2 = ((orr[0] + orr[1]) + (orr[2] + orr[3])) + ((orr[4] + orr[5]) + (orr[6] + orr[7]));
+        out.left[i] += sl;
+        out.right[i] += sr2;
+      }
+      for (int k = 0; k < kLanes; ++k) { re[c + k] = r[k]; im[c + k] = m[k]; }
+    }
+  } else
   for (int c = 0; c < padded; c += kLanes) {
     float r[kLanes], m[kLanes], a[kLanes], b[kLanes], gl[kLanes], gr[kLanes], gi[kLanes];
     for (int k = 0; k < kLanes; ++k) {

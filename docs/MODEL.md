@@ -626,6 +626,31 @@ aftersound decay for a medium strike.
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
 | Resonance | `string.resonance` | sympathetic drive |
 | Width, Room | `space.width`, `space.room` | stereo width, small room |
+| Partial Arp | `arp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default |
+
+## Creative: the partial arpeggiator
+
+Not part of the measured piano: with **Arp Pattern** Off (the default) the output is
+bit-identical to the piano without it. Turned on, each note's partials take turns standing
+out, a melody inside the note (`PianoVoice::arpBlock`).
+
+- **Which partials.** Those whose harmonic number lands, as a pitch class against the note,
+  within ±35 cents of a degree of the chosen scale (`inScale`): Major Pentatonic is 1, 2, 3, 4,
+  5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27…; Minor Pentatonic takes the 7th harmonic (31 cents
+  flat) as its seventh; also Major Triad, every harmonic, odd harmonics. Only between Lowest
+  and Highest, and only partials the voice is playing (a high key's top partials are absent or
+  above Nyquist). The pitches are the strings' own, so stiffness sharpens the upper ones.
+- **Timing.** Steps run from the strike, at Rate (Hz) or synced to the tempo at Division. Step
+  k's partial rises and falls as sin²(π x / W) over W = 1 + Overlap steps: at 100 % one
+  partial is rising while the last falls, and the two sum to a steady level.
+- **Level.** A featured partial goes from Rest to Boost (dB against its natural level); the
+  pattern's other partials sit at Rest; partials outside it are untouched.
+- **How.** Each component keeps its partial number (`pnum`). Per control block, the gain each
+  partial should have at the block's end is computed, and each component's output to the mics
+  ramps to it from the last block's gain. Only the output is scaled, not the oscillator's state,
+  so a partial's natural decay carries on underneath and it comes back exactly to its own
+  level. Each voice has its own random stream for Random, so the beats and noise don't change.
+  It costs about 7 % more CPU when on, nothing when off.
 
 ## The data pipeline
 
