@@ -108,10 +108,10 @@ velocity 100; use a MIDI keyboard to play dynamics.
 its recording, from a model of the ear (an ERB filterbank, loudness, a ~1 dB tolerance), in the
 attack, the early sound and the sustain. It agrees with the owner's ears on 7 of the 8 problems
 fixed in the history and with a blind listening test (`tools/listen/`). The 30 measured keys
-are a median 8.5 % from their recordings (bass 8.7 %, middle 5.0 %, treble 23 %), against 9.8 %
+are a median 8.5 % from their recordings (bass 8.7 %, middle 4.9 %, treble 22 %), against 9.8 %
 with the strike as noise and 24 % before the modes; two neighbouring velocity layers of the
 recordings are 5 % apart. In octave bands (`tools/compare.py`) measured keys land within
-0.2–3.2 dB. Keys the model never heard (held out and interpolated) are 25 % from their
+0.2–3.0 dB. Keys the model never heard (held out and interpolated) are 25 % from their
 recordings: what is particular to a key isn't predictable from its neighbours, and that is the
 next thing to work on.
 `docs/TESTING.md` has every measure, today's numbers and the known gaps.
@@ -144,7 +144,8 @@ python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salam
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/analyze_hammer.py tools/salamander.json tools/salamander_hammer.json   # the hammer's spectrum (from the partials)
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
-# then build, and calibrate the strike noise against the recordings (3 passes, make_header and a build between):
+# then build, and calibrate the band noise against the recordings (3 passes, make_header and a build between;
+# it skips keys with a recorded strike, so today it changes nothing):
 python3 -I tools/calibrate_noise.py ../salamander build/piano_render tools/salamander_noise.json
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 python3 -I tools/choose_modes.py ../salamander build/piano_render tools/salamander.json   # per key: modes or not
@@ -192,7 +193,7 @@ The browser page and the plugins are built the same way as in synthkit: see
 | `docs/` | how it's modelled (`MODEL.md`) and tested (`TESTING.md`) |
 | `tools/` | measuring the recordings, calibrating, comparing with them, stress test, browser benchmark |
 | `tools/measure/` | every measurement against the recordings (`README.md` there), the perceptual distance first |
-| `tools/listen/` | a blind listening test page against the recordings, and its analysis against the perceptual distance |
+| `tools/listen/` | a blind listening test page against the recordings, and its analysis against the perceptual distance; A/Bs of the strike (`ab_strike.py`) and the body's ring (`ab_ring.py`) against their recorded versions |
 | `presets/` | factory presets (`init.json` is what a new instance starts on) |
 | `tests/` | render scenarios checked in CI |
 | `ui/layout.json` | the panel layout (and `ui/custom.js` for custom widgets, `ui/style.css` for styles, or `ui/page.js` for a page of the synth's own: API.md §9a) |

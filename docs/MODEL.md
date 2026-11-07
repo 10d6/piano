@@ -566,8 +566,10 @@ aftersound decay for a medium strike.
   its own string would double it, so voices report `sounding[note]` each
   block.
 - **Coupling.** The drive is z += K·x/fs, with K = 0.015/s (`kCoupling`)
-  scaled by **Resonance**. This isn't measurable from these recordings, which
-  were made note by note. The default puts the halo 20–40 dB under a
+  scaled by **Resonance**. It is a judgment: the recordings were made note by
+  note, so no two notes sound together in them. The free strings above E6 do
+  ring along in every recording, though (What the ring is, above), so it could
+  be measured from them. The default puts the halo 20–40 dB under a
   mid-range note a second or two in.
 - **The pedal's lift.** When the pedal goes down, the strings whose dampers
   lift get a random-phase kick per partial. Its size per band is set so the
@@ -615,12 +617,12 @@ aftersound decay for a medium strike.
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
 | Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
 | Strike Point | `tone.strikepoint` | where the hammer meets the string, % of its length (12 %: as recorded) |
-| Stiffness | `string.stiffness` | the strings' inharmonicity, % of measured (0: harmonic) |
-| Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |
 | Stretch | `string.stretch` | stretch tuning, 0 = equal temperament |
+| Stiffness | `string.stiffness` | the strings' inharmonicity, % of measured (0: harmonic) |
+| Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
 | Sustain | `string.sustain` | all string decays (voices and bank) |
 | Dampers | `string.damper` | damper speed |
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
@@ -659,16 +661,15 @@ them.
 - **The soft pedal**, **sostenuto**, **release velocity.**
 - **Strings coupling each other** beyond the bank's one-way drive. The bank's
   output doesn't feed back into the voices.
-- **Measured coupling strength** for sympathetic resonance. It's a judgment.
 - **The body ring follows one decay per band.** It's a few dB strong at
   0.4–1 s and weak at 2–3 s on many keys.
 - **Partials 13–24** come out about 5 dB weak by 1.4 s.
 - **A6's** attack brightens less from soft to loud than the recordings at 2-4 kHz.
 - **The strike's finer changes with velocity** (one response per key, shaped by a shelf and two
   gains), and **between the measured keys** (the nearer key's response).
-- **C5 and nearby** is the weakest measured region (upper partials a few dB
-  strong).
-- **A soft C4's 62 Hz thump** is ~19 dB too strong.
+- **The top octave and a half** (C6 up) is the weakest measured region (22 %; C8 42 %). C5 and
+  nearby, long the weakest, is at 5.5 % since the recorded strike.
+- **A soft C4's 62 Hz thump** is ~20 dB too strong.
 - **The keys between the measured ones** gain little from the modes (docs/TESTING.md, holdout):
   what is particular to a key isn't predictable from its neighbours.
 - **The treble's partials** mostly keep the older description: above C6 the modal fit seldom
