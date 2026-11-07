@@ -1,1 +1,1 @@
-{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Tired Old Piano", "params": { "string.unison": 280, "string.sustain": 55, "string.damper": 180, "tone.bright": 1, "space.width": 60, "space.room": 8 } }
+{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Tired Old Piano", "params": { "string.unison": 280, "string.sustain": 55, "string.damper": 180, "tone.bright": 1, "space.width": 60, "space.room": 14, "space.type": 0 } }
