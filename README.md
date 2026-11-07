@@ -173,6 +173,10 @@ Playwright with Chromium)
   Unzip it and follow `INSTALL.md` inside. Tagging a version (`v0.2.0`)
   publishes them as a release.
 
+**Space**: a reverb with five spaces (Room, Chamber, Hall, Cathedral, Plate), each with early
+reflections from a model of the room and a smooth tail; Decay, Size, Pre-delay, Damping, Early
+level and Low/High Cut. Try the *Concert Hall* and *Cathedral* presets.
+
 **Partial Arp** (a creative extra, off by default): each note's partials take turns standing
 out, in a pentatonic, triad or harmonic pattern, as a melody inside the note. Try the
 *Harmonic Arp* and *Partial Notch* presets; docs/MODEL.md has how it works.

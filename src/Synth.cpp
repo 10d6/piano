@@ -35,6 +35,7 @@
 
 #include "PianoData.h"
 #include "PianoStrike.h"
+#include "Reverb.h"
 
 #ifndef BY_FREQUENCY
 #define BY_FREQUENCY 0.f   // an experiment, off: inconclusive on held-out keys (docs/TESTING.md)
@@ -53,7 +54,8 @@ constexpr float kFloorDb = -105.f;        // components quieter than this (dBFS)
 constexpr int kBudget = 4000;             // components sounding across all keys before the quietest are dropped early
 constexpr float kRangeDb = 70.f;          // and partials this far below a note's loudest one aren't started
 constexpr float kTwoPi = 6.28318530718f;
-constexpr float kTrimDb = -10.f;          // headroom: the recordings peak near 0 dBFS on one loud note
+constexpr float kTrimDb = -10.f;
+constexpr float kWet = 0.1062f;            // the reverb's level: Hall at a given Reverb % as loud as the old room was          // headroom: the recordings peak near 0 dBFS on one loud note
 
 constexpr float kReleaseDb = -37.f;       // the release and pedal recordings' level against the notes
 constexpr float kPedalDownDb = -20.f;     // (the Salamander sfz's own mix: the release takes are normalised)
@@ -256,7 +258,8 @@ struct PianoVoice : Voice {
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
-      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth;
+      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
+      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -280,7 +283,16 @@ struct Piano : Synth {
     topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
     resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
-    room = b.add("space.room").name("Room").range(0, 100).def(12).unit("%").group("Space");
+    room = b.add("space.room").name("Reverb").range(0, 100).def(12).unit("%").group("Space");
+    // the reverb (Reverb.h): early reflections by convolution, a feedback-network tail
+    spaceType = b.add("space.type").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Space");
+    spaceDecay = b.add("space.decay").name("Decay").range(25, 300).log().def(100).unit("%").group("Space");
+    spaceSize = b.add("space.size").name("Size").range(50, 200).log().def(100).unit("%").group("Space");
+    spacePredelay = b.add("space.predelay").name("Pre-delay").range(0, 200).def(0).unit("ms").group("Space");
+    spaceDamping = b.add("space.damping").name("Damping").range(0, 100).def(50).unit("%").group("Space");
+    spaceEarly = b.add("space.early").name("Early").range(-30, 6).def(0).unit("dB").group("Space");
+    spaceLowCut = b.add("space.lowcut").name("Low Cut").range(20, 1000).log().def(50).unit("Hz").group("Space");
+    spaceHighCut = b.add("space.highcut").name("High Cut").range(1000, 20000).log().def(16000).unit("Hz").group("Space");
     // the partial arpeggiator (PianoVoice::arpBlock): Off leaves the piano bit-identical
     arpPattern = b.add("arp.pattern").name("Arp Pattern").choices({"Off", "Up", "Down", "Up & Down", "Random"}).group("Partial Arp");
     arpScale = b.add("arp.scale").name("Arp Partials")
@@ -418,28 +430,19 @@ struct Piano : Synth {
   };
   Band bands[pd::kNoiseBands];
 
-  // A small room: decorrelated, darkening noise tails, one per side.
-  wa::Convolver roomConv;
+  // The reverb (Reverb.h): its input and output for one control block.
+  piano_reverb::Reverb reverb;
+  float revL[32] = {}, revR[32] = {}, wetL[32] = {}, wetR[32] = {};
   float sr = 48000;
 
   void prepare(const PrepareInfo& info) override {
     sr = static_cast<float>(info.sampleRate);
-    int len = static_cast<int>(1.6 * info.sampleRate);
-    std::vector<float> l(static_cast<std::size_t>(len)), r(static_cast<std::size_t>(len));
+    reverb.prepare(sr);
+    // The noise bands' normalisation below draws from this generator after the old room's impulse
+    // (1.6 s of two noise channels) did: keep those draws, so the dry piano stays bit-identical.
     dsp::Rng rng;
     rng.seed(0x9e3779b9u);
-    float lpL = 0, lpR = 0;
-    for (int i = 0; i < len; ++i) {
-      float t = static_cast<float>(i) / sr;
-      float env = std::exp(-t / 0.32f) * (1 - std::exp(-t / 0.004f));
-      float c = std::exp(-kTwoPi * (9000.f * std::exp(-t / 0.5f) + 600.f) / sr);   // darker as it fades
-      lpL = lpL * c + (1 - c) * rng.bipolar();
-      lpR = lpR * c + (1 - c) * rng.bipolar();
-      l[static_cast<std::size_t>(i)] = lpL * env;
-      r[static_cast<std::size_t>(i)] = lpR * env;
-    }
-    const float* ch[2] = {l.data(), r.data()};
-    roomConv.setImpulse(ch, 2, len, info.sampleRate, true);
+    for (int i = 0, len = static_cast<int>(1.6 * info.sampleRate); i < 2 * len; ++i) rng.bipolar();
     buildBank();
     for (int c = 0; c < 2; ++c)
       for (int b = 0; b < pd::kNoiseBands; ++b) bandRng[c][b].seed(0x51ed270bu + 977u * static_cast<unsigned>(b + 16 * c));
@@ -965,16 +968,23 @@ struct Piano : Synth {
     floorDb = kFloorDb + std::clamp(over * 40.f, 0.f, 40.f);
     compsNow = 0;
     Ramp w = ctx.ramp(width), mix = ctx.ramp(room);   // both in %
-    for (int i = 0; i < io.frames; ++i) {
+    const int n = std::min(io.frames, 32);
+    bool on = false;
+    for (int i = 0; i < n; ++i) {
       float l = io.left[i], r = io.right[i];
       float m = 0.5f * (l + r), s = 0.5f * (l - r) * w.at(i) * 0.01f;
-      l = m + s;
-      r = m - s;
-      float wl = l, wr = r;
-      roomConv.process(wl, wr);
-      float k = mix.at(i) * 0.01f;
-      io.left[i] = l + k * wl;
-      io.right[i] = r + k * wr;
+      revL[i] = m + s;
+      revR[i] = m - s;
+      on = on || mix.at(i) > 0;
+    }
+    piano_reverb::Reverb::Settings st{ctx.choice(spaceType), ctx.get(spaceDecay) * 0.01f, ctx.get(spaceSize) * 0.01f,
+                                      ctx.get(spaceDamping),  ctx.get(spacePredelay),      ctx.get(spaceEarly),
+                                      ctx.get(spaceLowCut),   ctx.get(spaceHighCut),       on};
+    reverb.process(st, revL, revR, wetL, wetR, n);
+    for (int i = 0; i < n; ++i) {
+      float k = mix.at(i) * 0.01f * kWet;
+      io.left[i] = revL[i] + k * wetL[i];
+      io.right[i] = revR[i] + k * wetR[i];
     }
   }
 };

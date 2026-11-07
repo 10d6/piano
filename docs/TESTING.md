@@ -236,7 +236,8 @@ machine. Today:
 cost the same as the description they replace: a modal partial is 4-12 components, where the
 prompt, burst and aftersound with their beating partners were up to 18. The cost comes from the
 sympathetic string bank and the steeper noise filters. Healthy: the worst case no slower than
-main's on the same machine. The recorded strike is about 9 % cheaper than the band noise it replaces (a sample read and a
+main's on the same machine. The Space reverb (Hall, the default) runs at the old room's cost: the
+worst case measured 0.7-0.8× against main's 0.7× on the same machine. The recorded strike is about 9 % cheaper than the band noise it replaces (a sample read and a
 shelf per mic, against ten bands of filtered noise). The page is 4.6 MB (2.9 MB before the
 recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-bit samples;
 2.3 MB before the modes).

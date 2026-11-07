@@ -599,10 +599,9 @@ aftersound decay for a medium strike.
     digital pianos do.
 - **Load guard.** When more than 4000 components sound across all voices, the
   floor below which components are dropped rises (by up to 40 dB).
-- **Space.** **Width** is mid/side width. **Room** is a short generated room:
-  1.6 s decorrelated noise tails per side, a 4 ms rise, a 0.32 s decay, and a
-  low-pass falling from ~9.6 kHz towards 600 Hz as the tail fades. The
-  measurements are close-miked, so Room 0 is the dry piano.
+- **Space.** **Width** is mid/side width. **Reverb** (`space.room`) is how much of the space is
+  heard; the measurements are close-miked, so 0 is the dry piano, and then bit-identical to the
+  piano before the reverb existed. The space is in **Space, below**.
 - **Headroom.** Output is the recordings' level −10 dB (`kTrimDb`); one loud
   recorded note peaks near 0 dBFS.
 
@@ -627,8 +626,55 @@ aftersound decay for a medium strike.
 | Dampers | `string.damper` | damper speed |
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
 | Resonance | `string.resonance` | sympathetic drive |
-| Width, Room | `space.width`, `space.room` | stereo width, small room |
+| Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
 | Partial Arp | `arp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default |
+
+## Space
+
+A hybrid reverb (`src/Reverb.h`), generated, with no recorded impulses: each space's **early
+reflections** are an impulse response played by the kit's convolver, and its **tail** is a
+feedback delay network, so the tail's length, size and colour are continuous controls (a
+convolver's impulse is fixed once audio runs).
+
+| Space | Shoebox (m) | RT60 | Treble RT60 | Early part | Tail fed after |
+|---|---|---|---|---|---|
+| Room | 6 × 5 × 3 | 0.6 s | × 0.6 | 60 ms, as loud as the tail | 8 ms |
+| Chamber | 10 × 8 × 5 | 1.3 s | × 0.55 | 90 ms, −2 dB | 15 ms |
+| Hall (default) | 32 × 20 × 14 | 2.2 s | × 0.5 | 140 ms, −5 dB | 30 ms |
+| Cathedral | 60 × 24 × 28 | 5.0 s | × 0.4 | 220 ms, −8 dB | 50 ms |
+| Plate | (none) | 2.4 s | × 0.85 | a 12 ms bright burst, −10 dB | 0 |
+
+- **Early reflections.** Image sources of a shoebox up to 14 bounces, from the piano to a pair of
+  listeners 0.6 m apart, relative to the direct sound (which is the dry piano). Each bounce
+  reflects 0.75-0.9 of the amplitude and goes through a first-order low-pass at 9 kHz; each image
+  is jittered by 3 cm per bounce so the pattern isn't too regular; the last 30 % of the window
+  fades into the tail.
+- **Tail.** 16 delay lines through an orthogonal Hadamard matrix (lossless), their lengths
+  log-spaced over 0.6-2.2 times the space's mean free path (V/S × 4) in travel time. Each line
+  loses, per pass, what its length takes at the RT60s below and above a first-order split at
+  2 kHz, so the decay is exact for any length. Four lines are modulated ±0.3 ms at 0.3-0.9 Hz
+  against ringing. Left and right take orthogonal sign patterns of the lines (decorrelated).
+- **Controls.** **Decay** scales both RT60s (25-300 %). **Size** scales the delays (50-200 %,
+  gliding over 150 ms; the RT60 stays). **Damping** moves the treble RT60 by 2^((50 − d)/30) from
+  the space's own (at most 1.2 × the RT60). **Pre-delay** (0-200 ms) delays both parts.
+  **Early** sets the reflections' level. **Low Cut** and **High Cut** are Butterworth filters on
+  the wet signal only.
+- **Switching.** Every space has its own convolver and network. Changing Space fades the input
+  over to the new one in 10 ms; the old one rings out and then stops (its RT60 × 1.3). Reverb 0
+  stops them all the same way, so the reverb costs nothing when off.
+- **Level.** Each space is normalised to one energy for an impulse (weighted by a one-pole
+  low-pass at 800 Hz, about a piano's spectrum), shared by the early part and the tail by the
+  table's ratio. Then each was trimmed on renders of a staccato chord across the keyboard to
+  within 0.1 dB of the old room's level at the same setting (`trimDb`; `kWet` sets Hall's), so
+  Reverb means about what it meant before.
+- Measured on that chord (500-1000 Hz, T20): Room 0.64 s, Chamber 1.11 s, Hall 1.94 s, Cathedral
+  4.44 s, Plate 1.89 s (somewhat under the design: the dry notes are still sounding into it).
+  Hall at Decay 50 % / 200 %: 0.97 / 3.99 s; Damping 0 / 100 % moves its 4-8 kHz RT60 from 2.31
+  to 0.72 s; Size 50-200 % leaves the RT60 within 3 %.
+- **Cost.** About 2.6 % of a core for one space (native), against 2.8 % for the old room's 1.6 s
+  convolver; two while one rings out after a change.
+- It replaced a 1.6 s generated noise room (one convolver, a 0.32 s amplitude decay, so an
+  RT60 of 2.2 s, low-passed towards 600 Hz as it faded).
 
 ## Creative: the partial arpeggiator
 

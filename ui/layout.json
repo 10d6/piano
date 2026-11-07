@@ -92,8 +92,33 @@
         },
         {
           "param": "space.room"
+        },
+        {
+          "param": "space.type"
+        },
+        {
+          "param": "space.decay"
+        },
+        {
+          "param": "space.size"
+        },
+        {
+          "param": "space.predelay"
+        },
+        {
+          "param": "space.damping"
+        },
+        {
+          "param": "space.early"
+        },
+        {
+          "param": "space.lowcut"
+        },
+        {
+          "param": "space.highcut"
         }
-      ]
+      ],
+      "info": "The room around the piano. The measurements are close-miked, so Reverb 0 is the dry piano. Early reflections come from a model of each space; the tail is a smooth feedback network, so Decay, Size and Damping can be set freely."
     },
     {
       "title": "Partial Arp",
@@ -151,7 +176,7 @@
     "string.sustain": "How long notes ring. 100% is as measured.",
     "string.damper": "How long the dampers take to stop a note when you let go of the key. Keys above E6 have no dampers, as on a grand (Top Dampers changes that).",
     "space.width": "Stereo width of the two microphones the piano was measured with.",
-    "space.room": "A small room around the piano. The measurements are close-miked, so 0 is the dry piano.",
+    "space.room": "How much of the space you hear. The measurements are close-miked, so 0 is the dry piano.",
     "tone.attack": "How long each note takes to swell in at the strike. 100% is as measured for each key, from the recordings.",
     "tone.body": "The soundboard and room ringing on after each strike: the echo-like tail most audible on high notes. 0 dB is as measured. The key's damper stops it when you let go (above E6, where a grand has no dampers, it rings on unless Top Dampers is All keys).",
     "play.tone": "How much the tone darkens as you play softer. 100% is as recorded: each loudness has the tone the real piano had at that loudness. Lower keeps soft notes brighter; higher makes them darker and gentler.",
@@ -175,7 +200,15 @@
     "arp.boost": "How far a featured partial moves at its turn, against its natural level. Negative (the default, -20 dB) digs it out: a moving notch, the more natural sound. Positive brings it forward instead, which stands out more but can sound resonant; try Octaves and some Width with it.",
     "arp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual.",
     "arp.group": "Single: each step features one partial (sharp, whistle-like when boosted). Octaves: a step is a pitch of the scale, and every partial of it in range moves together (E: 5, 10 and 20), so the melody comes from across the spectrum rather than one sine.",
-    "arp.width": "Spreads each featured partial to its neighbours within this many octaves either side, fading with distance: a moving formant rather than a single partial. 0: only the featured partials."
+    "arp.width": "Spreads each featured partial to its neighbours within this many octaves either side, fading with distance: a moving formant rather than a single partial. 0: only the featured partials.",
+    "space.type": "The space: Room (a small room, 0.6 s), Chamber (1.3 s), Hall (a concert hall, 2.2 s), Cathedral (5 s) or Plate (a bright, dense studio plate, 2.4 s, no reflections). Changing it lets the old space ring out.",
+    "space.decay": "The tail's length against the space's own (its RT60). 100 % is the space as designed.",
+    "space.size": "Scales the tail's delays: smaller is denser and more metallic, larger is grainier and more spacious. The decay time stays. Moving it while a tail rings bends its pitch a little, like a tape.",
+    "space.predelay": "A gap before the reverb starts, on top of the space's own distances: a bigger stage, and a clearer attack.",
+    "space.damping": "How much faster the treble dies than the rest. 50 % is the space's own; 0 % keeps the treble as long as the body (bright, glassy); 100 % makes it die quickly (warm, dark).",
+    "space.early": "The early reflections' level against the tail: up for a sense of walls close by, down for a tail that blooms on its own.",
+    "space.lowcut": "Takes the bass out of the reverb only, so low notes don't turn muddy.",
+    "space.highcut": "Takes the top out of the reverb only, for a softer, more distant space."
   },
   "keyboard": true
 }

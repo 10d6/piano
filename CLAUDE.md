@@ -183,6 +183,13 @@ from CI at milestones.
   alone sounds resonant and artificial to the owner; negative Boost (a notch, the default:
   −20 dB) or Octaves + Width sound more natural. `tests/arp.json` and the *Harmonic Arp* / *Partial Notch* presets
   exercise it.
+- **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
+  built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,
+  Size and Damping are continuous. Each space has its own instance; a change rings the old one out.
+  Reverb (`space.room`) 0 must stay bit-identical to the dry piano: every measurement renders
+  with it at 0. `prepare` still draws the old room's noise from the generator the noise bands'
+  normalisation uses next: keep those draws. Levels are trimmed per space on a staccato chord
+  (`trimDb`, `kWet`): re-trim after changing a space.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for

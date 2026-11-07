@@ -1,0 +1,1 @@
+{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Cathedral", "params": { "space.type": 3, "space.room": 40, "space.predelay": 20, "space.early": -4, "space.lowcut": 120, "space.highcut": 9000, "tone.hammer": -4 } }
