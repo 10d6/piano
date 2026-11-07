@@ -96,6 +96,42 @@
       ]
     },
     {
+      "title": "Partial Arp",
+      "controls": [
+        {
+          "param": "arp.pattern"
+        },
+        {
+          "param": "arp.scale"
+        },
+        {
+          "param": "arp.low"
+        },
+        {
+          "param": "arp.high"
+        },
+        {
+          "param": "arp.rate"
+        },
+        {
+          "param": "arp.sync"
+        },
+        {
+          "param": "arp.division"
+        },
+        {
+          "param": "arp.overlap"
+        },
+        {
+          "param": "arp.boost"
+        },
+        {
+          "param": "arp.others"
+        }
+      ],
+      "info": "Brings each note's partials forward in turn, as a melody inside the note: each swells by Boost and falls back to its natural level, overlapping the next. Off leaves the piano as measured."
+    },
+    {
       "kit": "master"
     }
   ],
@@ -121,7 +157,17 @@
     "tone.hardness": "The hammer's felt. Softer dulls the partials and the strike and swells in more slowly, down to a felt-piano mute at -100%; harder brightens them and swells in faster. It moves the corner of the hammer's spectrum, measured per key and velocity from the recordings, up to three octaves either way. 0% is the recorded piano.",
     "tone.strikepoint": "Where along the string the hammer strikes, as a share of its length. Nearer the end (lower) is thinner and brighter; further in is darker and hollower, as the partials with a node there go quiet. The recorded piano strikes at about 12% (1/8).",
     "string.stiffness": "How stiff the strings are: their inharmonicity, which spreads the upper partials sharp of whole multiples of the fundamental. 0% is an ideal, harmonic string (harp-like, organ-like in the bass); 100% is the measured piano; above, stiffer, towards bells and gongs. It applies to the notes you strike next.",
-    "string.overtonedecay": "How long the upper partials ring compared with the measured piano, the fundamental's decay kept. Below 0%, they ring on longer (bright, steely); above, they die sooner (dark, like gut or nylon strings)."
+    "string.overtonedecay": "How long the upper partials ring compared with the measured piano, the fundamental's decay kept. Below 0%, they ring on longer (bright, steely); above, they die sooner (dark, like gut or nylon strings).",
+    "arp.pattern": "The order the partials take their turn: up the series, down, up and back, or at random (never the same twice running). Off turns the arpeggiator off: the piano as measured.",
+    "arp.scale": "Which partials take part, by the pitch each harmonic has against the note: Major Pentatonic (harmonics 3, 4, 5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27\u2026), Minor Pentatonic (with the 7th harmonic as the flat seventh), Major Triad, every harmonic, or the odd ones only (hollow, clarinet-like). The piano's stiff strings tune the upper partials a little sharp of these.",
+    "arp.low": "The lowest partial in the pattern (1 is the fundamental). Partials below it, and above Highest, are left as they are.",
+    "arp.high": "The highest partial in the pattern. High keys have fewer partials: the pattern uses only those the note has.",
+    "arp.rate": "Steps per second, when Sync is off. Each note starts its pattern when it's struck.",
+    "arp.sync": "Lock the step length to the tempo, at Division.",
+    "arp.division": "The step length when Sync is on.",
+    "arp.overlap": "How long each partial's swell lasts against the step. 100%: it takes two steps, so one partial rises while the last one falls. 0%: each has its step to itself, a pulse. 200%: three at once, a smear.",
+    "arp.boost": "How far a partial rises at the top of its turn, against its natural level. Negative digs it out instead: a moving notch.",
+    "arp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual."
   },
   "keyboard": true
 }

@@ -1,0 +1,56 @@
+{
+ "patch": "init",
+ "params": {
+  "arp.pattern": 3,
+  "arp.scale": 0,
+  "arp.low": 3,
+  "arp.high": 16,
+  "arp.rate": 6,
+  "arp.overlap": 100,
+  "arp.boost": 15,
+  "arp.others": -6,
+  "string.sustain": 200,
+  "space.room": 30
+ },
+ "length": 7,
+ "events": [
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 100
+  },
+  {
+   "t": 2,
+   "on": 55,
+   "vel": 90
+  },
+  {
+   "t": 2,
+   "on": 64,
+   "vel": 85
+  },
+  {
+   "t": 4.5,
+   "off": 48
+  },
+  {
+   "t": 4.5,
+   "off": 55
+  },
+  {
+   "t": 4.5,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 6.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 4.2,
+    "above": -48
+   }
+  ]
+ }
+}
