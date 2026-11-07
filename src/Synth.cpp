@@ -185,7 +185,7 @@ struct PianoVoice : Voice {
   void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma);
   void cull();
   void arpBlock(VoiceContext& ctx, int frames, int pattern);
-  void arpSequence(int scale, int lo, int hi);
+  void arpSequence(int scale, int lo, int hi, bool octaves);
 
   Piano& synth;
   float sr = 48000;
@@ -218,6 +218,7 @@ struct PianoVoice : Voice {
   unsigned char arpHist[4] = {};   // the partial of step k, at k & 3 (0: none)
   unsigned arpRng = 1, strikes = 0;
   int seq[kMaxPartials] = {}, seqN = 0, seqKey = -1;
+  bool inSeq[kMaxPartials + 1] = {};   // the partials the pattern covers (in the scale and range)
 
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
@@ -255,7 +256,7 @@ struct PianoVoice : Voice {
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
-      arpOverlap, arpBoost, arpOthers;
+      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -292,8 +293,10 @@ struct Piano : Synth {
     arpDivision = b.add("arp.division").name("Arp Division")
                       .choices({"1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}).def(4).group("Partial Arp");
     arpOverlap = b.add("arp.overlap").name("Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
-    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(12).unit("dB").group("Partial Arp");
+    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(-20).unit("dB").group("Partial Arp");
     arpOthers = b.add("arp.others").name("Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
+    arpGroup = b.add("arp.group").name("Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
+    arpWidth = b.add("arp.width").name("Arp Width").range(0, 1).def(0).unit("oct").group("Partial Arp");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<PianoVoice>(*this); }
@@ -1391,14 +1394,40 @@ bool inScale(int n, int scale) {
 }
 }  // namespace
 
-// The partials the pattern walks through, ascending: those in the scale, between Lowest and
+namespace {
+int oddPart(int n) {
+  while (n > 0 && (n & 1) == 0) n >>= 1;
+  return n;
+}
+}  // namespace
+
+// What the pattern walks through, ascending: the partials in the scale, between Lowest and
 // Highest, that this voice is playing (a key's top partials can be missing or above Nyquist).
-void PianoVoice::arpSequence(int scale, int lo, int hi) {
+// Grouped by octaves, a step is a pitch class instead (named by its odd harmonic: 1 for the
+// note's own, 3 for its fifth, 5 for its third…), in scale order, and features every partial of
+// it in range: E is 5, 10 and 20 together.
+void PianoVoice::arpSequence(int scale, int lo, int hi, bool octaves) {
   bool has[kMaxPartials + 1] = {};
   for (int i = 0; i < count; ++i) has[pnum[i]] = true;
   seqN = 0;
-  for (int n = std::max(lo, 1); n <= std::min(hi, kMaxPartials); ++n)
-    if (has[n] && inScale(n, scale)) seq[seqN++] = n;
+  for (int n = 0; n <= kMaxPartials; ++n) inSeq[n] = false;
+  for (int n = std::max(lo, 1); n <= std::min(hi, kMaxPartials); ++n) {
+    if (!has[n] || !inScale(n, scale)) continue;
+    inSeq[n] = true;
+    if (!octaves) {
+      seq[seqN++] = n;
+      continue;
+    }
+    int o = oddPart(n);
+    bool seen = false;
+    for (int i = 0; i < seqN; ++i) seen = seen || seq[i] == o;
+    if (!seen) seq[seqN++] = o;
+  }
+  if (octaves) {   // scale order: by the pitch class's cents above the note
+    auto pc = [](int o) { float c = 1200.f * std::log2(static_cast<float>(o)); return c - 1200.f * std::floor(c / 1200.f); };
+    for (int i = 1; i < seqN; ++i)
+      for (int j = i; j > 0 && pc(seq[j]) < pc(seq[j - 1]); --j) std::swap(seq[j], seq[j - 1]);
+  }
 }
 
 // One control block: advance the pattern and set pnGain, every partial's gain at the block's end.
@@ -1412,10 +1441,11 @@ void PianoVoice::arpBlock(VoiceContext& ctx, int frames, int pattern) {
   if (pattern == 0) return;
   int scale = ctx.choice(synth.arpScale);
   int lo = static_cast<int>(ctx.get(synth.arpLow) + 0.5f), hi = static_cast<int>(ctx.get(synth.arpHigh) + 0.5f);
-  int key = ((scale * 128 + lo) * 128 + hi) * 8 + pattern;
+  bool octaves = ctx.choice(synth.arpGroup) == 1;
+  int key = (((scale * 128 + lo) * 128 + hi) * 8 + pattern) * 2 + (octaves ? 1 : 0);
   if (key != seqKey) {
     seqKey = key;
-    arpSequence(scale, lo, hi);
+    arpSequence(scale, lo, hi, octaves);
   }
   float rate;   // steps per second
   if (ctx.on(synth.arpSync)) {
@@ -1451,16 +1481,35 @@ void PianoVoice::arpBlock(VoiceContext& ctx, int frames, int pattern) {
   }
   float W = 1.f + std::clamp(ctx.get(synth.arpOverlap), 0.f, 200.f) * 0.01f;
   float boost = ctx.get(synth.arpBoost), rest = ctx.get(synth.arpOthers);
+  float width = std::clamp(ctx.get(synth.arpWidth), 0.f, 1.f);   // octaves either side
+  // e: how far each partial is into its swell (0…1). A step features its partial, or (Octaves)
+  // every partial of its pitch class in the pattern; Width spreads each featured partial to its
+  // neighbours within ±Width octaves, falling as cos² of the distance.
   float e[kMaxPartials + 1] = {};
   for (int k = std::max(0, static_cast<int>(std::floor(ph - W)) + 1); k <= now; ++k) {
     int p = arpHist[k & 3];
     if (p == 0) continue;
-    float s = std::sin(3.14159265f * (ph - static_cast<float>(k)) / W);
-    e[p] = std::max(e[p], s * s);
+    float sw = std::sin(3.14159265f * (ph - static_cast<float>(k)) / W);
+    sw *= sw;
+    for (int c = 1; c <= kMaxPartials; ++c) {
+      if (octaves ? !(inSeq[c] && oddPart(c) == oddPart(p)) : c != p) continue;
+      e[c] = std::max(e[c], sw);
+      if (width <= 0) continue;
+      float lo2 = static_cast<float>(c) * std::exp2(-width), hi2 = static_cast<float>(c) * std::exp2(width);
+      for (int q = std::max(1, static_cast<int>(std::ceil(lo2))); q <= std::min(kMaxPartials, static_cast<int>(hi2)); ++q) {
+        if (q == c) continue;
+        float w = std::cos(1.5707963f * std::log2(static_cast<float>(q) / static_cast<float>(c)) / width);
+        e[q] = std::max(e[q], sw * w * w);
+      }
+    }
   }
-  for (int i = 0; i < seqN; ++i) {
-    int p = seq[i];
-    pnGain[p] = dbToGain(rest + (boost - rest) * e[p]);
+  // The pattern's partials go from Rest to Boost; a neighbour Width reaches outside the pattern
+  // goes from its own level to Boost; the rest are left alone.
+  for (int n = 1; n <= kMaxPartials; ++n) {
+    if (inSeq[n])
+      pnGain[n] = dbToGain(rest + (boost - rest) * e[n]);
+    else if (e[n] > 0)
+      pnGain[n] = dbToGain(boost * e[n]);
   }
 }
 
