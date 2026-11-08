@@ -189,7 +189,8 @@ from CI at milestones.
   Reverb (`space.room`) 0 must stay bit-identical to the dry piano: every measurement renders
   with it at 0. `prepare` still draws the old room's noise from the generator the noise bands'
   normalisation uses next: keep those draws. Levels are trimmed per space on a staccato chord
-  (`trimDb`, `kWet`): re-trim after changing a space.
+  (`trimDb`, `kWet`): after changing a space, `tools/space.py` gives the levels to re-trim from
+  and the RT60s to report.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for

@@ -10,7 +10,8 @@ Each note is a **sum of decaying sine partials** (modal synthesis). What isn't a
 the strike (the hammer, the action and the soundboard's response in the first 0.3 s), played
 from A2 up as each key's own recorded response with its partials removed, 0.3 s per measured
 key (see The strike, below); band noise for the strike below A2, for the body's ring and for
-the mechanism. Around the notes there is a bank of free strings for sympathetic resonance.
+the mechanism. Around the notes there is a bank of free strings for sympathetic resonance,
+and around the piano a generated reverb (Space, below: the recordings are close-miked).
 Apart from those strikes there is no audio from the recordings in the synth. The work is
 split in two:
 
@@ -666,8 +667,9 @@ convolver's impulse is fixed once audio runs).
   low-pass at 800 Hz, about a piano's spectrum), shared by the early part and the tail by the
   table's ratio. Then each was trimmed on renders of a staccato chord across the keyboard to
   within 0.1 dB of the old room's level at the same setting (`trimDb`; `kWet` sets Hall's), so
-  Reverb means about what it meant before.
-- Measured on that chord (500-1000 Hz, T20): Room 0.64 s, Chamber 1.11 s, Hall 1.94 s, Cathedral
+  Reverb means about what it meant before. `tools/space.py` reports each space's level against
+  Hall's: re-trim from it after changing a space.
+- Measured on that chord by `tools/space.py` (500-1000 Hz, T20): Room 0.64 s, Chamber 1.11 s, Hall 1.94 s, Cathedral
   4.44 s, Plate 1.89 s (somewhat under the design: the dry notes are still sounding into it).
   Hall at Decay 50 % / 200 %: 0.97 / 3.99 s; Damping 0 / 100 % moves its 4-8 kHz RT60 from 2.31
   to 0.72 s; Size 50-200 % leaves the RT60 within 3 %.
@@ -679,8 +681,9 @@ convolver's impulse is fixed once audio runs).
 ## Creative: the partial arpeggiator
 
 Not part of the measured piano: with **Arp Pattern** Off (the default) the output is
-bit-identical to the piano without it. Turned on, each note's partials take turns standing
-out, a melody inside the note (`PianoVoice::arpBlock`).
+bit-identical to the piano without it. Turned on, each note's partials take their turn, a
+melody inside the note (`PianoVoice::arpBlock`): by default dug out (a moving notch), or brought
+forward with a positive Boost.
 
 - **Which partials.** Those whose harmonic number lands, as a pitch class against the note,
   within ±35 cents of a degree of the chosen scale (`inScale`): Major Pentatonic is 1, 2, 3, 4,
@@ -701,7 +704,8 @@ out, a melody inside the note (`PianoVoice::arpBlock`).
 - **Level.** A featured partial goes from Rest to Boost (dB against its natural level); the
   pattern's other partials sit at Rest; partials outside it are untouched. Boost defaults to
   −20 dB, a moving notch, which the owner found more natural than boosting (the *Partial
-  Notch* preset is that with the first version's sustain and room); *Harmonic Arp* is Octaves, Width ¼ octave, +8 dB, Rest 0.
+  Notch* preset is the first version's settings with it: Single, Up & Down, Rest −6 dB, Sustain
+  200 %). *Harmonic Arp* boosts gently instead: Octaves, Width ¼ octave, +8 dB, Rest 0.
 - **How.** Each component keeps its partial number (`pnum`). Per control block, the gain each
   partial should have at the block's end is computed, and each component's output to the mics
   ramps to it from the last block's gain. Only the output is scaled, not the oscillator's state,
@@ -752,5 +756,7 @@ them.
 - **A soft C4's 62 Hz thump** is ~20 dB too strong.
 - **The keys between the measured ones** gain little from the modes (docs/TESTING.md, holdout):
   what is particular to a key isn't predictable from its neighbours.
+- **The room.** The recordings are close-miked; the Space reverb is generated (image sources
+  and a feedback network), not measured from a hall.
 - **The treble's partials** mostly keep the older description: above C6 the modal fit seldom
   beats it on these noisy envelopes.

@@ -154,12 +154,14 @@ and keep the bass from getting further from its recordings on the distance alone
 | `glissando-pedal.json` | the heaviest load: rings at 4.9 s, stops after the pedal |
 | `pedal-noise.json` | the pedal's thump and the strings' ring when it goes down; silence after it comes up |
 | `demo.json` | a musical passage: sounds, limiter under 3 dB |
+| `arp.json` | the *Harmonic Arp* settings over a held chord: sounds within 20 ms, still above −48 dB at 4.2 s, silent at 6.8 s, limiter under 1 dB |
 
 CI also builds the browser page and runs `synthkit/web/test/browser-test.cjs`
 in Chromium. It boots on desktop and phone sizes with no console errors, plays
 from the computer keyboard and a MIDI keyboard, and renders through the
 worklet. CI then compares the browser's render of `tests/chord.json` with the
-native one: the worst 100 ms must be under −40 dB (it's about −72). Finally
+native one: the worst 100 ms must be under −40 dB (it's about −71, with the default Hall
+reverb in it). Finally
 it builds and checks the plugins (pluginval, auval).
 
 ### Measurements against the recordings (`tools/measure/`)
@@ -236,17 +238,31 @@ machine. Today:
 cost the same as the description they replace: a modal partial is 4-12 components, where the
 prompt, burst and aftersound with their beating partners were up to 18. The cost comes from the
 sympathetic string bank and the steeper noise filters. Healthy: the worst case no slower than
-main's on the same machine. The Space reverb (Hall, the default) runs at the old room's cost: the
-worst case measured 0.7-0.8× against main's 0.7× on the same machine. The recorded strike is about 9 % cheaper than the band noise it replaces (a sample read and a
+main's on the same machine. The Space reverb (Hall, the default) costs what the room it replaced
+did (about 2.6 % of a core natively): the worst case measured 0.7-0.8× against main's 0.7× on the
+same machine. The Partial Arp adds about 7-13 % when on. The recorded strike is about 9 % cheaper than the band noise it replaces (a sample read and a
 shelf per mic, against ten bands of filtered noise). The page is 4.6 MB (2.9 MB before the
 recorded strike: 1.3 MB of it is the strikes, 22 keys × 2 mics × 0.3 s of 16-bit samples;
 2.3 MB before the modes).
+
+### The reverb: `tools/space.py`
+
+`python3 -I tools/space.py build/piano_render` renders a staccato chord across the keyboard dry
+and in each space, and reports each space's wet level against Hall's (healthy: within ±0.5 dB;
+the spaces are trimmed to sound equally loud at the same Reverb setting) and its RT60 at
+500-1000 Hz and 4-8 kHz, then Hall's with Decay, Damping and Size moved. Today: Room 0.64 s,
+Chamber 1.11, Hall 1.94, Cathedral 4.44, Plate 1.89 (500-1000 Hz; somewhat under the design,
+since the dry notes still sound into it); Decay 50/200 % gives 0.97/3.99 s; Damping 0-100 % moves
+the 4-8 kHz RT60 from 2.31 to 0.72 s; Size leaves the RT60 within 3 %. The reverb isn't part of
+any measurement against the recordings: they all render with Reverb 0.
 
 ### Controls that change the model: defaults stay exact
 
 Hardness, Strike Point, Stiffness and Overtone Decay change the piano around what was measured, so their defaults must leave
 it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
-byte for byte (`cmp`). What they do is checked by sweeping them (attack level, centroid and share
+byte for byte (`cmp`). The same holds for the creative and room controls: the Partial Arp Off
+(and, on, Group Single with Width 0 must render as its first version did), and Reverb 0, which
+must be the dry piano byte for byte (every measurement renders with it). What they do is checked by sweeping them (attack level, centroid and share
 above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).
 
 ## What to run after which change
@@ -263,6 +279,8 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
+| the Partial Arp | + renders with it Off against the previous build, byte for byte (and Single, Width 0 on `tests/arp.json`); its spectrum over time (`tools/measure/partials.py` or a spectrogram) to see the steps; `stress.py` with it on |
+| the Space reverb | + renders at Reverb 0 against the previous build, byte for byte; `tools/space.py` (re-trim `trimDb` if a level moved); `bench-web.cjs`; switch spaces and move Size while a tail rings, and listen for clicks |
 | the page (UI) | + `browser-test.cjs`, `panel.cjs` |
 
 ## Known gaps in the numbers
