@@ -1,0 +1,1 @@
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Arp Cascade", "params": { "arp.on": 1, "arp.mode": 2, "arp.octaves": 3, "arp.rate": 9, "arp.gate": 120, "arp.latch": 1, "space.room": 25, "space.type": 2 } }

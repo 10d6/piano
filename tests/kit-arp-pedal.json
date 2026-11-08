@@ -1,0 +1,18 @@
+{
+  "patch": "init",
+  "params": { "arp.on": 1, "arp.mode": 0, "arp.octaves": 3, "arp.rate": 6 },
+  "transport": { "bpm": 120, "playing": true },
+  "events": [
+    { "t": 0.0, "cc": 64, "value": 127 },
+    { "t": 0.05, "on": 57, "vel": 80 }, { "t": 0.05, "on": 60, "vel": 80 }, { "t": 0.05, "on": 64, "vel": 80 },
+    { "t": 2.0, "off": 57 }, { "t": 2.0, "off": 60 }, { "t": 2.0, "off": 64 },
+    { "t": 3.0, "cc": 64, "value": 0 }
+  ],
+  "length": 7.0,
+  "expect": {
+    "soundBy": 0.08,
+    "levelAt": [ { "t": 2.5, "above": -50 } ],
+    "silentAfter": 6.0,
+    "limiterBelow": 1
+  }
+}

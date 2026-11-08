@@ -1,1 +1,1 @@
-{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Concert Hall", "params": { "space.type": 2, "space.room": 28, "space.predelay": 12, "space.lowcut": 90 } }
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Concert Hall", "params": { "space.type": 2, "space.room": 28, "space.predelay": 12, "space.lowcut": 90 } }

@@ -628,7 +628,8 @@ aftersound decay for a medium strike.
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
 | Resonance | `string.resonance` | sympathetic drive |
 | Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
-| Partial Arp | `arp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default |
+| Partial Arp | `parp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default. `arp.*` until patchVersion 2 |
+| Arpeggiator / Sequencer | `arp.*` | synthkit's (API.md §4b); Off by default (Creative: the kit's arpeggiator and sequencer, below) |
 
 ## Space
 
@@ -712,6 +713,32 @@ forward with a positive Boost.
   so a partial's natural decay carries on underneath and it comes back exactly to its own
   level. Each voice has its own random stream for Random, so the beats and noise don't change.
   It costs about 7 % more CPU when on, nothing when off.
+
+## Creative: the kit's arpeggiator and sequencer
+
+synthkit's arpeggiator and step sequencer (`features.arp`, API.md §4b), off by default
+(`arp.on`), so the piano is unchanged until it's turned on. They run after the synth's
+`processEvents`, so the keys, pedal, body ring and sympathetic bank there follow the keys
+actually played; the piano handles the arpeggiator's own notes in three places:
+
+- **Voices.** Played keys keep one voice per key (a restrike in place). The arpeggiator's notes
+  take a voice of their own, so a Crossfade or a gate over 100 % can sound two notes of one key
+  at once. `NoteOn` doesn't say which notes are the kit's in `allocateVoice`, so
+  `processEvents` counts the keys played in the host block (`playedPending`; none in Arp mode,
+  where the kit keeps the keys) and any other note is the arpeggiator's.
+- **Dampers.** An arp note lifts its key's damper as it starts (`arpStarted`: the body ring is
+  undamped) and holds it up each control block until released (`arpUp`). A key that no arp note
+  holds up any more gets its damper back in `processGlobal` (`arpDampers`) unless it's held or
+  the pedal is down. This doesn't rely on `release()`: the kit also ends notes by stealing them
+  and at the end of a phrase. The arp notes themselves ignore the pedal (the kit's rule); the
+  body ring follows it. Keys above E6 have no dampers (Top Dampers), so a sequencer's lanes up
+  there ring on.
+- **Note envelope.** The piano's default for `arp.envMode` is Off (`kitDefault`): a note ends
+  with its damper when the gate ends. Multiply and Replace cut the piano's ring at the
+  envelope's end; Crossfade fades between notes over the strike.
+
+`arp.*` were the Partial Arp's IDs until patchVersion 2; `migratePatch` renames them to
+`parp.*`, and `tests/migrate-v1.json` checks that an old patch renders as it did.
 
 ## The data pipeline
 

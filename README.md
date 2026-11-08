@@ -141,6 +141,14 @@ series (pentatonic, minor pentatonic, triad, all or odd harmonics), one partial 
 whole pitch with its octaves (**Group**), spread to the neighbouring partials by **Width**. Try
 the *Partial Notch* and *Harmonic Arp* presets. Off, the piano is as measured.
 
+**Arpeggiator and sequencer** (synthkit's, off by default): **Arp** plays the keys you hold one
+after another (up, down, random, chord, or a pattern drawn in the piano roll or generated);
+**Sequencer** lets each key sound and adds its own pattern of notes at intervals above it, in
+any scale. Each note is a full piano strike that ends with its damper (the note envelope is Off
+by default; Crossfade and the others are there too). Keys above E6 have no dampers, so notes the
+arpeggiator plays up there ring on, as on a grand. Try the *Arp Cascade* and *Sequencer
+Overtones* presets.
+
 docs/MODEL.md has how both work.
 
 ## Measurement data

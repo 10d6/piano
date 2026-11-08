@@ -1,0 +1,17 @@
+{
+  "patch": "init",
+  "params": { "arp.on": 2, "arp.rate": 9, "arp.envMode": 3, "arp.xfade": 40, "arp.seqLevel": -6 },
+  "transport": { "bpm": 96, "playing": true },
+  "events": [
+    { "t": 0.0, "on": 48, "vel": 90 },
+    { "t": 1.0, "on": 55, "vel": 80 },
+    { "t": 2.5, "off": 48 }, { "t": 3.0, "off": 55 }
+  ],
+  "length": 7.0,
+  "expect": {
+    "soundBy": 0.03,
+    "levelAt": [ { "t": 2.0, "above": -40 } ],
+    "silentAfter": 6.0,
+    "limiterBelow": 1
+  }
+}

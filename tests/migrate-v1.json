@@ -1,0 +1,62 @@
+{
+ "patch": {
+  "synthkit": 1,
+  "synth": "piano",
+  "patchVersion": 1,
+  "name": "Partial Arp v1",
+  "params": {
+   "arp.pattern": 3,
+   "arp.scale": 0,
+   "arp.group": 1,
+   "arp.width": 0.25,
+   "arp.low": 3,
+   "arp.high": 16,
+   "arp.rate": 5,
+   "arp.overlap": 100,
+   "arp.boost": 8,
+   "arp.others": 0,
+   "space.room": 20
+  }
+ },
+ "length": 7,
+ "events": [
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 100
+  },
+  {
+   "t": 2,
+   "on": 55,
+   "vel": 90
+  },
+  {
+   "t": 2,
+   "on": 64,
+   "vel": 85
+  },
+  {
+   "t": 4.5,
+   "off": 48
+  },
+  {
+   "t": 4.5,
+   "off": 55
+  },
+  {
+   "t": 4.5,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 6.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 4.2,
+    "above": -48
+   }
+  ]
+ }
+}

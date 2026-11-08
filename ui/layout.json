@@ -121,46 +121,79 @@
       "info": "The room around the piano. The measurements are close-miked, so Reverb 0 is the dry piano. Early reflections come from a model of each space; the tail is a smooth feedback network, so Decay, Size and Damping can be set freely."
     },
     {
+      "kit": "arp",
+      "wide": true,
+      "info": "An arpeggiator and step sequencer that play piano notes from the keys you hold. Arp plays the held keys one after another; Sequencer lets each key sound and adds its own pattern of notes above it. Each note is a full piano strike, ended by its damper (Note Envelope Off, the default) or by the note envelope."
+    },
+    {
+      "kit": "arpPattern",
+      "wide": true
+    },
+    {
+      "accordion": [
+        {
+          "kit": "arpEnv",
+          "collapsed": true
+        },
+        {
+          "kit": "arpPhrase",
+          "collapsed": true
+        }
+      ]
+    },
+    {
       "title": "Partial Arp",
       "controls": [
         {
-          "param": "arp.pattern"
+          "param": "parp.pattern",
+          "label": "Pattern"
         },
         {
-          "param": "arp.scale"
+          "param": "parp.scale",
+          "label": "Partials"
         },
         {
-          "param": "arp.low"
+          "param": "parp.low",
+          "label": "Lowest"
         },
         {
-          "param": "arp.high"
+          "param": "parp.high",
+          "label": "Highest"
         },
         {
-          "param": "arp.group"
+          "param": "parp.group",
+          "label": "Group"
         },
         {
-          "param": "arp.width"
+          "param": "parp.width",
+          "label": "Width"
         },
         {
-          "param": "arp.rate"
+          "param": "parp.rate",
+          "label": "Rate"
         },
         {
-          "param": "arp.sync"
+          "param": "parp.sync",
+          "label": "Sync"
         },
         {
-          "param": "arp.division"
+          "param": "parp.division",
+          "label": "Division"
         },
         {
-          "param": "arp.overlap"
+          "param": "parp.overlap",
+          "label": "Overlap"
         },
         {
-          "param": "arp.boost"
+          "param": "parp.boost",
+          "label": "Boost"
         },
         {
-          "param": "arp.others"
+          "param": "parp.others",
+          "label": "Rest"
         }
       ],
-      "info": "Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured."
+      "info": "Not the arpeggiator below: this one plays inside each note. Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured."
     },
     {
       "kit": "master"
@@ -189,18 +222,18 @@
     "tone.strikepoint": "Where along the string the hammer strikes, as a share of its length. Nearer the end (lower) is thinner and brighter; further in is darker and hollower, as the partials with a node there go quiet. The recorded piano strikes at about 12% (1/8).",
     "string.stiffness": "How stiff the strings are: their inharmonicity, which spreads the upper partials sharp of whole multiples of the fundamental. 0% is an ideal, harmonic string (harp-like, organ-like in the bass); 100% is the measured piano; above, stiffer, towards bells and gongs. It applies to the notes you strike next.",
     "string.overtonedecay": "How long the upper partials ring compared with the measured piano, the fundamental's decay kept. Below 0%, they ring on longer (bright, steely); above, they die sooner (dark, like gut or nylon strings).",
-    "arp.pattern": "The order the partials take their turn: up the series, down, up and back, or at random (never the same twice running). Off turns the arpeggiator off: the piano as measured.",
-    "arp.scale": "Which partials take part, by the pitch each harmonic has against the note: Major Pentatonic (harmonics 3, 4, 5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27\u2026), Minor Pentatonic (with the 7th harmonic as the flat seventh), Major Triad, every harmonic, or the odd ones only (hollow, clarinet-like). The piano's stiff strings tune the upper partials a little sharp of these.",
-    "arp.low": "The lowest partial in the pattern (1 is the fundamental). Partials below it, and above Highest, are left as they are.",
-    "arp.high": "The highest partial in the pattern. High keys have fewer partials: the pattern uses only those the note has.",
-    "arp.rate": "Steps per second, when Sync is off. Each note starts its pattern when it's struck.",
-    "arp.sync": "Lock the step length to the tempo, at Division.",
-    "arp.division": "The step length when Sync is on.",
-    "arp.overlap": "How long each partial's swell lasts against the step. 100%: it takes two steps, so one partial rises while the last one falls. 0%: each has its step to itself, a pulse. 200%: three at once, a smear.",
-    "arp.boost": "How far a featured partial moves at its turn, against its natural level. Negative (the default, -20 dB) digs it out: a moving notch, the more natural sound. Positive brings it forward instead, which stands out more but can sound resonant; try Octaves and some Width with it.",
-    "arp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual.",
-    "arp.group": "Single: each step features one partial (sharp, whistle-like when boosted). Octaves: a step is a pitch of the scale, and every partial of it in range moves together (E: 5, 10 and 20), so the melody comes from across the spectrum rather than one sine.",
-    "arp.width": "Spreads each featured partial to its neighbours within this many octaves either side, fading with distance: a moving formant rather than a single partial. 0: only the featured partials.",
+    "parp.pattern": "The order the partials take their turn: up the series, down, up and back, or at random (never the same twice running). Off turns the arpeggiator off: the piano as measured.",
+    "parp.scale": "Which partials take part, by the pitch each harmonic has against the note: Major Pentatonic (harmonics 3, 4, 5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27\u2026), Minor Pentatonic (with the 7th harmonic as the flat seventh), Major Triad, every harmonic, or the odd ones only (hollow, clarinet-like). The piano's stiff strings tune the upper partials a little sharp of these.",
+    "parp.low": "The lowest partial in the pattern (1 is the fundamental). Partials below it, and above Highest, are left as they are.",
+    "parp.high": "The highest partial in the pattern. High keys have fewer partials: the pattern uses only those the note has.",
+    "parp.rate": "Steps per second, when Sync is off. Each note starts its pattern when it's struck.",
+    "parp.sync": "Lock the step length to the tempo, at Division.",
+    "parp.division": "The step length when Sync is on.",
+    "parp.overlap": "How long each partial's swell lasts against the step. 100%: it takes two steps, so one partial rises while the last one falls. 0%: each has its step to itself, a pulse. 200%: three at once, a smear.",
+    "parp.boost": "How far a featured partial moves at its turn, against its natural level. Negative (the default, -20 dB) digs it out: a moving notch, the more natural sound. Positive brings it forward instead, which stands out more but can sound resonant; try Octaves and some Width with it.",
+    "parp.others": "Where the pattern's other partials sit while it's not their turn. 0 dB leaves them as measured; lower thins the note to the pattern, with the partials outside it (below Lowest, above Highest) carrying on as usual.",
+    "parp.group": "Single: each step features one partial (sharp, whistle-like when boosted). Octaves: a step is a pitch of the scale, and every partial of it in range moves together (E: 5, 10 and 20), so the melody comes from across the spectrum rather than one sine.",
+    "parp.width": "Spreads each featured partial to its neighbours within this many octaves either side, fading with distance: a moving formant rather than a single partial. 0: only the featured partials.",
     "space.type": "The space: Room (a small room, 0.6 s), Chamber (1.3 s), Hall (a concert hall, 2.2 s), Cathedral (5 s) or Plate (a bright, dense studio plate, 2.4 s, no reflections). Changing it lets the old space ring out.",
     "space.decay": "The tail's length against the space's own (its RT60). 100 % is the space as designed.",
     "space.size": "Scales the tail's delays: smaller is denser and more metallic, larger is grainier and more spacious. The decay time stays. Moving it while a tail rings bends its pitch a little, like a tape.",

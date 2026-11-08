@@ -5,10 +5,11 @@
   "version": "0.1.0",
   "pluginCode": "Pian",
   "vendorCode": "Tend",
-  "patchVersion": 1,
+  "patchVersion": 2,
   "features": {
     "voices": 128,
     "voiceModes": ["poly"],
-    "standardEnvelopes": 0
+    "standardEnvelopes": 0,
+    "arp": true
   }
 }
