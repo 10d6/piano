@@ -160,7 +160,7 @@
           "param": "arp.others"
         }
       ],
-      "info": "Brings each note's partials forward in turn, as a melody inside the note: each swells by Boost and falls back to its natural level, overlapping the next. Off leaves the piano as measured."
+      "info": "Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured."
     },
     {
       "kit": "master"

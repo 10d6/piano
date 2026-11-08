@@ -125,6 +125,24 @@ fluctuate about as much as the recordings'.
 can do, costs the same with the modes as before them (docs/TESTING.md). A
 load guard drops the quietest partials first if more than 4000 are sounding.
 
+## Around the piano
+
+**Space.** The recordings are close-miked, so the room is added: a reverb with five spaces
+(Room, Chamber, **Hall** by default, Cathedral, Plate). Each space's early reflections come from
+a model of the room, played by synthkit's convolver; its tail is a smooth feedback network, so
+**Decay**, **Size** and **Damping** move freely, with **Pre-delay**, **Early** (the reflections'
+level) and **Low/High Cut** on the reverb only. **Reverb** at 0 is the dry piano as measured.
+Try the *Concert Hall* and *Cathedral* presets.
+
+**Partial Arp** (a creative extra, off by default): each note's partials take their turn, as a
+melody inside the note. By default a turn digs the partials out (a moving notch, −20 dB);
+positive **Boost** brings them forward instead. The pattern walks a scale through the harmonic
+series (pentatonic, minor pentatonic, triad, all or odd harmonics), one partial at a time or a
+whole pitch with its octaves (**Group**), spread to the neighbouring partials by **Width**. Try
+the *Partial Notch* and *Harmonic Arp* presets. Off, the piano is as measured.
+
+docs/MODEL.md has how both work.
+
 ## Measurement data
 
 The model data (`src/PianoData.h`) is derived from the **Salamander Grand
@@ -158,6 +176,7 @@ python3 -I tools/compare.py ../salamander build/piano_render compare-out  # chec
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
 python3 -I tools/measure/run_all.py --sal ../salamander                   # every measurement (tools/measure/README.md)
 node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
+python3 -I tools/space.py build/piano_render                                   # the reverb's levels and decay times
 ```
 
 (needs `pip install numpy scipy soundfile matplotlib`; the browser tools need
@@ -172,14 +191,6 @@ Playwright with Chromium)
   and **plugin-linux** download (under *Checks → CI → Summary → Artifacts*).
   Unzip it and follow `INSTALL.md` inside. Tagging a version (`v0.2.0`)
   publishes them as a release.
-
-**Space**: a reverb with five spaces (Room, Chamber, Hall, Cathedral, Plate), each with early
-reflections from a model of the room and a smooth tail; Decay, Size, Pre-delay, Damping, Early
-level and Low/High Cut. Try the *Concert Hall* and *Cathedral* presets.
-
-**Partial Arp** (a creative extra, off by default): each note's partials take turns standing
-out, in a pentatonic, triad or harmonic pattern, as a melody inside the note. Try the
-*Harmonic Arp* and *Partial Notch* presets; docs/MODEL.md has how it works.
 
 ## Building
 
@@ -197,9 +208,9 @@ The browser page and the plugins are built the same way as in synthkit: see
 | | |
 |---|---|
 | `synth.json` | identity (name, IDs, plugin codes) and kit features |
-| `src/` | the sound engine (`Synth.cpp`), the measured data (`PianoData.h`) and the recorded strikes (`PianoStrike.h`), both generated |
+| `src/` | the sound engine (`Synth.cpp`), the reverb (`Reverb.h`), the measured data (`PianoData.h`) and the recorded strikes (`PianoStrike.h`), both generated |
 | `docs/` | how it's modelled (`MODEL.md`) and tested (`TESTING.md`) |
-| `tools/` | measuring the recordings, calibrating, comparing with them, stress test, browser benchmark |
+| `tools/` | measuring the recordings, calibrating, comparing with them, stress test, browser benchmark, the reverb's levels and decays (`space.py`) |
 | `tools/measure/` | every measurement against the recordings (`README.md` there), the perceptual distance first |
 | `tools/listen/` | a blind listening test page against the recordings, and its analysis against the perceptual distance; A/Bs of the strike (`ab_strike.py`) and the body's ring (`ab_ring.py`) against their recorded versions |
 | `presets/` | factory presets (`init.json` is what a new instance starts on) |
