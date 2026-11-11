@@ -191,13 +191,18 @@ from CI at milestones.
   `release()`. `arp.envMode` defaults to Off here (`kitDefault`). Tests: `kit-arp`, `kit-seq`,
   `kit-arp-pedal`, `migrate-v1`; presets *Arp Cascade*, *Sequencer Overtones*. Stress with
   Sequencer on needs Top Dampers All keys (lanes above E6 ring on, correctly).
-- **Modulation** (`features.modSlots` 12, `standardLfos` 3; docs/MODEL.md): with no routes the
-  piano must stay bit-identical (`cmp`). A parameter is a destination only where every reader
-  can follow it: strike-time tone settings (per voice), the strings' decay settings and the
-  Partial Arp (per voice, per block), Space and Resonance (global). Not Stiffness or Stretch
-  (voices and the sympathetic bank must agree), not `play.*` (`processEvents` and the voice both
-  map velocity). Presets *Tape Wow*, *Tremolo Ballad*, *Living Hammer*, *Breathing Strings*,
-  *Notch Sweep*; tests `mod-*`.
+- **Modulation** (`features.modSlots` 16, `standardLfos` 4, `shapes` 4; docs/MODEL.md): with no
+  routes the piano must stay bit-identical (`cmp`). A parameter is a destination only where every
+  reader can follow it: strike-time tone settings (per voice), the strings' decay settings and the
+  Partial Arp (per voice, per block), Space and Resonance (global); the kit makes the phrase
+  envelope one (global). Not Stiffness or Stretch (voices and the sympathetic bank must agree),
+  not `play.*` (`processEvents` and the voice both map velocity). Changing the LFO or shape count
+  moves Drift/S&H LFOs' random paths (*Tape Wow*'s render). Shape curves in presets must start and
+  end level where they restart, or they click. Presets *Tape Wow*, *Tremolo Ballad*, *Living
+  Hammer*, *Breathing Strings*, *Notch Sweep*, *Beat Pump*, *Tidal Arp*; tests `mod-*`.
+- **The page** (`ui/layout.json`): tabs **Piano** (Playing, Tone, Strings, Space) and
+  **Synthesis** (one wide accordion: Partial Arp, the kit's arp panels, LFOs, Shapes, the matrix,
+  all folded but the matrix); Output below both. New creative features go in the accordion.
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,
   Size and Damping are continuous. Each space has its own instance; a change rings the old one out.
@@ -211,7 +216,8 @@ from CI at milestones.
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
   access in `Voice::start`, sostenuto (CC66), an arp flag on the `NoteOn` that `allocateVoice`
-  sees (`StartInfo::arp` comes only after the slot is chosen). API.md doesn't say that an
+  sees (`StartInfo::arp` comes only after the slot is chosen), a random seed per LFO that
+  doesn't depend on how many LFOs and shapes there are. API.md doesn't say that an
   event's `.sample` counts from the host block's start, nor that
   `processEvents` runs once per host block and `processGlobal` once per
   control block (found by rendering at different block sizes).

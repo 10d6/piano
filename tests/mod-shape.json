@@ -1,0 +1,48 @@
+{
+ "patch": "beat-pump",
+ "transport": {
+  "bpm": 120,
+  "playing": true
+ },
+ "length": 5.5,
+ "events": [
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 90
+  },
+  {
+   "t": 0,
+   "on": 55,
+   "vel": 90
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 90
+  },
+  {
+   "t": 3.5,
+   "off": 48
+  },
+  {
+   "t": 3.5,
+   "off": 55
+  },
+  {
+   "t": 3.5,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.03,
+  "silentAfter": 5.3,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 3,
+    "above": -55
+   }
+  ]
+ }
+}
