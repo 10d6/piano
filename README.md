@@ -149,6 +149,15 @@ by default; Crossfade and the others are there too). Keys above E6 have no dampe
 arpeggiator plays up there ring on, as on a grand. Try the *Arp Cascade* and *Sequencer
 Overtones* presets.
 
+**Modulation** (synthkit's mod matrix, 12 routes, and three LFOs): route an LFO, velocity, the
+key, a random value per note, the mod wheel, aftertouch or the beat to the piano's controls, or to
+pitch and level (vibrato, tremolo). Tone and hammer settings (Brightness, Hardness, Strike Point,
+Attack, Hammer, Body) are read as each note is struck, so a route gives each note its own tone;
+the strings' Sustain, Unison, Dampers and Overtone Decay, and the Partial Arp, move while notes
+ring; Space follows sources shared by all notes (Global LFOs, the wheel, the beat). With no
+routes the piano is as measured. Try *Tape Wow*, *Tremolo Ballad*, *Living Hammer*, *Breathing
+Strings* and *Notch Sweep*.
+
 docs/MODEL.md has how both work.
 
 ## Measurement data

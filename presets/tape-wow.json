@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Tape Wow", "params": {"lfo1.shape": 6, "lfo1.rate": 0.6, "lfo2.rate": 5.5, "lfo2.depth": 0.35, "tone.bright": -1.5, "space.room": 18}, "mod": [{"src": "lfo1", "dst": "sk.pitch", "amt": 0.004}, {"src": "lfo2", "dst": "sk.pitch", "amt": 0.0015}]}

@@ -10,6 +10,8 @@
     "voices": 128,
     "voiceModes": ["poly"],
     "standardEnvelopes": 0,
-    "arp": true
+    "arp": true,
+    "standardLfos": 3,
+    "modSlots": 12
   }
 }

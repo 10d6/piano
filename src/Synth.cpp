@@ -268,32 +268,32 @@ struct Piano : Synth {
     toneRange = b.add("play.tone").name("Tone Range").range(0, 150).def(100).unit("%").group("Playing");
     velMap = b.add("play.velmap").name("Velocity Map").choices({"Smooth", "As Recorded"}).group("Playing");
     softAttack = b.add("play.softattack").name("Soft Attack").range(0, 100).def(25).unit("%").group("Playing");
-    bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").group("Tone");
-    attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").group("Tone");
-    body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").group("Tone");
-    hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").group("Tone");
-    hardness = b.add("tone.hardness").name("Hardness").range(-100, 100).def(0).unit("%").group("Tone");
-    strikePoint = b.add("tone.strikepoint").name("Strike Point").range(4, 25).def(12).unit("%").group("Tone");
+    bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").modulatable().group("Tone");
+    attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").modulatable().group("Tone");
+    body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
+    hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
+    hardness = b.add("tone.hardness").name("Hardness").range(-100, 100).def(0).unit("%").modulatable().group("Tone");
+    strikePoint = b.add("tone.strikepoint").name("Strike Point").range(4, 25).def(12).unit("%").modulatable().group("Tone");
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
-    unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").group("Strings");
+    unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").modulatable().group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
     stiffness = b.add("string.stiffness").name("Stiffness").range(0, 300).def(100).unit("%").group("Strings");
-    overtoneDecay = b.add("string.overtonedecay").name("Overtone Decay").range(-100, 100).def(0).unit("%").group("Strings");
-    sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").group("Strings");
-    damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").group("Strings");
+    overtoneDecay = b.add("string.overtonedecay").name("Overtone Decay").range(-100, 100).def(0).unit("%").modulatable().group("Strings");
+    sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
+    damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
     topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
-    resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").group("Strings");
-    width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").group("Space");
-    room = b.add("space.room").name("Reverb").range(0, 100).def(12).unit("%").group("Space");
+    resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").modulatable().group("Strings");
+    width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").modulatable().group("Space");
+    room = b.add("space.room").name("Reverb").range(0, 100).def(12).unit("%").modulatable().group("Space");
     // the reverb (Reverb.h): early reflections by convolution, a feedback-network tail
     spaceType = b.add("space.type").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Space");
-    spaceDecay = b.add("space.decay").name("Decay").range(25, 300).log().def(100).unit("%").group("Space");
-    spaceSize = b.add("space.size").name("Size").range(50, 200).log().def(100).unit("%").group("Space");
+    spaceDecay = b.add("space.decay").name("Decay").range(25, 300).log().def(100).unit("%").modulatable().group("Space");
+    spaceSize = b.add("space.size").name("Size").range(50, 200).log().def(100).unit("%").modulatable().group("Space");
     spacePredelay = b.add("space.predelay").name("Pre-delay").range(0, 200).def(0).unit("ms").group("Space");
-    spaceDamping = b.add("space.damping").name("Damping").range(0, 100).def(50).unit("%").group("Space");
+    spaceDamping = b.add("space.damping").name("Damping").range(0, 100).def(50).unit("%").modulatable().group("Space");
     spaceEarly = b.add("space.early").name("Early").range(-30, 6).def(0).unit("dB").group("Space");
     spaceLowCut = b.add("space.lowcut").name("Low Cut").range(20, 1000).log().def(50).unit("Hz").group("Space");
-    spaceHighCut = b.add("space.highcut").name("High Cut").range(1000, 20000).log().def(16000).unit("Hz").group("Space");
+    spaceHighCut = b.add("space.highcut").name("High Cut").range(1000, 20000).log().def(16000).unit("Hz").modulatable().group("Space");
     // the partial arpeggiator (PianoVoice::arpBlock): Off leaves the piano bit-identical
     arpPattern = b.add("parp.pattern").name("Partial Arp Pattern").choices({"Off", "Up", "Down", "Up & Down", "Random"}).group("Partial Arp");
     arpScale = b.add("parp.scale").name("Partial Arp Partials")
@@ -301,15 +301,15 @@ struct Piano : Synth {
                    .group("Partial Arp");
     arpLow = b.add("parp.low").name("Partial Arp Lowest").range(1, 48).def(3).integer().group("Partial Arp");
     arpHigh = b.add("parp.high").name("Partial Arp Highest").range(2, 96).def(16).integer().group("Partial Arp");
-    arpRate = b.add("parp.rate").name("Partial Arp Rate").range(0.25, 20).log().def(5).unit("Hz").group("Partial Arp");
+    arpRate = b.add("parp.rate").name("Partial Arp Rate").range(0.25, 20).log().def(5).unit("Hz").modulatable().group("Partial Arp");
     arpSync = b.add("parp.sync").name("Partial Arp Sync").toggle().group("Partial Arp");
     arpDivision = b.add("parp.division").name("Partial Arp Division")
                       .choices({"1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}).def(4).group("Partial Arp");
-    arpOverlap = b.add("parp.overlap").name("Partial Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
-    arpBoost = b.add("parp.boost").name("Partial Arp Boost").range(-40, 24).def(-20).unit("dB").group("Partial Arp");
-    arpOthers = b.add("parp.others").name("Partial Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
+    arpOverlap = b.add("parp.overlap").name("Partial Arp Overlap").range(0, 200).def(100).unit("%").modulatable().group("Partial Arp");
+    arpBoost = b.add("parp.boost").name("Partial Arp Boost").range(-40, 24).def(-20).unit("dB").modulatable().group("Partial Arp");
+    arpOthers = b.add("parp.others").name("Partial Arp Rest").range(-40, 0).def(0).unit("dB").modulatable().group("Partial Arp");
     arpGroup = b.add("parp.group").name("Partial Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
-    arpWidth = b.add("parp.width").name("Partial Arp Width").range(0, 1).def(0).unit("oct").group("Partial Arp");
+    arpWidth = b.add("parp.width").name("Partial Arp Width").range(0, 1).def(0).unit("oct").modulatable().group("Partial Arp");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
     b.kitDefault("arp.envMode", 0);

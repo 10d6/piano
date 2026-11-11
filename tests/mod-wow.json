@@ -1,0 +1,44 @@
+{
+ "patch": "tape-wow",
+ "length": 6,
+ "events": [
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 55,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 95
+  },
+  {
+   "t": 4,
+   "off": 48
+  },
+  {
+   "t": 4,
+   "off": 55
+  },
+  {
+   "t": 4,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 5.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 3.5,
+    "above": -50
+   }
+  ]
+ }
+}

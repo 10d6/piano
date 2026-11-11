@@ -1,0 +1,53 @@
+{
+ "patch": "tremolo-ballad",
+ "length": 5.5,
+ "events": [
+  {
+   "t": 0,
+   "on": 52,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 59,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 67,
+   "vel": 95
+  },
+  {
+   "t": 3.5,
+   "off": 52
+  },
+  {
+   "t": 3.5,
+   "off": 59
+  },
+  {
+   "t": 3.5,
+   "off": 67
+  },
+  {
+   "t": 0,
+   "on": 40,
+   "vel": 80
+  },
+  {
+   "t": 3.5,
+   "off": 40
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 5.3,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 3,
+    "above": -50
+   }
+  ]
+ }
+}
