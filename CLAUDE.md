@@ -191,6 +191,13 @@ from CI at milestones.
   `release()`. `arp.envMode` defaults to Off here (`kitDefault`). Tests: `kit-arp`, `kit-seq`,
   `kit-arp-pedal`, `migrate-v1`; presets *Arp Cascade*, *Sequencer Overtones*. Stress with
   Sequencer on needs Top Dampers All keys (lanes above E6 ring on, correctly).
+- **Modulation** (`features.modSlots` 12, `standardLfos` 3; docs/MODEL.md): with no routes the
+  piano must stay bit-identical (`cmp`). A parameter is a destination only where every reader
+  can follow it: strike-time tone settings (per voice), the strings' decay settings and the
+  Partial Arp (per voice, per block), Space and Resonance (global). Not Stiffness or Stretch
+  (voices and the sympathetic bank must agree), not `play.*` (`processEvents` and the voice both
+  map velocity). Presets *Tape Wow*, *Tremolo Ballad*, *Living Hammer*, *Breathing Strings*,
+  *Notch Sweep*; tests `mod-*`.
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,
   Size and Damping are continuous. Each space has its own instance; a change rings the old one out.

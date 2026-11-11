@@ -196,6 +196,20 @@
       "info": "Not the arpeggiator below: this one plays inside each note. Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured."
     },
     {
+      "kit": "modMatrix",
+      "wide": true,
+      "info": "Routes from a source (an LFO, velocity, the key, a random value per note, the mod wheel, the beat…) to the piano's controls. Tone and hammer settings are read as each note is struck, so a route there gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay and the Partial Arp follow it as notes ring; Space follows LFOs, the wheel and the beat (sources shared by all notes). Pitch and Level (vibrato, tremolo) move every note."
+    },
+    {
+      "kit": "lfo1"
+    },
+    {
+      "kit": "lfo2"
+    },
+    {
+      "kit": "lfo3"
+    },
+    {
       "kit": "master"
     }
   ],
@@ -216,14 +230,14 @@
     "play.softattack": "How much softer notes swell in more slowly, as the hammer's felt stays on the string longer at gentle blows. 0% swells in at the measured speed whatever the velocity.",
     "play.velmap": "Smooth: velocity moves evenly through this piano's loudness range, with the tone that goes with each loudness. As Recorded: the sample library's own velocity layers, unevenly spaced as recorded.",
     "tone.mech": "The piano's mechanical sounds: each key's own noise as it comes back up and its damper lands, and the sustain pedal's thump going down and up. Measured from the recordings; 0 dB is the level the sample library mixes them at.",
-    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; \u221240 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",
+    "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; −40 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",
     "string.topdampers": "A grand has no dampers above E6: those notes ring on after you let go, fading as they would held. All keys: every key is damped on release, as on many digital pianos.",
     "tone.hardness": "The hammer's felt. Softer dulls the partials and the strike and swells in more slowly, down to a felt-piano mute at -100%; harder brightens them and swells in faster. It moves the corner of the hammer's spectrum, measured per key and velocity from the recordings, up to three octaves either way. 0% is the recorded piano.",
     "tone.strikepoint": "Where along the string the hammer strikes, as a share of its length. Nearer the end (lower) is thinner and brighter; further in is darker and hollower, as the partials with a node there go quiet. The recorded piano strikes at about 12% (1/8).",
     "string.stiffness": "How stiff the strings are: their inharmonicity, which spreads the upper partials sharp of whole multiples of the fundamental. 0% is an ideal, harmonic string (harp-like, organ-like in the bass); 100% is the measured piano; above, stiffer, towards bells and gongs. It applies to the notes you strike next.",
     "string.overtonedecay": "How long the upper partials ring compared with the measured piano, the fundamental's decay kept. Below 0%, they ring on longer (bright, steely); above, they die sooner (dark, like gut or nylon strings).",
     "parp.pattern": "The order the partials take their turn: up the series, down, up and back, or at random (never the same twice running). Off turns the arpeggiator off: the piano as measured.",
-    "parp.scale": "Which partials take part, by the pitch each harmonic has against the note: Major Pentatonic (harmonics 3, 4, 5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27\u2026), Minor Pentatonic (with the 7th harmonic as the flat seventh), Major Triad, every harmonic, or the odd ones only (hollow, clarinet-like). The piano's stiff strings tune the upper partials a little sharp of these.",
+    "parp.scale": "Which partials take part, by the pitch each harmonic has against the note: Major Pentatonic (harmonics 3, 4, 5, 6, 8, 9, 10, 12, 16, 18, 20, 24, 27…), Minor Pentatonic (with the 7th harmonic as the flat seventh), Major Triad, every harmonic, or the odd ones only (hollow, clarinet-like). The piano's stiff strings tune the upper partials a little sharp of these.",
     "parp.low": "The lowest partial in the pattern (1 is the fundamental). Partials below it, and above Highest, are left as they are.",
     "parp.high": "The highest partial in the pattern. High keys have fewer partials: the pattern uses only those the note has.",
     "parp.rate": "Steps per second, when Sync is off. Each note starts its pattern when it's struck.",

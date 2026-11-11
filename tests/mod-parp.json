@@ -1,0 +1,44 @@
+{
+ "patch": "notch-sweep",
+ "length": 7,
+ "events": [
+  {
+   "t": 0,
+   "on": 45,
+   "vel": 100
+  },
+  {
+   "t": 0,
+   "on": 57,
+   "vel": 100
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 100
+  },
+  {
+   "t": 5,
+   "off": 45
+  },
+  {
+   "t": 5,
+   "off": 57
+  },
+  {
+   "t": 5,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 6.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 4.5,
+    "above": -50
+   }
+  ]
+ }
+}

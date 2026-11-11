@@ -159,6 +159,11 @@ and keep the bass from getting further from its recordings on the distance alone
 | `kit-arp.json` | the kit's arpeggiator, Up/Down over two octaves on a held triad: plays through the hold, silent by 5 s |
 | `kit-seq.json` | the sequencer with Crossfade (two voices on one key) on two keys entered at different times: silent by 6 s |
 | `kit-arp-pedal.json` | the arpeggiator with the pedal down: keys let go stay in the chord until the pedal lifts, then silence |
+| `mod-wow.json` | *Tape Wow* (a Drift LFO and a fast sine on `sk.pitch`): a chord still sounding at 3.5 s, silent after |
+| `mod-tremolo.json` | *Tremolo Ballad* (a synced triangle on `sk.level`): a 6 Hz, ~6.5 dB ripple at 120 bpm |
+| `mod-strike.json` | *Living Hammer* (random and key on Hardness and Strike Point, velocity on Overtone Decay): a fast phrase |
+| `mod-strings.json` | *Breathing Strings* (LFOs on Unison, Reverb and Brightness): a pedalled-length chord in the Cathedral |
+| `mod-parp.json` | *Notch Sweep* (a Per Voice LFO on the Partial Arp's Width, another on Boost, velocity on Rate) |
 
 CI also builds the browser page and runs `synthkit/web/test/browser-test.cjs`
 in Chromium. It boots on desktop and phone sizes with no console errors, plays
@@ -286,6 +291,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | the Partial Arp | + renders with it Off against the previous build, byte for byte (and Single, Width 0 on `tests/partial-arp.json`); its spectrum over time (`tools/measure/partials.py` or a spectrogram) to see the steps; `stress.py` with it on |
 | the kit's arpeggiator / sequencer | + renders with it Off against the previous build, byte for byte; `stress.py` with Arp and with Sequencer on (pass extra params into the scenario; with Sequencer, Top Dampers All keys, or lanes above E6 ring on as they should) |
 | the Space reverb | + renders at Reverb 0 against the previous build, byte for byte; `tools/space.py` (re-trim `trimDb` if a level moved); `bench-web.cjs`; switch spaces and move Size while a tail rings, and listen for clicks |
+| modulation (destinations, LFOs) | + renders with no routes against the previous build, byte for byte; the `mod-*` scenarios, and a look at what moves (the tremolo's ripple, the wow's pitch track); `stress.py` with a route moving the strings |
 | the page (UI) | + `browser-test.cjs`, `panel.cjs` |
 
 ## Known gaps in the numbers

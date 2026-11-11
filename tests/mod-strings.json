@@ -1,0 +1,62 @@
+{
+ "patch": "breathing-strings",
+ "length": 9.5,
+ "events": [
+  {
+   "t": 0,
+   "on": 36,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 55,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 71,
+   "vel": 95
+  },
+  {
+   "t": 7,
+   "off": 36
+  },
+  {
+   "t": 7,
+   "off": 48
+  },
+  {
+   "t": 7,
+   "off": 55
+  },
+  {
+   "t": 7,
+   "off": 64
+  },
+  {
+   "t": 7,
+   "off": 71
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 9.3,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 6,
+    "above": -60
+   }
+  ]
+ }
+}

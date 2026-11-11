@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Tremolo Ballad", "params": {"lfo1.sync": 1, "lfo1.division": 10, "lfo1.shape": 1, "tone.bright": -1, "space.room": 24, "space.type": 2}, "mod": [{"src": "const", "dst": "sk.level", "amt": -0.22}, {"src": "lfo1", "dst": "sk.level", "amt": 0.22}]}

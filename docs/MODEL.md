@@ -740,6 +740,25 @@ actually played; the piano handles the arpeggiator's own notes in three places:
 `arp.*` were the Partial Arp's IDs until patchVersion 2; `migratePatch` renames them to
 `parp.*`, and `tests/migrate-v1.json` checks that an old patch renders as it did.
 
+## Creative: modulation
+
+synthkit's mod matrix (`features.modSlots`: 12 routes) and three standard LFOs
+(`features.standardLfos`), API.md §6. With no routes every value is the parameter's own, so the
+piano is byte for byte as before (`cmp`). Which parameters are destinations follows where the
+engine reads them:
+
+| Read | Destinations | What a route does |
+|---|---|---|
+| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
+| each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
+| each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Unison, Dampers and Overtone Decay globally too, so a per-voice route there moves the struck strings but not the free ones |
+| kit | `sk.pitch`, `sk.level` | vibrato and tremolo, through `ctx.pitchHz()` and after the voice. The string bank's concert pitch is worked out from both pitch and Hz, so vibrato doesn't retune the free strings. The body's ring and the bank live in the synth, so `sk.level` doesn't reach them |
+
+Not destinations: Stiffness and Stretch (the voices and the sympathetic bank must agree on the
+strings' tuning), the velocity controls (`play.*`: `processEvents` maps velocity for the body
+ring with global modulation, the voice with its own, and they must agree), Pre-delay (whole-sample
+jumps click), the choices, Low Cut and Key & Pedal.
+
 ## The data pipeline
 
 ```
