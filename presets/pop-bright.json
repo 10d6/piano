@@ -1,1 +1,1 @@
-{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Pop Bright", "params": { "tone.bright": 2, "play.dynamics": 65, "play.touch": -0.3, "space.width": 120 } }
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Pop Bright", "params": { "tone.bright": 2, "play.dynamics": 65, "play.touch": -0.3, "space.width": 120 } }

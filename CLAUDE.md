@@ -175,14 +175,22 @@ from CI at milestones.
   measured ones are ~25 % (holdout). Soft low-mid strikes (C4 layer 4) have a 62 Hz thump
   ~20 dB too strong (attack.py's worst case). The body ring is a few
   dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
-- **Partial Arp** (`arp.*`, `PianoVoice::arpBlock`): a creative feature, not part of the
+- **Partial Arp** (`parp.*`, `arp.*` before patchVersion 2; `PianoVoice::arpBlock`): a creative feature, not part of the
   measured piano. Off must stay bit-identical (`cmp` the renders). It scales each component's
   output gain per control block by its partial (`pnum`, set from `curPn` in `strike`), never its
   state. Its own RNG (`arpRng`): drawing from the voice's would move every beat and noise.
   Group Single + Width 0 is the first version's sound: keep it so (`cmp`). Boosting one partial
   alone sounds resonant and artificial to the owner; negative Boost (a notch, the default:
-  −20 dB) or Octaves + Width sound more natural. `tests/arp.json` and the *Harmonic Arp* / *Partial Notch* presets
+  −20 dB) or Octaves + Width sound more natural. `tests/partial-arp.json` and the *Harmonic Arp* / *Partial Notch* presets
   exercise it.
+- **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
+  bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
+  voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
+  since `NoteOn` has no arp flag). Arp notes lift their key's damper and hold it up each block
+  (`arpUp`); `processGlobal` drops it when none does (`arpDampers`), never relying on
+  `release()`. `arp.envMode` defaults to Off here (`kitDefault`). Tests: `kit-arp`, `kit-seq`,
+  `kit-arp-pedal`, `migrate-v1`; presets *Arp Cascade*, *Sequencer Overtones*. Stress with
+  Sequencer on needs Top Dampers All keys (lanes above E6 ring on, correctly).
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,
   Size and Damping are continuous. Each space has its own instance; a change rings the old one out.
@@ -195,7 +203,8 @@ from CI at milestones.
   start of the first render after `start` (`pending`).
 - Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
-  access in `Voice::start`, sostenuto (CC66). API.md doesn't say that an
+  access in `Voice::start`, sostenuto (CC66), an arp flag on the `NoteOn` that `allocateVoice`
+  sees (`StartInfo::arp` comes only after the slot is chosen). API.md doesn't say that an
   event's `.sample` counts from the host block's start, nor that
   `processEvents` runs once per host block and `processGlobal` once per
   control block (found by rendering at different block sizes).

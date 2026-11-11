@@ -1,1 +1,1 @@
-{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Dry Studio", "params": { "space.room": 0, "tone.hammer": -3 } }
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Dry Studio", "params": { "space.room": 0, "tone.hammer": -3 } }

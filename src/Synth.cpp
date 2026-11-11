@@ -196,6 +196,7 @@ struct PianoVoice : Voice {
   float pendingVel = 0;
   int count = 0;      // components in use; arrays are zero-padded to a multiple of kLanes
   bool damped = false;
+  bool arpVoice = false;   // started by the kit's arpeggiator or sequencer (StartInfo::arp)
 
   // components (struct of arrays, so the inner loop vectorises)
   alignas(32) float re[kCapacity], im[kCapacity];   // state: amplitude and phase
@@ -294,21 +295,35 @@ struct Piano : Synth {
     spaceLowCut = b.add("space.lowcut").name("Low Cut").range(20, 1000).log().def(50).unit("Hz").group("Space");
     spaceHighCut = b.add("space.highcut").name("High Cut").range(1000, 20000).log().def(16000).unit("Hz").group("Space");
     // the partial arpeggiator (PianoVoice::arpBlock): Off leaves the piano bit-identical
-    arpPattern = b.add("arp.pattern").name("Arp Pattern").choices({"Off", "Up", "Down", "Up & Down", "Random"}).group("Partial Arp");
-    arpScale = b.add("arp.scale").name("Arp Partials")
+    arpPattern = b.add("parp.pattern").name("Partial Arp Pattern").choices({"Off", "Up", "Down", "Up & Down", "Random"}).group("Partial Arp");
+    arpScale = b.add("parp.scale").name("Partial Arp Partials")
                    .choices({"Major Pentatonic", "Minor Pentatonic", "Major Triad", "All Harmonics", "Odd Harmonics"})
                    .group("Partial Arp");
-    arpLow = b.add("arp.low").name("Lowest Partial").range(1, 48).def(3).integer().group("Partial Arp");
-    arpHigh = b.add("arp.high").name("Highest Partial").range(2, 96).def(16).integer().group("Partial Arp");
-    arpRate = b.add("arp.rate").name("Arp Rate").range(0.25, 20).log().def(5).unit("Hz").group("Partial Arp");
-    arpSync = b.add("arp.sync").name("Arp Sync").toggle().group("Partial Arp");
-    arpDivision = b.add("arp.division").name("Arp Division")
+    arpLow = b.add("parp.low").name("Partial Arp Lowest").range(1, 48).def(3).integer().group("Partial Arp");
+    arpHigh = b.add("parp.high").name("Partial Arp Highest").range(2, 96).def(16).integer().group("Partial Arp");
+    arpRate = b.add("parp.rate").name("Partial Arp Rate").range(0.25, 20).log().def(5).unit("Hz").group("Partial Arp");
+    arpSync = b.add("parp.sync").name("Partial Arp Sync").toggle().group("Partial Arp");
+    arpDivision = b.add("parp.division").name("Partial Arp Division")
                       .choices({"1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}).def(4).group("Partial Arp");
-    arpOverlap = b.add("arp.overlap").name("Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
-    arpBoost = b.add("arp.boost").name("Arp Boost").range(-40, 24).def(-20).unit("dB").group("Partial Arp");
-    arpOthers = b.add("arp.others").name("Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
-    arpGroup = b.add("arp.group").name("Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
-    arpWidth = b.add("arp.width").name("Arp Width").range(0, 1).def(0).unit("oct").group("Partial Arp");
+    arpOverlap = b.add("parp.overlap").name("Partial Arp Overlap").range(0, 200).def(100).unit("%").group("Partial Arp");
+    arpBoost = b.add("parp.boost").name("Partial Arp Boost").range(-40, 24).def(-20).unit("dB").group("Partial Arp");
+    arpOthers = b.add("parp.others").name("Partial Arp Rest").range(-40, 0).def(0).unit("dB").group("Partial Arp");
+    arpGroup = b.add("parp.group").name("Partial Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
+    arpWidth = b.add("parp.width").name("Partial Arp Width").range(0, 1).def(0).unit("oct").group("Partial Arp");
+    // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
+    // dampers, so its notes have no note envelope unless one is chosen
+    b.kitDefault("arp.envMode", 0);
+  }
+
+  // patchVersion 2: the Partial Arp's parameters moved from arp.* to parp.*, which the kit's
+  // arpeggiator now owns
+  void migratePatch(int fromVersion, PatchData& p) override {
+    if (fromVersion < 2)
+      for (const char* id : {"pattern", "scale", "low", "high", "rate", "sync", "division", "overlap", "boost",
+                             "others", "group", "width"}) {
+        std::string from = std::string("arp.") + id;
+        if (p.hasParam(from)) p.renameParam(from, std::string("parp.") + id);
+      }
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<PianoVoice>(*this); }
@@ -402,12 +417,19 @@ struct Piano : Synth {
     }
   }
 
-  // One voice per key: a key that is still sounding is struck again in place.
+  // One voice per played key: a key that is still sounding is struck again in place. Notes from
+  // the kit's arpeggiator or sequencer take a voice of their own, so its crossfades and overlapping
+  // gates can sound two notes of one key at once. NoteOn doesn't say which notes are the kit's,
+  // so the synth counts the keys played this host block (processEvents) and the rest are its.
   int allocateVoice(const NoteOn& n, VoicePool& pool) override {
-    for (int i = 0; i < pool.size(); ++i)
-      if (pool.note(i) == n.note && pool.state(i) != VoicePool::State::Free &&
-          pool.state(i) != VoicePool::State::Fading)
-        return i;
+    int key = n.note & 127;
+    bool played = playedPending[key] > 0;
+    if (played) --playedPending[key];
+    if (played || arpType == 0)
+      for (int i = 0; i < pool.size(); ++i)
+        if (pool.note(i) == n.note && pool.state(i) != VoicePool::State::Free &&
+            pool.state(i) != VoicePool::State::Fading)
+          return i;
     int f = pool.findFree();
     return f >= 0 ? f : pool.defaultAllocate(n);
   }
@@ -437,6 +459,7 @@ struct Piano : Synth {
 
   void prepare(const PrepareInfo& info) override {
     sr = static_cast<float>(info.sampleRate);
+    arpOn = info.param("arp.on");
     reverb.prepare(sr);
     // The noise bands' normalisation below draws from this generator after the old room's impulse
     // (1.6 s of two noise channels) did: keep those draws, so the dry piano stays bit-identical.
@@ -830,6 +853,31 @@ struct Piano : Synth {
   // finish while the key is held, and then its note-off has no voice to release).
   int keysDown[128] = {};
   bool pedalDown = false;
+
+  // the kit's arpeggiator / sequencer (arp.on: 0 Off, 1 Arp, 2 Sequencer). It runs after
+  // processEvents, so the keys and pedal followed there are the ones played. Its own notes lift
+  // their key's damper as they start (arpStarted) and mark it each block until released
+  // (arpUp); a key no arp note holds up any more gets its damper back in processGlobal
+  // (arpDampers) unless it's held or the pedal is down. That doesn't rely on release(): the kit
+  // also ends arp notes by stealing them or at the end of a phrase.
+  Param arpOn;
+  int arpType = 0;
+  unsigned char playedPending[128] = {};   // keys played this host block, not yet given a voice
+  bool arpUp[128] = {}, arpWasUp[128] = {};
+  float damperDiv = 1;                     // the Damper parameter's scaling of damperRate
+  void arpStarted(int key) {
+    key &= 127;
+    arpUp[key] = true;
+    bodyDamp[key] = 0;   // the damper lifts
+  }
+  void arpDampers() {
+    for (int k = 0; k < 128; ++k) {
+      // the kit's notes ignore the pedal themselves, but the body ring is the key's own and follows it
+      if (arpWasUp[k] && !arpUp[k] && !keysDown[k] && !pedalDown) dampBody(k, damperRate(k, topDamper) / damperDiv);
+      arpWasUp[k] = arpUp[k];
+      arpUp[k] = false;
+    }
+  }
   void damperFalls(EventContext& ctx, int key) {
     dampBody(key, damperRate(key, topDamper) / std::max(ctx.get(damper) * 0.01f, 0.25f));
   }
@@ -840,6 +888,9 @@ struct Piano : Synth {
 
   void processEvents(EventContext& ctx) override {
     topDamper = ctx.choice(topDampers) == 1 ? 108 : kLastDamper;
+    damperDiv = std::max(ctx.get(damper) * 0.01f, 0.25f);
+    arpType = ctx.choice(arpOn);
+    for (auto& p : playedPending) p = 0;
     for (int i = 0; i < nChanges; ++i) applyChange(changes[i]);   // (none left over normally)
     nChanges = 0;
     hostPos = 0;
@@ -877,6 +928,8 @@ struct Piano : Synth {
       if (e.isNoteOn() && e.vel > 0) {
         keysDown[key] = 1;
         bodyDamp[key] = 0;   // the damper lifts
+        // in Arp mode the kit keeps the keys and plays its own notes; otherwise the key gets a voice
+        if (arpType != 1 && playedPending[key] < 255) ++playedPending[key];
         queueChange(offset, 0, key);
         noteVel[key] = e.vel;
       }
@@ -962,6 +1015,7 @@ struct Piano : Synth {
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
+    arpDampers();
     renderBody(io);
     renderBank(ctx, io);
     float over = static_cast<float>(compsNow - kBudget) / kBudget;
@@ -1019,7 +1073,7 @@ void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float 
   gPrev[i] = pnGain[curPn];
 }
 
-void PianoVoice::start(const NoteOn& n, const StartInfo&) {
+void PianoVoice::start(const NoteOn& n, const StartInfo& s) {
   if (n.note != note) {   // a different key in this slot: start clean
     count = 0;
     knocking = false;
@@ -1028,6 +1082,8 @@ void PianoVoice::start(const NoteOn& n, const StartInfo&) {
     note = n.note;
   }
   damped = false;
+  arpVoice = s.arp;
+  if (arpVoice) synth.arpStarted(n.note);
   // The strike needs parameter values, which a voice reads in render(): it
   // happens at the start of the next render, the same sample.
   pendingVel = n.vel;
@@ -1572,6 +1628,7 @@ void PianoVoice::cull() {
 }
 
 void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
+  if (arpVoice && !damped && note >= 0) synth.arpUp[note & 127] = true;   // holds its damper up
   if (pending) {
     pending = false;
     strike(ctx, pendingVel);

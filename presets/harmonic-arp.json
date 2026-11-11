@@ -1,1 +1,1 @@
-{ "synthkit": 1, "synth": "piano", "patchVersion": 1, "name": "Harmonic Arp", "params": { "arp.pattern": 3, "arp.scale": 0, "arp.group": 1, "arp.width": 0.25, "arp.low": 3, "arp.high": 16, "arp.rate": 5, "arp.overlap": 100, "arp.boost": 8, "arp.others": 0, "space.room": 20 } }
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Harmonic Arp", "params": { "parp.pattern": 3, "parp.scale": 0, "parp.group": 1, "parp.width": 0.25, "parp.low": 3, "parp.high": 16, "parp.rate": 5, "parp.overlap": 100, "parp.boost": 8, "parp.others": 0, "space.room": 20 } }

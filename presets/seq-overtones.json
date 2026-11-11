@@ -1,0 +1,1 @@
+{ "synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Sequencer Overtones", "params": { "arp.on": 2, "arp.rate": 9, "arp.gate": 60, "arp.seqLevel": -8, "arp.velMode": 1, "arp.velFixed": 70, "space.room": 30, "space.type": 1 } }
