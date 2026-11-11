@@ -4,210 +4,249 @@
   },
   "sections": [
     {
-      "title": "Playing",
-      "controls": [
+      "tabs": [
         {
-          "param": "play.velmap",
-          "label": "Velocity Map"
+          "title": "Piano",
+          "sections": [
+            {
+              "title": "Playing",
+              "controls": [
+                {
+                  "param": "play.velmap",
+                  "label": "Velocity Map"
+                },
+                {
+                  "param": "play.touch"
+                },
+                {
+                  "param": "play.dynamics"
+                },
+                {
+                  "param": "play.tone"
+                },
+                {
+                  "param": "play.softattack"
+                },
+                {
+                  "type": "velocityCurve"
+                }
+              ],
+              "wide": true,
+              "info": "How velocity becomes loudness, tone and attack. The graph shows the last key played: loudness (solid) and tone (dashed) across velocity, and a dot for each note you strike."
+            },
+            {
+              "title": "Tone",
+              "controls": [
+                {
+                  "param": "tone.bright"
+                },
+                {
+                  "param": "tone.attack"
+                },
+                {
+                  "param": "tone.hammer"
+                },
+                {
+                  "param": "tone.hardness"
+                },
+                {
+                  "param": "tone.strikepoint"
+                },
+                {
+                  "param": "tone.body"
+                },
+                {
+                  "param": "tone.mech"
+                }
+              ]
+            },
+            {
+              "title": "Strings",
+              "controls": [
+                {
+                  "param": "string.unison"
+                },
+                {
+                  "param": "string.stretch"
+                },
+                {
+                  "param": "string.stiffness"
+                },
+                {
+                  "param": "string.overtonedecay"
+                },
+                {
+                  "param": "string.sustain"
+                },
+                {
+                  "param": "string.damper"
+                },
+                {
+                  "param": "string.topdampers"
+                },
+                {
+                  "param": "string.resonance"
+                }
+              ]
+            },
+            {
+              "title": "Space",
+              "controls": [
+                {
+                  "param": "space.width"
+                },
+                {
+                  "param": "space.room"
+                },
+                {
+                  "param": "space.type"
+                },
+                {
+                  "param": "space.decay"
+                },
+                {
+                  "param": "space.size"
+                },
+                {
+                  "param": "space.predelay"
+                },
+                {
+                  "param": "space.damping"
+                },
+                {
+                  "param": "space.early"
+                },
+                {
+                  "param": "space.lowcut"
+                },
+                {
+                  "param": "space.highcut"
+                }
+              ],
+              "info": "The room around the piano. The measurements are close-miked, so Reverb 0 is the dry piano. Early reflections come from a model of each space; the tail is a smooth feedback network, so Decay, Size and Damping can be set freely."
+            }
+          ]
         },
         {
-          "param": "play.touch"
-        },
-        {
-          "param": "play.dynamics"
-        },
-        {
-          "param": "play.tone"
-        },
-        {
-          "param": "play.softattack"
-        },
-        {
-          "type": "velocityCurve"
-        }
-      ],
-      "wide": true,
-      "info": "How velocity becomes loudness, tone and attack. The graph shows the last key played: loudness (solid) and tone (dashed) across velocity, and a dot for each note you strike."
-    },
-    {
-      "title": "Tone",
-      "controls": [
-        {
-          "param": "tone.bright"
-        },
-        {
-          "param": "tone.attack"
-        },
-        {
-          "param": "tone.hammer"
-        },
-        {
-          "param": "tone.hardness"
-        },
-        {
-          "param": "tone.strikepoint"
-        },
-        {
-          "param": "tone.body"
-        },
-        {
-          "param": "tone.mech"
+          "title": "Synthesis",
+          "sections": [
+            {
+              "accordion": [
+                {
+                  "title": "Partial Arp",
+                  "controls": [
+                    {
+                      "param": "parp.pattern",
+                      "label": "Pattern"
+                    },
+                    {
+                      "param": "parp.scale",
+                      "label": "Partials"
+                    },
+                    {
+                      "param": "parp.low",
+                      "label": "Lowest"
+                    },
+                    {
+                      "param": "parp.high",
+                      "label": "Highest"
+                    },
+                    {
+                      "param": "parp.group",
+                      "label": "Group"
+                    },
+                    {
+                      "param": "parp.width",
+                      "label": "Width"
+                    },
+                    {
+                      "param": "parp.rate",
+                      "label": "Rate"
+                    },
+                    {
+                      "param": "parp.sync",
+                      "label": "Sync"
+                    },
+                    {
+                      "param": "parp.division",
+                      "label": "Division"
+                    },
+                    {
+                      "param": "parp.overlap",
+                      "label": "Overlap"
+                    },
+                    {
+                      "param": "parp.boost",
+                      "label": "Boost"
+                    },
+                    {
+                      "param": "parp.others",
+                      "label": "Rest"
+                    }
+                  ],
+                  "info": "Not the arpeggiator below: this one plays inside each note. Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured.",
+                  "collapsed": true
+                },
+                {
+                  "kit": "arp",
+                  "info": "An arpeggiator and step sequencer that play piano notes from the keys you hold. Arp plays the held keys one after another; Sequencer lets each key sound and adds its own pattern of notes above it. Each note is a full piano strike, ended by its damper (Note Envelope Off, the default) or by the note envelope.",
+                  "collapsed": true
+                },
+                {
+                  "kit": "arpPattern",
+                  "collapsed": true
+                },
+                {
+                  "kit": "arpEnv",
+                  "collapsed": true
+                },
+                {
+                  "kit": "arpPhrase",
+                  "collapsed": true
+                },
+                {
+                  "kit": "lfo1",
+                  "collapsed": true
+                },
+                {
+                  "kit": "lfo2",
+                  "collapsed": true
+                },
+                {
+                  "kit": "lfo3",
+                  "collapsed": true
+                },
+                {
+                  "kit": "lfo4",
+                  "collapsed": true
+                },
+                {
+                  "kit": "shape1",
+                  "collapsed": true
+                },
+                {
+                  "kit": "shape2",
+                  "collapsed": true
+                },
+                {
+                  "kit": "shape3",
+                  "collapsed": true
+                },
+                {
+                  "kit": "shape4",
+                  "collapsed": true
+                },
+                {
+                  "kit": "modMatrix",
+                  "info": "Routes from a source (an LFO, a Shape, velocity, the key, a random value per note, the mod wheel, the beat, the arpeggiator's envelopes…) to the piano's controls. Tone and hammer settings are read as each note is struck, so a route there gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay and the Partial Arp follow it as notes ring; Space and the phrase envelope follow sources shared by all notes (Global LFOs, Shapes on Bar, Beat or Free, the wheel, the beat). Pitch and Level (vibrato, tremolo) move every note.",
+                  "collapsed": false
+                }
+              ],
+              "wide": true
+            }
+          ]
         }
       ]
-    },
-    {
-      "title": "Strings",
-      "controls": [
-        {
-          "param": "string.unison"
-        },
-        {
-          "param": "string.stretch"
-        },
-        {
-          "param": "string.stiffness"
-        },
-        {
-          "param": "string.overtonedecay"
-        },
-        {
-          "param": "string.sustain"
-        },
-        {
-          "param": "string.damper"
-        },
-        {
-          "param": "string.topdampers"
-        },
-        {
-          "param": "string.resonance"
-        }
-      ]
-    },
-    {
-      "title": "Space",
-      "controls": [
-        {
-          "param": "space.width"
-        },
-        {
-          "param": "space.room"
-        },
-        {
-          "param": "space.type"
-        },
-        {
-          "param": "space.decay"
-        },
-        {
-          "param": "space.size"
-        },
-        {
-          "param": "space.predelay"
-        },
-        {
-          "param": "space.damping"
-        },
-        {
-          "param": "space.early"
-        },
-        {
-          "param": "space.lowcut"
-        },
-        {
-          "param": "space.highcut"
-        }
-      ],
-      "info": "The room around the piano. The measurements are close-miked, so Reverb 0 is the dry piano. Early reflections come from a model of each space; the tail is a smooth feedback network, so Decay, Size and Damping can be set freely."
-    },
-    {
-      "kit": "arp",
-      "wide": true,
-      "info": "An arpeggiator and step sequencer that play piano notes from the keys you hold. Arp plays the held keys one after another; Sequencer lets each key sound and adds its own pattern of notes above it. Each note is a full piano strike, ended by its damper (Note Envelope Off, the default) or by the note envelope."
-    },
-    {
-      "kit": "arpPattern",
-      "wide": true
-    },
-    {
-      "accordion": [
-        {
-          "kit": "arpEnv",
-          "collapsed": true
-        },
-        {
-          "kit": "arpPhrase",
-          "collapsed": true
-        }
-      ]
-    },
-    {
-      "title": "Partial Arp",
-      "controls": [
-        {
-          "param": "parp.pattern",
-          "label": "Pattern"
-        },
-        {
-          "param": "parp.scale",
-          "label": "Partials"
-        },
-        {
-          "param": "parp.low",
-          "label": "Lowest"
-        },
-        {
-          "param": "parp.high",
-          "label": "Highest"
-        },
-        {
-          "param": "parp.group",
-          "label": "Group"
-        },
-        {
-          "param": "parp.width",
-          "label": "Width"
-        },
-        {
-          "param": "parp.rate",
-          "label": "Rate"
-        },
-        {
-          "param": "parp.sync",
-          "label": "Sync"
-        },
-        {
-          "param": "parp.division",
-          "label": "Division"
-        },
-        {
-          "param": "parp.overlap",
-          "label": "Overlap"
-        },
-        {
-          "param": "parp.boost",
-          "label": "Boost"
-        },
-        {
-          "param": "parp.others",
-          "label": "Rest"
-        }
-      ],
-      "info": "Not the arpeggiator below: this one plays inside each note. Each note's partials take their turn, a melody inside the note: by default each turn digs them out (Boost below 0 dB: a moving notch); a positive Boost brings them forward instead. Off leaves the piano as measured."
-    },
-    {
-      "kit": "modMatrix",
-      "wide": true,
-      "info": "Routes from a source (an LFO, velocity, the key, a random value per note, the mod wheel, the beat…) to the piano's controls. Tone and hammer settings are read as each note is struck, so a route there gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay and the Partial Arp follow it as notes ring; Space follows LFOs, the wheel and the beat (sources shared by all notes). Pitch and Level (vibrato, tremolo) move every note."
-    },
-    {
-      "kit": "lfo1"
-    },
-    {
-      "kit": "lfo2"
-    },
-    {
-      "kit": "lfo3"
     },
     {
       "kit": "master"

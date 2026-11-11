@@ -11,7 +11,8 @@
     "voiceModes": ["poly"],
     "standardEnvelopes": 0,
     "arp": true,
-    "standardLfos": 3,
-    "modSlots": 12
+    "standardLfos": 4,
+    "shapes": 4,
+    "modSlots": 16
   }
 }

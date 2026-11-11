@@ -149,16 +149,27 @@ by default; Crossfade and the others are there too). Keys above E6 have no dampe
 arpeggiator plays up there ring on, as on a grand. Try the *Arp Cascade* and *Sequencer
 Overtones* presets.
 
-**Modulation** (synthkit's mod matrix, 12 routes, and three LFOs): route an LFO, velocity, the
-key, a random value per note, the mod wheel, aftertouch or the beat to the piano's controls, or to
-pitch and level (vibrato, tremolo). Tone and hammer settings (Brightness, Hardness, Strike Point,
-Attack, Hammer, Body) are read as each note is struck, so a route gives each note its own tone;
-the strings' Sustain, Unison, Dampers and Overtone Decay, and the Partial Arp, move while notes
-ring; Space follows sources shared by all notes (Global LFOs, the wheel, the beat). With no
-routes the piano is as measured. Try *Tape Wow*, *Tremolo Ballad*, *Living Hammer*, *Breathing
-Strings* and *Notch Sweep*.
+**Modulation** (synthkit's mod matrix, 16 routes, four LFOs and four Shapes): route an LFO, a
+Shape, velocity, the key, a random value per note, the mod wheel, aftertouch, the beat or the
+arpeggiator's envelopes to the piano's controls, or to pitch and level (vibrato, tremolo). A
+**Shape** is a curve you draw, locked to the tempo: it can restart with each note, with the first
+note of a phrase, every bar or beat, or run freely with the song. Tone and hammer settings
+(Brightness, Hardness, Strike Point, Attack, Hammer, Body) are read as each note is struck, so a
+route gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay, and
+the Partial Arp, move while notes ring; Space and the arpeggiator's phrase envelope (Attack,
+Decay, Sustain, Release) follow sources shared by all notes (Global LFOs, Shapes on First Note,
+Bar, Beat or Free, the wheel, the beat). With no routes the piano is as measured. Try *Tape Wow*,
+*Tremolo Ballad*, *Living Hammer*, *Breathing Strings*, *Notch Sweep*, *Beat Pump* (a Shape
+pumping the level on every beat) and *Tidal Arp* (a 4-bar Shape swelling the arpeggiator's
+phrase).
 
-docs/MODEL.md has how both work.
+**The page** has two tabs. **Piano** holds the instrument (Playing, Tone, Strings, Space).
+**Synthesis** holds the creative parts, each folding at its title: Partial Arp, Arp / Sequencer,
+its pattern, note and phrase envelopes, LFO 1-4, Shape 1-4 and the Mod Matrix (open by default).
+Output stays below both. The page remembers which tab and panels you left open; **Modulate…**
+(right-click a knob) opens the matrix wherever it is.
+
+docs/MODEL.md has how these work.
 
 ## Measurement data
 

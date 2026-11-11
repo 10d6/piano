@@ -1,0 +1,57 @@
+{
+ "patch": "tidal-arp",
+ "transport": {
+  "bpm": 110,
+  "playing": true
+ },
+ "length": 12,
+ "events": [
+  {
+   "t": 0,
+   "on": 57,
+   "vel": 85
+  },
+  {
+   "t": 0,
+   "on": 60,
+   "vel": 85
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 85
+  },
+  {
+   "t": 0.5,
+   "off": 57
+  },
+  {
+   "t": 0.5,
+   "off": 60
+  },
+  {
+   "t": 0.5,
+   "off": 64
+  },
+  {
+   "t": 9,
+   "cc": 123,
+   "value": 0
+  }
+ ],
+ "expect": {
+  "soundBy": 0.03,
+  "silentAfter": 11.5,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 2,
+    "above": -50
+   },
+   {
+    "t": 6,
+    "above": -50
+   }
+  ]
+ }
+}
