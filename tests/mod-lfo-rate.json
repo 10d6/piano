@@ -109,8 +109,8 @@
   "limiterBelow": 1,
   "levelAt": [
    {
-    "t": 6,
-    "above": -60
+    "t": 5,
+    "above": -70
    }
   ]
  }
