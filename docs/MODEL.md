@@ -761,6 +761,11 @@ strings' tuning), the velocity controls (`play.*`: `processEvents` maps velocity
 ring with global modulation, the voice with its own, and they must agree), Pre-delay (whole-sample
 jumps click), the choices, Low Cut and Key & Pedal.
 
+LFOs and Shapes are destinations too (`lfoN.rate`, `.phase`, `.depth`; `shapeN.rate`, `.offset`,
+`.depth`; synthkit #27): a Shape can speed up an LFO, velocity can set a Per Voice LFO's depth.
+An LFO or Shape driven by one computed after it gets that one's value from the block before (a
+per-voice one reads 0 there).
+
 Sources: a Shape is per voice when triggered by Note (so it can give each strike its own curve
 on a strike-time destination) and global otherwise (First Note, Bar, Beat, Free, Manual), which
 is what the global destinations above follow. Shapes, LFOs and the matrix run in the kit; the

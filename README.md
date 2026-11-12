@@ -153,7 +153,9 @@ Overtones* presets.
 Shape, velocity, the key, a random value per note, the mod wheel, aftertouch, the beat or the
 arpeggiator's envelopes to the piano's controls, or to pitch and level (vibrato, tremolo). A
 **Shape** is a curve you draw, locked to the tempo: it can restart with each note, with the first
-note of a phrase, every bar or beat, or run freely with the song. Tone and hammer settings
+note of a phrase, every bar or beat, or run freely with the song. LFOs and Shapes can modulate
+each other's rate and depth (a Shape that speeds up a tremolo, velocity setting vibrato depth).
+Tone and hammer settings
 (Brightness, Hardness, Strike Point, Attack, Hammer, Body) are read as each note is struck, so a
 route gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay, and
 the Partial Arp, move while notes ring; Space and the arpeggiator's phrase envelope (Attack,

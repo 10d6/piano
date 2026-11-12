@@ -1,0 +1,117 @@
+{
+ "patch": {
+  "synthkit": 1,
+  "synth": "piano",
+  "patchVersion": 2,
+  "name": "LFO rate from a Shape",
+  "params": {
+   "lfo1.rate": 2,
+   "shape1.trigger": 4,
+   "shape1.length": 2,
+   "tone.bright": -1
+  },
+  "mod": [
+   {
+    "src": "const",
+    "dst": "sk.level",
+    "amt": -0.25
+   },
+   {
+    "src": "lfo1",
+    "dst": "sk.level",
+    "amt": 0.25
+   },
+   {
+    "src": "shape1",
+    "dst": "lfo1.rate",
+    "amt": 0.4
+   }
+  ],
+  "shapes": [
+   {
+    "curves": [
+     {
+      "points": [
+       [
+        0,
+        0,
+        0,
+        0
+       ],
+       [
+        1,
+        1,
+        0,
+        0
+       ]
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "transport": {
+  "bpm": 120,
+  "playing": true
+ },
+ "length": 9,
+ "events": [
+  {
+   "t": 0,
+   "on": 48,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 55,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 95
+  },
+  {
+   "t": 0,
+   "on": 72,
+   "vel": 95
+  },
+  {
+   "cc": 64,
+   "t": 0,
+   "value": 127
+  },
+  {
+   "cc": 64,
+   "t": 7.5,
+   "value": 0
+  },
+  {
+   "t": 0.1,
+   "off": 48
+  },
+  {
+   "t": 0.1,
+   "off": 55
+  },
+  {
+   "t": 0.1,
+   "off": 64
+  },
+  {
+   "t": 0.1,
+   "off": 72
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 8.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 5,
+    "above": -70
+   }
+  ]
+ }
+}
