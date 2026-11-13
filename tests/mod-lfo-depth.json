@@ -1,0 +1,48 @@
+{
+ "patch": {
+  "synthkit": 1,
+  "synth": "piano",
+  "patchVersion": 2,
+  "name": "Shape fades in a vibrato",
+  "params": {},
+  "mod": [
+   {
+    "src": "shape1",
+    "dst": "lfo1.depth",
+    "amt": -1
+   },
+   {
+    "src": "lfo1",
+    "dst": "sk.pitch",
+    "amt": 0.02
+   }
+  ]
+ },
+ "transport": {
+  "bpm": 120,
+  "playing": true
+ },
+ "length": 5,
+ "events": [
+  {
+   "t": 0,
+   "on": 69,
+   "vel": 100
+  },
+  {
+   "t": 4,
+   "off": 69
+  }
+ ],
+ "expect": {
+  "soundBy": 0.02,
+  "silentAfter": 4.8,
+  "limiterBelow": 1,
+  "levelAt": [
+   {
+    "t": 2,
+    "above": -70
+   }
+  ]
+ }
+}

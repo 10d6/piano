@@ -763,8 +763,10 @@ jumps click), the choices, Low Cut and Key & Pedal.
 
 LFOs and Shapes are destinations too (`lfoN.rate`, `.phase`, `.depth`; `shapeN.rate`, `.offset`,
 `.depth`; synthkit #27): a Shape can speed up an LFO, velocity can set a Per Voice LFO's depth.
-An LFO or Shape driven by one computed after it gets that one's value from the block before (a
-per-voice one reads 0 there).
+An LFO driven by a Shape (or by a later LFO) follows it a block (32 samples) behind, per note
+for per-note ones (synthkit #28). A Global LFO is one wave shared by all notes, so per-note
+sources (velocity, key, random, a Note-triggered Shape) can set its Depth, each note its own,
+but not its Rate or Phase; a global Shape's Rate, Offset and Depth follow shared sources only.
 
 Sources: a Shape is per voice when triggered by Note (so it can give each strike its own curve
 on a strike-time destination) and global otherwise (First Note, Bar, Beat, Free, Manual), which
