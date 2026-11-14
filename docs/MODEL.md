@@ -53,7 +53,10 @@ Things to know about these recordings:
   rumble, which dominate the top notes' late tails. Analyses leave the hum's
   frequency bins out, and the model doesn't reproduce it.
 - The **58 keys between** the sampled ones are interpolated (see below).
-  `tools/measure/holdout.py` checks how well that works.
+  `tools/measure/holdout.py` checks how well that works: a key left out lands 25 % from its
+  recording, and `tools/measure/neighbour.py` shows a real neighbouring key's recording, played
+  at its pitch, is as far (24.6 %). So the interpolation has nothing left to learn from the
+  neighbours, and this is not listed as a gap (docs/TESTING.md).
 
 ## A note: the partials
 
@@ -904,10 +907,6 @@ them.
 - **The top octave and a half** (C6 up) is the weakest measured region (22 %; C8 42 %). C5 and
   nearby, long the weakest, is at 5.5 % since the recorded strike.
 - **A soft C4's 62 Hz thump** is ~20 dB too strong.
-- **The keys between the measured ones** gain little from the modes (docs/TESTING.md, holdout):
-  what is particular to a key isn't predictable from its neighbours. They are as near their
-  recordings as a real neighbouring string is (`tools/measure/neighbour.py`: 24.6 % against the
-  model's 25.1 %), so this is the strings' own variety, not a gap to close.
 - **The room.** The recordings are close-miked; the Space reverb is generated (image sources
   and a feedback network), not measured from a hall.
 - **The treble's partials** mostly keep the older description: above C6 the modal fit seldom

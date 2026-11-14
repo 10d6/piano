@@ -196,7 +196,8 @@ from CI at milestones.
 - The top octave and a half (C6 up) is the weakest measured region (22 %; C8 42 %, D#7 32 %);
   C5 and nearby, long the weakest, is at 5.5 % since the recorded strike. Keys between the
   measured ones are ~25 % (holdout), which is what a real neighbouring key's recording, transposed, scores
-  against them too (`neighbour.py`: 24.6 %): the strings' own variety, not something better interpolation can fix. Soft low-mid strikes (C4 layer 4) have a 62 Hz thump
+  against them too (`neighbour.py`: 24.6 %): the strings' own variety, not something better interpolation can fix. Don't take it up as a gap
+  (docs/TESTING.md); unevenness along the keyboard would be a fault, this distance isn't. Soft low-mid strikes (C4 layer 4) have a 62 Hz thump
   ~20 dB too strong (attack.py's worst case). The body ring is a few
   dB strong 0.4-1 s and weak at 2-3 s on many keys (one decay per band).
 - **Partial Arp** (`parp.*`, `arp.*` before patchVersion 2; `PianoVoice::arpBlock`): a creative feature, not part of the

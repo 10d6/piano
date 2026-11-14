@@ -7,6 +7,10 @@ those keys with their recordings (tools/compare.py), next to the normal build's 
 
     python3 -I tools/measure/holdout.py --keys 45,60 [--perceptual] [--sal …]
 
+Read the result against neighbour.py: a real neighbouring key's recording, played at the left-out
+key's pitch, is as far from it (24.6 % against 25.1 %), so that distance is the strings' own
+variety, not a gap to close.
+
 Needs the native toolchain (cmake, ninja). Takes a few minutes.
 """
 import json

@@ -38,7 +38,7 @@
 #include "Reverb.h"
 
 #ifndef BY_FREQUENCY
-#define BY_FREQUENCY 0.f   // an experiment, off: inconclusive on held-out keys (docs/TESTING.md)
+#define BY_FREQUENCY 0.f   // an experiment, off: inconclusive on held-out keys, which are at their limit anyway (docs/TESTING.md, neighbour.py)
 #endif
 
 using namespace sk;

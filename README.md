@@ -115,8 +115,9 @@ are a median 8.5 % from their recordings (bass 8.7 %, middle 4.9 %, treble 22 %)
 with the strike as noise and 24 % before the modes; two neighbouring velocity layers of the
 recordings are 5 % apart. In octave bands (`tools/compare.py`) measured keys land within
 0.2–3.0 dB. Keys the model never heard (held out and interpolated) are 25 % from their
-recordings: what is particular to a key isn't predictable from its neighbours, and that is the
-next thing to work on.
+recordings. That is not a fault to fix: a real neighbouring key's recording, played at the same
+pitch, is as far (24.6 %, `tools/measure/neighbour.py`). It is how much one string differs from
+the next.
 `docs/TESTING.md` has every measure, today's numbers and the known gaps.
 
 For the partials that keep the older description, the unison beat's depth is measured as one
