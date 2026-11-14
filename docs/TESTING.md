@@ -166,6 +166,7 @@ and keep the bass from getting further from its recordings on the distance alone
 | `mod-parp.json` | *Notch Sweep* (a Per Voice LFO on the Partial Arp's Width, another on Boost, velocity on Rate) |
 | `mod-shape.json` | *Beat Pump* (Shape 1 on Beat, a dip and recovery, on `sk.level`): a chord pumping at 2 Hz (120 bpm), ~10 dB deep. The curve starts and ends at full level: a curve that jumps at its restart clicks, and its click lands in a different block in the browser (the comparison failed at −20 dB) |
 | `mod-lfo-rate.json` | a tremolo (LFO 1 on `sk.level`) whose rate a 4-bar Shape ramps up (`shape1` → `lfo1.rate`, synthkit #27): 3.4 Hz at 0.5-2 s, 7.7 Hz at 2.5-4 s, 17 Hz at 4.5-6 s. Before #27 such a route did nothing |
+| `mod-lfo-depth.json` | the owner's report: Shape 1 (Note, the default curve falling over a bar) → LFO 1 Depth −100 %, LFO 1 (Global) → Pitch Offset 2 %. The vibrato fades in: 61, 81, 91, 96 cents p-p in successive half seconds from 0.25 s (before synthkit #28: 99, 97, 95, 96, the same as no route; with a Per Voice LFO too) |
 | `mod-phrase.json` | *Tidal Arp* (Shape 1 Free over 4 bars on `arp.phraseSustain`, LFO 4 on Hardness): a latched arpeggio swelling ~10 dB and back over 8.7 s, silent after all-notes-off |
 
 CI also builds the browser page and runs `synthkit/web/test/browser-test.cjs`
