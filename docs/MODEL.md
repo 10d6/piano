@@ -905,7 +905,9 @@ them.
   nearby, long the weakest, is at 5.5 % since the recorded strike.
 - **A soft C4's 62 Hz thump** is ~20 dB too strong.
 - **The keys between the measured ones** gain little from the modes (docs/TESTING.md, holdout):
-  what is particular to a key isn't predictable from its neighbours.
+  what is particular to a key isn't predictable from its neighbours. They are as near their
+  recordings as a real neighbouring string is (`tools/measure/neighbour.py`: 24.6 % against the
+  model's 25.1 %), so this is the strings' own variety, not a gap to close.
 - **The room.** The recordings are close-miked; the Space reverb is generated (image sources
   and a feedback network), not measured from a hall.
 - **The treble's partials** mostly keep the older description: above C6 the modal fit seldom
