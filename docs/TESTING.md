@@ -324,8 +324,9 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 
 These are tracked rather than hidden:
 
-- **The keys between the measured ones** are as far from what they should be as before the
-  modes (holdout, above): the next thing to work on.
+- **The keys between the measured ones** are 25 % from their recordings when left out, as before
+  the modes. A real neighbouring key, transposed, is as far (`neighbour.py`, above): this is the
+  strings' own variety, and no longer counted as something to fix.
 - **The treble** (C6 up, 22.3 %; C8 42 %, D#7 32 %, C#8 28 %) is now the weakest measured region:
   most of its partials are too noisy for the modal fit to beat the older description, which they
   keep. (C5 and nearby, long the weakest, is at 5.5 % since the recorded strike.)
