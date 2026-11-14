@@ -161,7 +161,7 @@ and keep the bass from getting further from its recordings on the distance alone
 | `kit-arp-pedal.json` | the arpeggiator with the pedal down: keys let go stay in the chord until the pedal lifts, then silence |
 | `mod-wow.json` | *Tape Wow* (a Drift LFO and a fast sine on `sk.pitch`): a chord still sounding at 3.5 s, silent after |
 | `mod-tremolo.json` | *Tremolo Ballad* (a synced triangle on `sk.level`): a 6 Hz, ~6.5 dB ripple at 120 bpm |
-| `strike-depth.json` | *Hollow Strike* (Strike Point 20 %, Strike Depth 100 %): an arpeggio from C2 to C6 and a chord |
+| `strike-depth.json` | *Hollow Strike* (Strike Point 50 %, Strike Depth 100 %): an arpeggio from C2 to C6 and a chord |
 | `mod-strike.json` | *Living Hammer* (random and key on Hardness and Strike Point, velocity on Overtone Decay): a fast phrase |
 | `mod-strings.json` | *Breathing Strings* (LFOs on Unison, Reverb and Brightness): a pedalled-length chord in the Cathedral |
 | `mod-parp.json` | *Notch Sweep* (a Per Voice LFO on the Partial Arp's Width, another on Boost, velocity on Rate) |
@@ -231,9 +231,10 @@ Also:
   partials follow each key's comb within 0.1-2.5 dB rms; from A2 up no partial ends more than
   4-10 dB clear of its neighbours (PR #11's: 5-29 dB from A2 to F#4), in the bass 3-14 dB
   (3-18; F#2 at 10 % shows 19 in both), where most of what is left is a partial between two new
-  notches. With `--depth 100` (Strike Depth's far end, where standing clear
-  is the point): 6-28 dB from A2 to F#4, and within 0.1-0.5 dB rms per partial of PR #11's
-  control from C3 up.
+  notches. Those are for Strike Point 6-20 % at Strike
+  Depth 0. `--depth D` sweeps Strike Depth, where standing clear is the point. Its size is judged
+  by the perceptual distance from the realistic hammer (MODEL.md: 14-81 % at 100 % from C2 to C5;
+  the first version, deeper notches only, was 1-7 % and the owner could hardly hear it).
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
   the on-screen keyboard plays velocity 100, and nothing reaches the console.
 

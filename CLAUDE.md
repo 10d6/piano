@@ -103,11 +103,16 @@ from CI at milestones.
   Rerun `analyze_point.py` after `analyze.py`/`analyze_modes.py`.
 - **Strike Depth** (`tone.strikedepth`, default 0 %): the unrealistic end of Strike Point, kept
   because the owner liked the first version's extreme, transformational sound. It lowers the
-  comb's floor to 0.03 and raises the cap on a partial's rise from 6 to 12 dB; at 100 % it is
-  PR #11's control from C3 up (0.1-0.5 dB rms per partial). Depth 0 is the realistic hammer and
-  must stay as it is (`cmp` renders with Strike Point moved, Depth 0, against the previous
-  build); Strike Point 12 % is bit-identical at any Depth. Preset *Hollow Strike*, test
-  `strike-depth`.
+  comb's floor to 0.03, raises the cap on a partial's rise from 6 to 12 dB, and multiplies every
+  partial's change in dB by 1 + 2 × depth. Lesson: deeper notches alone are barely audible (1-7 %
+  by the distance; the owner couldn't hear the first version, and PR #11's control was no further
+  from the realistic one): a notch takes one partial per node, so an audible Depth has to widen
+  them. Check a new control's size with the distance before calling it strong.
+- **Strike Point's loudness** is kept (`pointComp`): the note's energy over its first half second
+  (modes' power × how long each lasts) stays at the measured piano's, for both controls. Power at
+  the strike alone overcounts fast modes (notes came out up to 12 dB loud). Range 2-50 % (log);
+  12 % is bit-identical at any Depth. Presets *Hollow Strike*, *Glass Strike*; test
+  `strike-depth`. Presets are embedded at build time: rebuild before `--check` after editing one.
 - **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
   scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
   `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and

@@ -273,7 +273,7 @@ struct Piano : Synth {
     body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
     hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
     hardness = b.add("tone.hardness").name("Hardness").range(-100, 100).def(0).unit("%").modulatable().group("Tone");
-    strikePoint = b.add("tone.strikepoint").name("Strike Point").range(4, 25).def(12).unit("%").modulatable().group("Tone");
+    strikePoint = b.add("tone.strikepoint").name("Strike Point").range(2, 50).log().def(12).unit("%").modulatable().group("Tone");
     strikeDepth = b.add("tone.strikedepth").name("Strike Depth").range(0, 100).def(0).unit("%").modulatable().group("Tone");
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").modulatable().group("Strings");
@@ -1155,20 +1155,58 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // (pd::strikeLift), or 6 dB (the comb's broad shape). Past that it would stand clear of them, a
   // resonance no moved hammer makes. The partials before the first antinode follow sin alone.
   //
-  // Strike Depth leaves that realism on purpose, towards an ideal string: the floor falls from the
-  // key's ε to 0.03 (notches 30 dB deep) and the most a partial may rise goes from 6 to 12 dB, so
-  // partials come back clear of their neighbours and ring out. At 100 % that is PR #11's control
-  // from A2 up (the same comb within the keys' 12.03 % against its 12 %); in the low bass the comb
-  // stays on the strings' own nodes.
+  // Strike Depth leaves that realism on purpose, two ways at once.
+  // Towards an ideal string: the floor falls from the key's ε to 0.03 (notches 30 dB deep) and
+  // the most a partial may rise goes from 6 to 12 dB. On its own that is subtle (1-7 % by the
+  // perceptual distance, as PR #11's control was against the realistic one: a deeper notch still
+  // takes one partial per node).
+  // And past any string: every partial's change in dB is multiplied, up to 3× at 100 %, so the
+  // notches widen as well as deepen and the partials between them stand out.
+  // Loudness: a hammer further in drives the low partials much harder (+9 dB on the fundamental
+  // at 50 %) and one near the end hardly at all, so the note's energy over its first half second
+  // is kept at the measured piano's (pointComp): both controls change colour, not level.
   float strikeDeep = std::clamp(ctx.get(synth.strikeDepth) * 0.01f, 0.f, 1.f);
-  auto pointDb = [&](int n, int k, int pIdx) {
-    if (!strikeMoved) return 0.f;
+  auto pointDbAt = [&](int n, int k, int pIdx, float deep) {
+    float ideal = deep, times = 1 + 2 * deep;
     float x0 = pd::strikeX[k], x = std::min(x0 * strikeScale, 0.5f);
-    float eps = strikeDeep > 0 ? pd::strikeEps[k] * std::pow(0.03f / pd::strikeEps[k], strikeDeep) : pd::strikeEps[k];
+    float eps = ideal > 0 ? pd::strikeEps[k] * std::pow(0.03f / pd::strikeEps[k], ideal) : pd::strikeEps[k];
     float db = 10.f * std::log10(combPower(n, x, eps) / combPower(n, x0, eps));
-    if (n * x0 > 0.5f) db = std::min(db, std::max(static_cast<float>(pd::strikeLift[pIdx]), 6.f + 6.f * strikeDeep));
-    return std::clamp(db, -24.f - 6.f * strikeDeep, 24.f);
+    if (n * x0 > 0.5f) db = std::min(db, std::max(static_cast<float>(pd::strikeLift[pIdx]), 6.f + 6.f * ideal));
+    db = std::clamp(db, -24.f - 6.f * ideal, 24.f);
+    return times > 1 ? std::clamp(db * times, -60.f, 24.f) : db;
   };
+  float pointComp = 0;
+  if (strikeMoved) {
+    double p0 = 0, p1 = 0;
+    for (const auto& side : {std::pair<int, float>{s.a, 1 - s.w}, std::pair<int, float>{s.b, s.w}}) {
+      const pd::Key& kk = pd::keys[side.first];
+      for (int i = kk.first; i < kk.first + kk.count; ++i) {
+        // what a partial adds to the note's first half second: its modes' power at the strike
+        // (its level's, without modes) times how long each lasts. At the strike alone, fast modes
+        // that are gone in milliseconds would count as loudness
+        const pd::Partial& Q = pd::partials[i];
+        auto lasts = [](float dec) {   // ∫ 10^(dec·t/10) dt over 0.5 s, dec in dB/s (negative)
+          double k = std::max(0.1f, -dec) * 0.2302585;
+          return (1 - std::exp(-0.5 * k)) / k;
+        };
+        double g = 0;
+        if (Q.nm > 0) {
+          for (int j = Q.fm; j < Q.fm + Q.nm; ++j)
+            for (int mic = 0; mic < 2; ++mic) {
+              const auto& ML = pd::modeLevels[j];
+              g += 0.5 * std::pow(10.0, 0.01f * (ML[l0][mic] + (ML[l0 + 1][mic] - ML[l0][mic]) * lf) / 10.0) * lasts(pd::modes[j].decay);
+            }
+        } else {
+          g = 0.5 * (std::pow(10.0, layerLevel(i, 0) / 10.0) + std::pow(10.0, layerLevel(i, 1) / 10.0)) * lasts(shape(Q.s1));
+        }
+        g *= side.second;
+        p0 += g;
+        p1 += g * std::pow(10.0, pointDbAt(pd::partials[i].n, side.first, i, strikeDeep) / 10.0);
+      }
+    }
+    if (p0 > 0 && p1 > 0) pointComp = static_cast<float>(-10.0 * std::log10(p1 / p0));
+  }
+  auto pointDb = [&](int n, int k, int pIdx) { return strikeMoved ? pointDbAt(n, k, pIdx, strikeDeep) + pointComp : 0.f; };
   // a partial whose node the hammer has crossed starts the other way up: its phase turns by π
   auto pointFlip = [&](int n, int k) {
     if (!strikeMoved) return false;

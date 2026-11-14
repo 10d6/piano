@@ -4,7 +4,8 @@
 Needs no recordings: there is no recording of this piano with its hammers elsewhere. It renders
 notes at several settings and reports, against the default (12 %, the measured piano):
 
-- each partial's change in level over the first 0.4 s (dB);
+- each partial's change in level over the first 0.4 s (dB), less the one gain that keeps the
+  note's loudness (printed);
 - how far the moved comb is from the one predicted for that key (sin(nπx) with the key's own x
   and notch floor, tools/analyze_point.py): the engine doing what the model says;
 - **bumps**: how far any partial ends up above the median of its neighbours (n ± 1…3), beyond
@@ -13,8 +14,8 @@ notes at several settings and reports, against the default (12 %, the measured p
   clear of its neighbours where none stood before is the control's reference comb missing the
   string's own (heard as a resonance, like a comb filter). Filling a dip isn't a bump.
 
-With `--depth 100` it sweeps Strike Depth's far end, where bumps are the point: partials given
-back up to 12 dB, clear of their neighbours.
+With `--depth D` it sweeps Strike Depth, where bumps are the point: every change multiplied
+(3× at 100), partials standing clear of their neighbours.
 
     python3 -I tools/measure/strikepoint.py [--render build/piano_render] [--keys 24,36,48,60,72] [--depth 0]
 """
@@ -27,7 +28,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as M  # noqa: E402
 
-SETTINGS = [6, 8, 10, 12, 15, 20]
+SETTINGS = [3, 6, 10, 12, 20, 35, 50]
 
 
 def partial_levels(y, sr, freqs):
@@ -70,7 +71,8 @@ def main():
         ref = partial_levels(M.note(a.render, key, a.vel, 1.0), 48000, f)
         use = ref > ref.max() - 60
         x0, eps = point[key]["x"], point[key]["eps"]
-        eps = eps * (0.03 / eps) ** (a.depth / 100)     # Strike Depth lowers the comb's floor
+        deep = a.depth / 100
+        eps = eps * (0.03 / eps) ** deep                # Strike Depth lowers the comb's floor
 
         def comb(x):
             s2 = np.sin(np.pi * n * x) ** 2
@@ -82,12 +84,15 @@ def main():
                 continue
             L = partial_levels(M.note(a.render, key, a.vel, 1.0, {"tone.strikepoint": s, **depth}), 48000, f)
             d = (L - ref)[use]
-            pred = np.clip(comb(x0 * s / 12) - comb(x0), -24 - 0.06 * a.depth, 24)[use]
+            pred = np.clip(np.clip(comb(min(x0 * s / 12, 0.5)) - comb(x0), -24 - 6 * deep, 24) * (1 + 2 * deep), -60, 24)[use]
+            seen = pred > -20                           # deeper cuts sink under what a 0.4 s spectrum shows
+            level = np.median((d - pred)[seen])                 # the loudness correction: one gain for the note
+            d = d - level
             b = np.maximum(bumps(L[use]), 0) - np.maximum(b0, 0)
             i = int(np.argmax(b))
             worst = max(worst, b[i])
             print(f"  {s:2d} %: partials 1-4 {' '.join(f'{v:+5.1f}' for v in d[:4])} dB; change {d.min():+.0f}…{d.max():+.0f} dB; "
-                  f"off the model {np.sqrt(np.mean((d - pred) ** 2)):.1f} dB rms; largest new bump {b[i]:+.0f} dB (partial {int(n[use][i])})")
+                  f"off the model {np.sqrt(np.mean((d - pred)[seen] ** 2)):.1f} dB rms (note's gain {level:+.1f}); largest new bump {b[i]:+.0f} dB (partial {int(n[use][i])})")
     print(f"strike point: largest new bump {worst:+.0f} dB")
 
 
