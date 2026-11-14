@@ -459,13 +459,92 @@ corner at medium velocity, and a spectrum can't brighten past flat. A harder sur
 hammer that rings, or partials above the recordings' floor) would need more than this model.
 The strike below A2 (band noise) isn't changed by it.
 
-**Strike Point** (`tone.strikepoint`, 4-25 % of the string's length) moves where the hammer meets
-the string. Partial n is excited as |sin(nπx)|; the recordings' x is about 1/8.3 from A0 to C4
-(docs/TESTING.md), so each partial changes by the ratio to x = 12 %, kept within −30…+12 dB near
-the nodes (|sin| no lower than 0.03). Nearer the end is thinner and brighter (C4's attack centroid
-500 → 940 Hz at 4 %), further in darker and hollower (440 Hz at 25 %). Above C4 the real strike
-point is unknown (it moves towards the end on most grands), so there it changes the tone around
-the recordings without claiming where the hammer was.
+**Strike Point** (`tone.strikepoint`, 2-50 %; 12 % is every key as recorded) moves where the
+hammer meets the string. A hammer at the fraction x of the string excites partial n as sin(nπx):
+the partials with a node under the hammer are weak, and those either side of a node start in
+opposite senses.
+
+*Where the recordings' hammers are* (`tools/analyze_point.py` → `salamander_point.json` →
+`strikeX`, `strikeEps`, `strikeLift` in the header). The comb is fitted per measured key to the
+partials' levels at the strike, over the louder layers together, with a smooth trend in log n:
+
+    comb(n) = |sin(nπx)|                              up to the first antinode (n·x ≤ ½)
+            = √( (sin²(nπx) + ε²) / (1 + ε²) )         beyond it
+
+- **The low bass, A0-F#2, shows it**: x = 11.65, 11.68, 11.85, 12.30, 12.18, 12.03, 12.20,
+  12.03 % of the string, the same within 0.1 points whichever layer is fitted, explaining 16-59 %
+  of the partial-to-partial variation over the first 40 partials. Each key needs its own x: 0.3
+  points turn the comb a quarter of its period by the 25th partial (12 % for every key
+  explains 7-46 % with the floor fitted, and 1 % on A0 and 2 % on F#1 with the 30 dB notches
+  the control used to assume).
+- **The notches have a floor** (ε): the node partials sit 7-23 dB under their neighbours, not
+  bottomless. ε is pooled over those keys (0.10: a partial or two per key see it). The notches
+  also differ from node to node, so each partial keeps its **lift**: how far it sits below the
+  median of its neighbours (n ± 1…3) on the recordings.
+- **From A2 up the comb is weak in these recordings**: with x near the bass's the fits want
+  ε ≥ 0.55 (notches of 2-5 dB; only the first dip, near partial 8, shows, 5-8 dB), and with x
+  free they find nothing steady. Those keys take the bass's median x (12.03 %) and ε = 0.55: a
+  judgment, the deepest notch the middle supports. Where the real strike point is up there (it
+  moves towards the end on most grands) these recordings don't say.
+
+*What the control does.* It scales every key's x by setting / 12 %, and each partial changes by
+the ratio of the moved comb to the key's own, so at 12 % nothing changes (bit for bit):
+
+- **Level.** A partial coming off a node rises by no more than its lift (or 6 dB, the comb's
+  broad shape), so none is raised clear of its neighbours on the strength of a notch that wasn't
+  there; a partial landing on a node falls to the floor (−20 dB in the low bass, −6 above).
+  Between measured keys each side's ratio is blended like its levels.
+- **Phase.** A partial whose node the hammer has crossed turns by π (all its modes, both mics),
+  so the strike's waveform changes as well as its spectrum.
+- Nearer the end is thinner and brighter: at 6 % partials 1-4 lose 5.9, 5.4, 4.5 and 3.3 dB.
+  Further in is fuller and hollower: at 20 % they change by +4.1, +2.8, +0.5 and −3.1 dB, and
+  every fifth partial sits on a node.
+
+`tools/measure/strikepoint.py` sweeps it: between 6 and 20 % the partials follow the model within 0.1-2.5 dB rms,
+and from A2 up no partial ends more than 4-10 dB clear of its neighbours (3-14 dB in the bass,
+where what is left is mostly a partial between two new notches).
+
+*Loudness.* A hammer further in drives the low partials much harder (the fundamental +8.7 dB at
+50 %) and one near the end hardly at all (−11.8 dB at 3 %). The note's energy over its first half
+second (each mode's power at the strike times how long it lasts) is kept at the measured
+piano's, so the control changes colour, not level: within ±1 dB over the first second on most
+keys (C2 at 2 %: +4.3 dB). Power at the strike alone doesn't work for this: fast modes that are
+gone in milliseconds count as loudness, and notes came out up to 12 dB loud.
+
+*Range.* 2-50 % (4-25 % before), on a log scale. At 50 % the hammer is at the middle of the
+string and the even partials have their nodes there: hollow, towards a clarinet.
+
+**Strike Depth** (`tone.strikedepth`, 0-100 %, default 0) leaves that realism on purpose. The
+owner liked how far the first Strike Point went: more extreme, a different instrument. It does
+two things at once, and nothing while Strike Point is at 12 %:
+
+- **Towards an ideal string**: the comb's floor falls from the key's ε to 0.03
+  (ε × (0.03/ε)^depth: notches 30 dB deep at 100 %) and the most a partial may rise goes from 6 to
+  12 dB (or its lift, if more).
+- **Past any string**: every partial's change in dB is multiplied by 1 + 2 × depth (3× at
+  100 %; falls end at −60 dB, rises at +24), so the notches widen as well as deepen and the
+  partials between them stand out. Loudness is kept as above (within −6…+7 dB at 100 %).
+
+The first version did only the first of these, and the owner could hardly hear it. Measured, it
+was 1-7 % from the realistic hammer by the perceptual distance, and so was PR #11's control: a
+deeper notch still takes one partial per node. What made that control sound extreme was mostly
+the tilt of the low partials, which the realistic one has too. With the multiplying, from C2 to
+C5 and Strike Point 2-50 %, Depth is 4-21 % from the realistic hammer at 25 %, 10-50 % at 50 %
+and 14-81 % at 100 % (C6: 7-49 % at 100 %).
+
+At Strike Point 50 % and Depth 100 % partials 2 and 4 are 16-50 dB down and the fundamental 19-24
+dB up before the loudness correction: only the odd partials are left. The *Hollow Strike* preset
+is that; *Glass Strike* (3 %, Depth 70 %) is the other end. `tests/strike-depth.json` plays the
+first.
+
+*Before this* (PR #11) every key was taken to strike at 12 %, with notches 30 dB deep, and a
+partial could rise 12 dB. Its comb missed the bass strings' own above about the 12th partial,
+and from A2 up it undid notches that aren't there: partials 8, 16, 17 and 25 came up as single
+ringing overtones (up to 29 dB clear of their neighbours on F#4, 10-17 dB from A2 to C4), like a comb filter.
+
+What it doesn't do: the hammer's force itself changes with where it strikes (reflections from the
+near end come back sooner and throw it off earlier), and the recorded strike (the knock) isn't
+moved. A hammer-string simulation would give both.
 
 ## The strings: Stiffness and Overtone Decay
 
@@ -616,7 +695,8 @@ aftersound decay for a medium strike.
 | Attack | `tone.attack` | swell time τ |
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
 | Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
-| Strike Point | `tone.strikepoint` | where the hammer meets the string, % of its length (12 %: as recorded) |
+| Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
+| Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support; higher, an ideal string's comb and every change multiplied (3× at 100 %) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |
@@ -795,6 +875,7 @@ recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salama
                                                     calibrate_noise.py (renders; adjusts salamander_noise.json; repeat ×3; keys below A2 only)
                                                     analyze_strike.py (recordings + a build → salamander_strike.npz; then make_header, build)
           salamander.json ─ analyze_hammer.py ─ salamander_hammer.json (the hammer's corner; into make_header)
+          salamander.json ─ analyze_point.py ── salamander_point.json (each key's strike point and comb; into make_header)
                                                     choose_modes.py (renders; per key, modes or not; then make_header, build)
 ```
 
