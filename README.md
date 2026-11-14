@@ -92,6 +92,10 @@ the hammer go quiet, the ones it leaves come back as far as the recordings show 
 further than a real hammer goes: an ideal string's silent nodes, then every change multiplied, up to three
 times (the *Hollow Strike* and *Glass Strike* presets). Loudness is kept as either moves. At their defaults the piano is as measured.
 
+**The soft pedal** (**Soft Pedal**, MIDI controller 67) shifts the hammers as a grand's una corda does: softer
+felt, then one string of each three left out, so notes start quieter and rounder and sing on as long.
+It is modelled from the physics, not measured: these recordings have none with it down.
+
 **The strings.** **Stiffness** scales their measured inharmonicity, from ideal harmonic strings
 (harp-like) through the recorded piano to three times as stiff (bell-like). **Overtone Decay**
 makes the upper partials ring on longer than the fundamental (bright, steely) or die sooner

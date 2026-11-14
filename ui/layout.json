@@ -28,6 +28,9 @@
                   "param": "play.softattack"
                 },
                 {
+                  "param": "play.softpedal"
+                },
+                {
                   "type": "velocityCurve"
                 }
               ],
@@ -270,6 +273,7 @@
     "tone.body": "The soundboard and room ringing on after each strike: the echo-like tail most audible on high notes. 0 dB is as measured. The key's damper stops it when you let go (above E6, where a grand has no dampers, it rings on unless Top Dampers is All keys).",
     "play.tone": "How much the tone darkens as you play softer. 100% is as recorded: each loudness has the tone the real piano had at that loudness. Lower keeps soft notes brighter; higher makes them darker and gentler.",
     "play.softattack": "How much softer notes swell in more slowly, as the hammer's felt stays on the string longer at gentle blows. 0% swells in at the measured speed whatever the velocity.",
+    "play.softpedal": "The soft pedal (una corda), also on MIDI controller 67. It shifts the hammers sideways: up to half way they meet the strings on softer felt, and from there each misses one string of its three. Notes struck with it down are quieter and rounder at the start but sing on as long. Notes already ringing keep their tone, as on a piano.",
     "play.velmap": "Smooth: velocity moves evenly through this piano's loudness range, with the tone that goes with each loudness. As Recorded: the sample library's own velocity layers, unevenly spaced as recorded.",
     "tone.mech": "The piano's mechanical sounds: each key's own noise as it comes back up and its damper lands, and the sustain pedal's thump going down and up. Measured from the recordings; 0 dB is the level the sample library mixes them at.",
     "string.resonance": "Sympathetic resonance: strings whose dampers are up (all of them with the sustain pedal down, and those above E6, which have none) pick up the notes you play and ring along, most where their overtones line up with the notes'. 0 dB is the default strength; −40 dB turns it off. Pressing the pedal sets the free strings ringing on its own; that follows Key & Pedal.",

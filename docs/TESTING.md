@@ -152,6 +152,7 @@ and keep the bass from getting further from its recordings on the distance alone
 | `fast-repeats.json` | 20 fast strikes, each above −45 dB in its first 20 ms (a strike that didn't sound) |
 | `undamped-treble.json` | a key above E6 rings on after release (no damper) |
 | `glissando-pedal.json` | the heaviest load: rings at 4.9 s, stops after the pedal |
+| `soft-pedal.json` | a phrase with the soft pedal down (CC 67), then a chord with it up |
 | `pedal-noise.json` | the pedal's thump and the strings' ring when it goes down; silence after it comes up |
 | `demo.json` | a musical passage: sounds, limiter under 3 dB |
 | `partial-arp.json` | the *Harmonic Arp* settings over a held chord: sounds within 20 ms, still above −48 dB at 4.2 s, silent at 6.8 s, limiter under 1 dB |
