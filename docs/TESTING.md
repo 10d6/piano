@@ -213,7 +213,8 @@ Also:
   measured (main: 18 %). With the recorded strike (left-out keys take the nearer
   key's response): 25.1 % mean, attack 19.5 (26.0 / 21.0 before it, measured on the same
   machine), measured 7.6 % (9.2). **The modes made the 30 measured keys much nearer
-  their recordings, but not yet the 58 between them**: what a key holds of its
+  their recordings, and left the keys between where they were. That is not a gap to work on
+  (`neighbour.py`, next): it is the strings' own variety.** What a key holds of its
   own (where the hammer strikes against its partials, how its unison beats) its
   neighbours can't predict, and the per-partial levels of a key differ from its
   neighbours' by 5-10 dB here and there. A strike-position comb (partial levels
@@ -221,10 +222,20 @@ Also:
   11.65-12.30 %, each key its own: `tools/analyze_point.py`) and under 10 % from A2 up, where
   the notches are shallow. An earlier fit put 35-60 % up to C4 with one x0 ≈ 1/8.3; it wasn't
   kept, and with the recordings at hand it should be rechecked. The bass keys' x0 differ by up to
-  0.5 points, so blending their combs by partial number misplaces the notches between them:
-  untried so far as a fix for the keys between. Blending partly by frequency rather than partial number
+  0.5 points, so blending their combs by partial number misplaces the notches between them
+  (not worth fixing for the distance's sake, given `neighbour.py`). Blending partly by frequency rather than partial number
   (`BY_FREQUENCY` in Synth.cpp) was inconclusive (25.6 % against 26.3 %
   perceptually, a little worse in octave bands at A2) and is off.
+- `neighbour.py`: the yardstick for that. Each left-out key's measured neighbours (the ones it
+  is interpolated from), their *recordings* played at its pitch, against its own recording:
+  **24.6 %** for the nearer neighbour and 27.0 % for either, where the interpolated model is at
+  **25.1 %** (key by key: F#1 20-22 against the model's 21-24, F#2 17-20 / 18-22, F#3 22-29 /
+  24-29, F#4 24-27 / 22-24, F#5 25-30 / 24-27, F#6 28-38 / 31-39). So a left-out key is already
+  as near its recording as a real string a minor third away is: the 25 % is how much one string
+  differs from the next, not a fault of the interpolation, and better interpolation has nothing
+  left to find in the neighbours. (Held out, the gap is 6 semitones; the 58 real ones are 1 or 2
+  from a measured key and have no recording to be wrong against.) What would show a fault is
+  unevenness along the keyboard, not this distance.
 - `../diagnose.py`: attack rise time, attack brightness, noise between the
   partials, partial pitch (within ~2 cents).
 - `strikepoint.py`: Strike Point swept per key, against the default (no recordings needed). The
@@ -296,7 +307,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 |---|---|
 | anything | `--check`, and listen to what changed |
 | the sound (engine or data) | + `run_all.py` (the perceptual distance first), `bench-web.cjs`; report both in the PR, with a listening test from `tools/listen/make_test.py` |
-| the interpolation between keys | + `holdout.py --perceptual` over several keys at once |
+| the interpolation between keys | + `holdout.py --perceptual` over several keys at once, against `neighbour.py` (a real neighbouring key, transposed) |
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
 | a control that changes the model (Hardness, Strike Point) | + renders at default against the previous build, byte for byte; a sweep and a page of renders; for Strike Point, `tools/measure/strikepoint.py` on both builds (the partials follow the model; no partial left standing clear of its neighbours) |
@@ -312,10 +323,10 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 
 ## Known gaps in the numbers
 
-These are tracked rather than hidden:
+These are tracked rather than hidden. (The keys between the measured ones are not among them:
+left out, they are 25 % from their recordings, and so is a real neighbouring key's recording
+played at their pitch. See `neighbour.py`, above.)
 
-- **The keys between the measured ones** are as far from what they should be as before the
-  modes (holdout, above): the next thing to work on.
 - **The treble** (C6 up, 22.3 %; C8 42 %, D#7 32 %, C#8 28 %) is now the weakest measured region:
   most of its partials are too noisy for the modal fit to beat the older description, which they
   keep. (C5 and nearby, long the weakest, is at 5.5 % since the recorded strike.)
