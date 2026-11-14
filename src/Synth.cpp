@@ -195,6 +195,9 @@ struct PianoVoice : Voice {
   bool pending = false;
   float pendingVel = 0;
   int count = 0;      // components in use; arrays are zero-padded to a multiple of kLanes
+  // the soft pedal, while a strike adds its partials: each one's gain at the strike and later, and
+  // how fast it moves from one to the other (dB/s; 0: no soft pedal)
+  float unaEarly = 1, unaLate = 1, unaExtra = 0;
   bool damped = false;
   bool arpVoice = false;   // started by the kit's arpeggiator or sequencer (StartInfo::arp)
 
@@ -257,7 +260,7 @@ struct PianoVoice : Voice {
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
+  Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
       arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
       spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
@@ -268,6 +271,7 @@ struct Piano : Synth {
     toneRange = b.add("play.tone").name("Tone Range").range(0, 150).def(100).unit("%").group("Playing");
     velMap = b.add("play.velmap").name("Velocity Map").choices({"Smooth", "As Recorded"}).group("Playing");
     softAttack = b.add("play.softattack").name("Soft Attack").range(0, 100).def(25).unit("%").group("Playing");
+    softPedal = b.add("play.softpedal").name("Soft Pedal").range(0, 100).def(0).unit("%").cc(67).group("Playing");
     bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").modulatable().group("Tone");
     attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").modulatable().group("Tone");
     body = b.add("tone.body").name("Body").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
@@ -1051,9 +1055,19 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
   // a component and its onset twin go in together or not at all: either alone would click.
   // Below −80 dBFS the twin is left out: so quiet a component's start can't be heard as a click.
   if (std::fabs(amp) < 1e-4f) onset = 0;
-  if (count + (onset > 0 ? 2 : 1) > kCapacity) return;
+  // the soft pedal: amp × (late − (late − early)·e^{−t/τ}), the second term as a copy that fades
+  // faster by unaExtra (and is left out under −80 dBFS, like the onset twin)
+  float back = unaExtra > 0 ? amp * (unaLate - unaEarly) : 0.f;
+  if (std::fabs(back) < 1e-4f) back = 0;
+  if (unaExtra > 0) amp *= back != 0 ? unaLate : unaEarly;
+  int each = onset > 0 ? 2 : 1;
+  if (count + each * (back != 0 ? 2 : 1) > kCapacity) return;
   addOne(amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, 0);
   if (onset > 0) addOne(-amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, onset);
+  if (back != 0) {
+    addOne(-back, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, unaExtra);
+    if (onset > 0) addOne(back, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, unaExtra + onset);
+  }
 }
 
 void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
@@ -1128,7 +1142,33 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // measured per key and layer from how the partials brighten as the felt is struck harder.
   // Hardness moves the corner (a harder felt, a shorter contact: ±3 octaves at ±100 %), and every
   // partial, and the strike, changes by the ratio of the moved spectrum to the measured one.
-  float hard = ctx.get(synth.hardness) * 0.01f;
+  // The soft pedal (una corda) shifts a grand's action sideways: the hammers meet the strings on
+  // softer, less-packed felt, and from about half way down each hammer misses one string of its
+  // unison (where there are three). There are no recordings of it here, so this is the physics
+  // applied to what was measured, and a judgment in its sizes (kUna…):
+  //   - the felt: Hardness down by kUnaFelt (the hammer's corner 1.8 octaves lower at full pedal).
+  //     At 25 it was 0.3-3 % by the perceptual distance at half pedal: not to be heard;
+  //   - the unison, from half pedal to full, on the keys with three strings (fading in F#2-C3):
+  //     struck together, the strings move in phase, press on the bridge together and lose their
+  //     energy fast (the prompt sound); with one left out, a third of the motion is out of phase,
+  //     which the bridge hardly feels and which lasts (the aftersound). So each partial starts
+  //     kUnaPromptDb lower (two strings of three) and comes back, as fast as its prompt sound
+  //     fades, to kUnaAfterDb over its usual level: quieter and rounder at the strike, but
+  //     singing on as long (Weinreich 1977). The whole partial takes that gain over time,
+  //     g(t) = late − (late − early)·e^{−t/τ}, as a second, faster-fading copy of each component
+  //     (PianoVoice::add): scaling its modes one by one would undo the way they were fitted to
+  //     add up (C4 came out 2 dB louder at the strike that way).
+  // It is read at the strike, as on a piano: notes already ringing keep their tone.
+  constexpr float kUnaFelt = 60.f, kUnaPromptDb = -3.5f, kUnaAfterDb = 2.f, kUnaMinRate = 6.f, kUnaMaxRate = 60.f;
+  float una = std::clamp(ctx.get(synth.softPedal) * 0.01f, 0.f, 1.f);
+  float unaStr = una > 0.5f ? (una - 0.5f) * 2 * std::clamp((note - 42) / 6.f, 0.f, 1.f) : 0.f;
+  unaEarly = unaStr > 0 ? dbToGain(kUnaPromptDb * unaStr) : 1.f;
+  unaLate = unaStr > 0 ? dbToGain(kUnaAfterDb * unaStr) : 1.f;
+  unaExtra = 0;
+  // (less in the top two octaves, where Hardness takes far more of a note's level: half by C7)
+  float unaFelt = kUnaFelt * una * (1 - 0.5f * std::clamp((note - 72) / 24.f, 0.f, 1.f));
+  float hardPct = una > 0 ? std::clamp(ctx.get(synth.hardness) - unaFelt, -100.f, 100.f) : ctx.get(synth.hardness);
+  float hard = hardPct * 0.01f;
   auto fcAt = [&](int k) { return pd::hammerFc[k][l0] + (pd::hammerFc[k][l0 + 1] - pd::hammerFc[k][l0]) * lf; };
   float hammerFc = std::exp(std::log(fcAt(s.a)) + (std::log(fcAt(s.b)) - std::log(fcAt(s.a))) * s.w);
   float hammerFcNew = hammerFc * std::exp2(3.f * hard);
@@ -1247,7 +1287,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   float soft = ctx.get(synth.softAttack) * 0.01f * 2.f * (1.f - (v - 1.f) / 126.f);
   // Hardness: a harder felt leaves the string sooner, so the note swells in faster (the contact
   // time goes as 1 / the hammer's corner; the swell is partly the soundboard's, so half that)
-  float hardSwell = std::exp2(-1.5f * ctx.get(synth.hardness) * 0.01f);
+  float hardSwell = std::exp2(-1.5f * hard);
   float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft) * hardSwell, 0.05f) * 0.001f;
   float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
   // Struck again while still sounding: the old vibration hands over to the new one, fading as the
@@ -1325,6 +1365,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
 
     float after = drop < -0.01f ? amp * dbToGain(drop) : amp;
     float prompt = amp - after;
+    if (unaStr > 0) unaExtra = std::clamp(-s1, kUnaMinRate, kUnaMaxRate);   // the soft pedal: as fast as the prompt sound fades
     float q = 0;
     if (beat > 0.05f) {
       float rr = dbToGain(beatDb);
@@ -1365,6 +1406,16 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
       // and their decays the blended characteristic decay.
       float shiftL = Ll - layerLevel(pp, 0), shiftR = Lr - layerLevel(pp, 1);
       float decScale = hasA && hasB ? std::exp(logDecay - std::log(charDecay(pp))) : 1.f;
+      // the soft pedal's swell-back follows the partial's prompt sound: its loudest mode's decay
+      if (unaStr > 0) {
+        float topDb = -300.f, topDec = -20.f;
+        for (int j = P.fm; j < P.fm + P.nm; ++j) {
+          const auto& ML = pd::modeLevels[j];
+          float lv = 0.005f * (ML[l0][0] + (ML[l0 + 1][0] - ML[l0][0]) * lf + ML[l0][1] + (ML[l0 + 1][1] - ML[l0][1]) * lf);
+          if (lv > topDb) { topDb = lv; topDec = pd::modes[j].decay * decScale; }
+        }
+        unaExtra = std::clamp(-topDec, kUnaMinRate, kUnaMaxRate);
+      }
       for (int j = P.fm; j < P.fm + P.nm; ++j) {
         const auto& ML = pd::modeLevels[j];
         float ml = 0.01f * (ML[l0][0] + (ML[l0 + 1][0] - ML[l0][0]) * lf) + shiftL;
@@ -1401,6 +1452,8 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // measured levels and the partners the beat on top
     part(after, s2);
   }
+  unaEarly = unaLate = 1;
+  unaExtra = 0;
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
     re[i] = im[i] = pr[i] = pi[i] = wl[i] = wrr[i] = wri[i] = 0;
 

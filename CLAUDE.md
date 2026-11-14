@@ -113,6 +113,14 @@ from CI at milestones.
   the strike alone overcounts fast modes (notes came out up to 12 dB loud). Range 2-50 % (log);
   12 % is bit-identical at any Depth. Presets *Hollow Strike*, *Glass Strike*; test
   `strike-depth`. Presets are embedded at build time: rebuild before `--check` after editing one.
+- **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md): not measured (no recordings with it
+  down), so its sizes are a judgment. Felt: Hardness −60 % at full (half by C7). Unison, from half
+  pedal, keys from F#2-C3 up: each partial starts 3.5 dB lower and comes back to +2 dB as fast as
+  its prompt sound fades, as a gain over time on the whole partial (a second, faster-fading copy
+  of each component in `PianoVoice::add`; `unaEarly`/`unaLate`/`unaExtra` are set only while a
+  strike adds partials). Lesson: never scale a partial's modes one by one: they were fitted to add
+  up, and unequal gains made C4 2 dB louder at the strike. 0 % must stay bit-identical (`cmp`).
+  `tools/measure/softpedal.py`: 11-22 % from no pedal at full, 3-8 % at half. Test `soft-pedal`.
 - **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
   scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
   `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and
@@ -163,8 +171,7 @@ from CI at milestones.
 - The page's on-screen keyboard always plays velocity 100 (mouse and
   computer keys); judge velocity response with MIDI or renders.
 - Known gaps: the dampers' imperfect stop (the `harm*` release samples hold
-  each note's residual ring after its damper lands), half-pedalling, the soft
-  pedal. The recordings' late tails on top notes are partly mains hum (50 Hz
+  each note's residual ring after its damper lands), half-pedalling. The recordings' late tails on top notes are partly mains hum (50 Hz
   and harmonics) and rumble: don't model those (the mechanics analysis leaves
   the hum's bins out).
 - Mechanical noises (`tools/analyze_mech.py` → `releaseEnv`/`pedal*` tables)

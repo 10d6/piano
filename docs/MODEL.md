@@ -549,6 +549,39 @@ What it doesn't do: the hammer's force itself changes with where it strikes (ref
 near end come back sooner and throw it off earlier), and the recorded strike (the knock) isn't
 moved. A hammer-string simulation would give both.
 
+## The soft pedal
+
+**Soft Pedal** (`play.softpedal`, 0-100 %, MIDI controller 67) is a grand's una corda: the action
+shifts sideways, so the hammers meet the strings on softer, less-packed felt, and from about half
+way each hammer misses one string of its three. The Salamander set has no recordings with it
+down, so this is the physics applied to what was measured, with sizes that are a judgment
+(`kUna…` in `PianoVoice::strike`). `tools/measure/softpedal.py` reports what it does.
+
+- **The felt** (the whole pedal travel, every key): Hardness comes down by up to 60 %, the
+  hammer's corner 1.8 octaves lower, and with it the partials, the recorded strike and the swell
+  (The hammer, above). Half as much by C7: Hardness takes far more of a top note's level.
+- **The unison** (from half pedal to full, on the keys with three strings: fading in from F#2
+  to C3). Struck together, a unison's strings move in phase, press on the bridge together and
+  lose their energy fast: the prompt sound. With one string left out, a third of the motion is
+  out of phase, which the bridge hardly feels and which lasts: the aftersound (Weinreich 1977).
+  So each partial starts 3.5 dB lower (two strings of three) and comes back, as fast as its
+  prompt sound fades (its loudest mode's decay, 6-60 dB/s), to 2 dB over its usual level.
+- That gain over time is applied to the whole partial, g(t) = late − (late − early)·e^{−t/τ}, as
+  a second, faster-fading copy of each component. Scaling a partial's modes one by one (the fast
+  ones down, the slow ones up) undoes the way they were fitted to add up: C4 came out 2 dB
+  *louder* at the strike that way. The copies double a soft note's components.
+- **Read at the strike**, as on a piano: notes already ringing keep their tone when the pedal
+  moves.
+
+Measured (velocity 90, against the same note without the pedal): at full pedal a note is
+1-6 dB quieter over its first 0.1 s (about 3-6 dB from C3 up), within −1.6…+1.2 dB at 0.5-1 s and
+−2…+1.6 dB at 2-3 s, its first 0.3 s 1-23 % lower in centroid, and 11-22 % away by the
+perceptual distance. At half pedal (the felt alone) it is 3-8 % away: a shade. The first
+version's felt (25 %) was 0.3-3 % at half pedal, not to be heard.
+
+Not modelled: the two-string keys (the hammer still meets both), the sympathetic ring of the
+string left out as a tone of its own, and the pedal's own noise.
+
 ## The strings: Stiffness and Overtone Decay
 
 Two controls change the strings around what was measured; at their defaults (100 % and 0 %) the
@@ -694,6 +727,7 @@ aftersound decay for a medium strike.
 |---|---|---|
 | Velocity Map | `play.velmap` | Smooth / As Recorded (Velocity, above) |
 | Touch, Dynamics, Tone Range, Soft Attack | `play.touch`, `play.dynamics`, `play.tone`, `play.softattack` | velocity → level, tone, swell |
+| Soft Pedal | `play.softpedal` | una corda (CC 67): softer felt, then one string of three left out (The soft pedal, above) |
 | Brightness | `tone.bright` | partial tilt, dB per octave of partial number |
 | Attack | `tone.attack` | swell time τ |
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
@@ -895,7 +929,7 @@ them.
 - **The dampers' imperfect stop.** On a real piano a residual ring continues
   after the damper lands (the `harm*` samples).
 - **Half-pedalling.** The kit treats CC64 as on/off.
-- **The soft pedal**, **sostenuto**, **release velocity.**
+- **Sostenuto**, **release velocity.** (The soft pedal is modelled, not measured: above.)
 - **Strings coupling each other** beyond the bank's one-way drive. The bank's
   output doesn't feed back into the voices.
 - **The body ring follows one decay per band.** It's a few dB strong at
