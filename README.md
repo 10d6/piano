@@ -86,8 +86,9 @@ stays on the string for less time, and its spectrum reaches higher. One spectral
 rising with the hammer's speed, explains 70-86 % of how the recordings' partials change with
 velocity from A0 to C6 (`tools/analyze_hammer.py`). **Hardness** moves that corner (softer felt,
 duller and slower to swell in, down to a felt-piano mute; harder, brighter), and the partials and
-the strike change with it. **Strike Point** moves where the hammer meets the string (the recorded
-piano: about 1/8 of its length). At their defaults the piano is as measured.
+the strike change with it. **Strike Point** moves where the hammer meets the string, from each key's own
+strike point (measured in the low bass: 11.6-12.3 % of the string, `tools/analyze_point.py`): the partials with a node under
+the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. At their defaults the piano is as measured.
 
 **The strings.** **Stiffness** scales their measured inharmonicity, from ideal harmonic strings
 (harp-like) through the recorded piano to three times as stiff (bell-like). **Overtone Decay**
@@ -191,6 +192,7 @@ python3 -I tools/analyze_noise.py ../salamander tools/salamander.json tools/sala
 python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salamander_body.json
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/analyze_hammer.py tools/salamander.json tools/salamander_hammer.json   # the hammer's spectrum (from the partials)
+python3 -I tools/analyze_point.py tools/salamander.json tools/salamander_point.json     # each key's strike point (from the partials)
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 # then build, and calibrate the band noise against the recordings (3 passes, make_header and a build between;
 # it skips keys with a recorded strike, so today it changes nothing):
