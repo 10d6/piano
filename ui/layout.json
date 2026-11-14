@@ -53,6 +53,9 @@
                   "param": "tone.strikepoint"
                 },
                 {
+                  "param": "tone.strikedepth"
+                },
+                {
                   "param": "tone.body"
                 },
                 {
@@ -273,6 +276,7 @@
     "string.topdampers": "A grand has no dampers above E6: those notes ring on after you let go, fading as they would held. All keys: every key is damped on release, as on many digital pianos.",
     "tone.hardness": "The hammer's felt. Softer dulls the partials and the strike and swells in more slowly, down to a felt-piano mute at -100%; harder brightens them and swells in faster. It moves the corner of the hammer's spectrum, measured per key and velocity from the recordings, up to three octaves either way. 0% is the recorded piano.",
     "tone.strikepoint": "Where along the string the hammer strikes. 12% is each key as recorded (the bass strings were measured at 11.6 to 12.3% of their length); other settings move every key's hammer in proportion. Nearer the end (lower) is thinner and brighter; further in is fuller and hollower, as the partials with a node under the hammer go quiet.",
+    "tone.strikedepth": "How deep Strike Point cuts. At 0% the partials change as far as the recordings support: the realistic hammer. Higher goes towards an ideal string: partials at the hammer's nodes fall silent and the ones it leaves ring out on their own, a more extreme, hollow or bell-like change. It does nothing while Strike Point is at 12%.",
     "string.stiffness": "How stiff the strings are: their inharmonicity, which spreads the upper partials sharp of whole multiples of the fundamental. 0% is an ideal, harmonic string (harp-like, organ-like in the bass); 100% is the measured piano; above, stiffer, towards bells and gongs. It applies to the notes you strike next.",
     "string.overtonedecay": "How long the upper partials ring compared with the measured piano, the fundamental's decay kept. Below 0%, they ring on longer (bright, steely); above, they die sooner (dark, like gut or nylon strings).",
     "parp.pattern": "The order the partials take their turn: up the series, down, up and back, or at random (never the same twice running). Off turns the arpeggiator off: the piano as measured.",

@@ -504,6 +504,20 @@ the ratio of the moved comb to the key's own, so at 12 % nothing changes (bit fo
 and from A2 up no partial ends more than 4-10 dB clear of its neighbours (3-14 dB in the bass,
 where what is left is mostly a partial between two new notches).
 
+**Strike Depth** (`tone.strikedepth`, 0-100 %, default 0) leaves that realism on purpose. The
+owner liked how far the first Strike Point went: more extreme, a different instrument. Depth
+takes the comb towards an ideal string's: its floor falls from the key's ε to 0.03
+(ε × (0.03/ε)^depth: notches 30 dB deep at 100 %) and the most a partial may rise goes from 6 to
+12 dB (or its lift, if more). Partials at the hammer's nodes fall silent, and the ones it leaves
+come back clear of their neighbours and ring out. It does nothing while Strike Point is at 12 %.
+
+- At 100 % it is PR #11's control from C3 up: per partial within 0.1-0.5 dB rms of main's build
+  at the same Strike Point (a partial sitting on a node can differ: the keys' 12.03 % against
+  its 12 %). In the low bass it is not: the comb stays on the strings' own nodes.
+- `strikepoint.py --depth 100`: from A2 to F#4 partials stand 6-28 dB clear of their neighbours
+  (4-10 dB at Depth 0); changes run from −49 to +12 dB (−10 to +6).
+- The *Hollow Strike* preset (Strike Point 20 %, Depth 100 %) and `tests/strike-depth.json` use it.
+
 *Before this* (PR #11) every key was taken to strike at 12 %, with notches 30 dB deep, and a
 partial could rise 12 dB. Its comb missed the bass strings' own above about the 12th partial,
 and from A2 up it undid notches that aren't there: partials 8, 16, 17 and 25 came up as single
@@ -663,6 +677,7 @@ aftersound decay for a medium strike.
 | Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
 | Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
 | Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
+| Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support, 100 % an ideal string's comb (deep notches, partials ringing out) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |

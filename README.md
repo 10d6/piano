@@ -88,7 +88,9 @@ velocity from A0 to C6 (`tools/analyze_hammer.py`). **Hardness** moves that corn
 duller and slower to swell in, down to a felt-piano mute; harder, brighter), and the partials and
 the strike change with it. **Strike Point** moves where the hammer meets the string, from each key's own
 strike point (measured in the low bass: 11.6-12.3 % of the string, `tools/analyze_point.py`): the partials with a node under
-the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. At their defaults the piano is as measured.
+the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. **Strike Depth** takes that
+further than a real hammer goes, towards an ideal string: silent nodes and single partials ringing out
+(the *Hollow Strike* preset). At their defaults the piano is as measured.
 
 **The strings.** **Stiffness** scales their measured inharmonicity, from ideal harmonic strings
 (harp-like) through the recorded piano to three times as stiff (bell-like). **Overtone Decay**

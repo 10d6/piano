@@ -13,7 +13,10 @@ notes at several settings and reports, against the default (12 %, the measured p
   clear of its neighbours where none stood before is the control's reference comb missing the
   string's own (heard as a resonance, like a comb filter). Filling a dip isn't a bump.
 
-    python3 -I tools/measure/strikepoint.py [--render build/piano_render] [--keys 24,36,48,60,72]
+With `--depth 100` it sweeps Strike Depth's far end, where bumps are the point: partials given
+back up to 12 dB, clear of their neighbours.
+
+    python3 -I tools/measure/strikepoint.py [--render build/piano_render] [--keys 24,36,48,60,72] [--depth 0]
 """
 import json
 import sys
@@ -53,10 +56,12 @@ def main():
     def extra(p):
         p.add_argument("--keys", default="24,36,48,60,72,84")
         p.add_argument("--vel", type=int, default=100)
+        p.add_argument("--depth", type=float, default=0, help="Strike Depth, %% (0: the realistic hammer)")
     a = M.args(__doc__, extra)
     model = M.model()
     point = {k["key"]: k for k in json.load(open(M.TOOLS / "salamander_point.json"))["keys"]}
     worst = 0.0
+    depth = {"tone.strikedepth": a.depth} if a.depth else {}
     for key in [int(k) for k in a.keys.split(",")]:
         k = model[key]
         ps = [p for p in k["partials"] if p["n"] <= 32 and p["f"] < 16000]
@@ -65,6 +70,7 @@ def main():
         ref = partial_levels(M.note(a.render, key, a.vel, 1.0), 48000, f)
         use = ref > ref.max() - 60
         x0, eps = point[key]["x"], point[key]["eps"]
+        eps = eps * (0.03 / eps) ** (a.depth / 100)     # Strike Depth lowers the comb's floor
 
         def comb(x):
             s2 = np.sin(np.pi * n * x) ** 2
@@ -74,9 +80,9 @@ def main():
         for s in SETTINGS:
             if s == 12:
                 continue
-            L = partial_levels(M.note(a.render, key, a.vel, 1.0, {"tone.strikepoint": s}), 48000, f)
+            L = partial_levels(M.note(a.render, key, a.vel, 1.0, {"tone.strikepoint": s, **depth}), 48000, f)
             d = (L - ref)[use]
-            pred = np.clip(comb(x0 * s / 12) - comb(x0), -24, 24)[use]
+            pred = np.clip(comb(x0 * s / 12) - comb(x0), -24 - 0.06 * a.depth, 24)[use]
             b = np.maximum(bumps(L[use]), 0) - np.maximum(b0, 0)
             i = int(np.argmax(b))
             worst = max(worst, b[i])

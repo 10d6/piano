@@ -257,7 +257,7 @@ struct PianoVoice : Voice {
 };
 
 struct Piano : Synth {
-  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
+  Param touch, dynamics, toneRange, softAttack, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
       arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
       spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
@@ -274,6 +274,7 @@ struct Piano : Synth {
     hammer = b.add("tone.hammer").name("Hammer").range(-40, 12).def(0).unit("dB").modulatable().group("Tone");
     hardness = b.add("tone.hardness").name("Hardness").range(-100, 100).def(0).unit("%").modulatable().group("Tone");
     strikePoint = b.add("tone.strikepoint").name("Strike Point").range(4, 25).def(12).unit("%").modulatable().group("Tone");
+    strikeDepth = b.add("tone.strikedepth").name("Strike Depth").range(0, 100).def(0).unit("%").modulatable().group("Tone");
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").modulatable().group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
@@ -1153,12 +1154,20 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // next 8), so a partial rises by no more than it sits below its neighbours on the recordings
   // (pd::strikeLift), or 6 dB (the comb's broad shape). Past that it would stand clear of them, a
   // resonance no moved hammer makes. The partials before the first antinode follow sin alone.
+  //
+  // Strike Depth leaves that realism on purpose, towards an ideal string: the floor falls from the
+  // key's ε to 0.03 (notches 30 dB deep) and the most a partial may rise goes from 6 to 12 dB, so
+  // partials come back clear of their neighbours and ring out. At 100 % that is PR #11's control
+  // from A2 up (the same comb within the keys' 12.03 % against its 12 %); in the low bass the comb
+  // stays on the strings' own nodes.
+  float strikeDeep = std::clamp(ctx.get(synth.strikeDepth) * 0.01f, 0.f, 1.f);
   auto pointDb = [&](int n, int k, int pIdx) {
     if (!strikeMoved) return 0.f;
     float x0 = pd::strikeX[k], x = std::min(x0 * strikeScale, 0.5f);
-    float db = 10.f * std::log10(combPower(n, x, pd::strikeEps[k]) / combPower(n, x0, pd::strikeEps[k]));
-    if (n * x0 > 0.5f) db = std::min(db, std::max(static_cast<float>(pd::strikeLift[pIdx]), 6.f));
-    return std::clamp(db, -24.f, 24.f);
+    float eps = strikeDeep > 0 ? pd::strikeEps[k] * std::pow(0.03f / pd::strikeEps[k], strikeDeep) : pd::strikeEps[k];
+    float db = 10.f * std::log10(combPower(n, x, eps) / combPower(n, x0, eps));
+    if (n * x0 > 0.5f) db = std::min(db, std::max(static_cast<float>(pd::strikeLift[pIdx]), 6.f + 6.f * strikeDeep));
+    return std::clamp(db, -24.f - 6.f * strikeDeep, 24.f);
   };
   // a partial whose node the hammer has crossed starts the other way up: its phase turns by π
   auto pointFlip = [&](int n, int k) {

@@ -101,6 +101,13 @@ from CI at milestones.
   on F#4); a floor added under sin² everywhere flattens the low partials' tilt, so it starts
   past the first antinode. `tools/measure/strikepoint.py` sweeps it (no recordings needed).
   Rerun `analyze_point.py` after `analyze.py`/`analyze_modes.py`.
+- **Strike Depth** (`tone.strikedepth`, default 0 %): the unrealistic end of Strike Point, kept
+  because the owner liked the first version's extreme, transformational sound. It lowers the
+  comb's floor to 0.03 and raises the cap on a partial's rise from 6 to 12 dB; at 100 % it is
+  PR #11's control from C3 up (0.1-0.5 dB rms per partial). Depth 0 is the realistic hammer and
+  must stay as it is (`cmp` renders with Strike Point moved, Depth 0, against the previous
+  build); Strike Point 12 % is bit-identical at any Depth. Preset *Hollow Strike*, test
+  `strike-depth`.
 - **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
   scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
   `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and
