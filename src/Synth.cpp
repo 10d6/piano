@@ -63,7 +63,7 @@ constexpr float kPedalUpDb = -19.f;
 constexpr float kReleaseVelTrack = 0.82f; // how much the release noise follows the strike's velocity, as in the sfz
 constexpr int kBankMaxPartial = 16;       // the string bank: each string's partials up to the 16th…
 constexpr float kBankMaxHz = 4000.f;      // …and 4 kHz
-constexpr float kStrikePointRef = 0.12f;  // where the recordings' hammers strike (≈ 1/8.3 of the string): Strike Point's default
+constexpr float kStrikePointRef = 0.12f;  // Strike Point's default: every key's own measured strike point (pd::strikeX, about 12 %)
 constexpr float kCoupling = 0.015f;       // how strongly sound at a free string's partial drives it (1/s)
 
 inline float dbToGain(float db) { return std::pow(10.f, db * 0.05f); }
@@ -1136,15 +1136,35 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float a = f / hammerFc, b = f / hammerFcNew;
     return 20.f * std::log10((1 + a * a) / (1 + b * b));
   };
-  // Strike Point: where along the string the hammer strikes (fraction of its length). Partial n is
-  // excited as |sin(nπx)|; the recordings' x is about 1/8.3 (docs/TESTING.md), so the partials
-  // change by the ratio to that, kept within −30…+12 dB near the nodes.
-  float strikeAt = ctx.get(synth.strikePoint) * 0.01f;
-  auto pointDb = [&](int n) {
-    if (std::fabs(strikeAt - kStrikePointRef) < 1e-6f) return 0.f;
-    float a = std::max(std::fabs(std::sin(0.5f * kTwoPi * n * strikeAt)), 0.03f);
-    float b = std::max(std::fabs(std::sin(0.5f * kTwoPi * n * kStrikePointRef)), 0.03f);
-    return std::clamp(20.f * std::log10(a / b), -30.f, 12.f);
+  // Strike Point: where along the string the hammer strikes. Partial n is excited as sin(nπx): weak
+  // where it has a node under the hammer, and of opposite sign either side of one. Each measured
+  // key has its own x (pd::strikeX, tools/analyze_point.py: 11.6-12.3 % in the low bass, where
+  // the comb shows in the partials) and its own notch depth: past the first antinode the comb has
+  // a floor, (sin² + ε²) / (1 + ε²), since the recordings' notches are 6-20 dB deep, not bottomless.
+  // The control scales every key's x by setting / 12 %, and each partial changes by the ratio of
+  // the moved comb to the key's own, so at 12 % nothing changes.
+  float strikeScale = ctx.get(synth.strikePoint) * 0.01f / kStrikePointRef;
+  bool strikeMoved = std::fabs(strikeScale - 1.f) > 1e-5f;
+  auto combPower = [](float n, float x, float eps) {
+    float sn = std::sin(0.5f * kTwoPi * n * x), s2 = sn * sn;
+    return n * x <= 0.5f ? std::max(s2, 1e-4f) : (s2 + eps * eps) / (1 + eps * eps);
+  };
+  // Giving back: the notches differ from node to node (one partial 20 dB under its neighbours, the
+  // next 8), so a partial rises by no more than it sits below its neighbours on the recordings
+  // (pd::strikeLift), or 6 dB (the comb's broad shape). Past that it would stand clear of them, a
+  // resonance no moved hammer makes. The partials before the first antinode follow sin alone.
+  auto pointDb = [&](int n, int k, int pIdx) {
+    if (!strikeMoved) return 0.f;
+    float x0 = pd::strikeX[k], x = std::min(x0 * strikeScale, 0.5f);
+    float db = 10.f * std::log10(combPower(n, x, pd::strikeEps[k]) / combPower(n, x0, pd::strikeEps[k]));
+    if (n * x0 > 0.5f) db = std::min(db, std::max(static_cast<float>(pd::strikeLift[pIdx]), 6.f));
+    return std::clamp(db, -24.f, 24.f);
+  };
+  // a partial whose node the hammer has crossed starts the other way up: its phase turns by π
+  auto pointFlip = [&](int n, int k) {
+    if (!strikeMoved) return false;
+    float x0 = pd::strikeX[k], x = std::min(x0 * strikeScale, 0.5f);
+    return std::sin(0.5f * kTwoPi * n * x) * std::sin(0.5f * kTwoPi * n * x0) < 0;
   };
   // keep a note's loudness when Brightness tilts it: compare the power with and without the tilt
   float brightComp = 0;
@@ -1214,7 +1234,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
 
     float rat = partialRatio(pn, B, wa * A.dev + wb * Bp.dev, stiff);
     float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn)) +
-                  hammerDb(pitchNow * rat) + pointDb(pn);
+                  hammerDb(pitchNow * rat) + wa * pointDb(pn, s.a, pa) + wb * pointDb(pn, s.b, pb);
     float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0);
     float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1);
     float logDecay = 0;   // the blended characteristic decay, log(dB/s), for the modes
@@ -1243,8 +1263,12 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // phases at the strike, measured per layer and mic, from the nearer measured key
     int pp = hasA && hasB ? (s.w < 0.5f ? pa : pb) : pa;
     constexpr float kPhaseStep = 3.14159265f / 127.f;
+    // Strike Point: the phases' key is the one whose nodes count for the turn
+    int ppKey = hasA && hasB ? (s.w < 0.5f ? s.a : s.b) : (hasA ? s.a : s.b);
+    float flip = pointFlip(pn, ppKey) ? 3.14159265f : 0.f;
     float phL = pd::phases[pp][layerNear][0] * kPhaseStep;
     float stereoPhase = pd::phases[pp][layerNear][1] * kPhaseStep - phL;
+    if (flip != 0) phL += flip;
 
     float gl = dbToGain(Ll), gr = dbToGain(Lr);
     float amp = std::sqrt(0.5f * (gl * gl + gr * gr));
@@ -1301,6 +1325,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         if (std::max(ml, mr) < cut) continue;
         float ph0 = pd::modePhases[j][layerNear][0] * kPhaseStep;
         float sp = pd::modePhases[j][layerNear][1] * kPhaseStep - ph0;
+        if (flip != 0) ph0 += flip;
         float g0 = dbToGain(ml), g1 = dbToGain(mr);
         float a = std::sqrt(0.5f * (g0 * g0 + g1 * g1));
         add(a, pd::modes[j].decay * decScale, rat, pd::modes[j].off, ph0, dmp, g0 / a, g1 / a, sp, onset);

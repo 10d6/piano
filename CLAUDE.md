@@ -86,10 +86,21 @@ from CI at milestones.
   spectrum 1/(1+(f/fc)²), its corner per key and layer (`hammerFc`, `tools/analyze_hammer.py`,
   fitted to how the partials brighten across the 16 layers: 70-86 % of that change from A0 to C6).
   Hardness moves the corner ±3 octaves; partials, the recorded strike (two first-order sections)
-  and the swell (τ × (fc/fc')^½) change by the ratio of spectra. Strike Point: |sin(nπx)| against
-  x = 12 %. Defaults are bit-identical to the measured piano: keep them so (check with `cmp` on
+  and the swell (τ × (fc/fc')^½) change by the ratio of spectra. Defaults are bit-identical to the measured piano: keep them so (check with `cmp` on
   renders against the previous build). Harder saturates (+4-6 dB above 2 kHz): the measured
   hammer is already flat to its corner. Rerun `analyze_hammer.py` after `analyze.py`.
+- **Strike Point is per key** (`tools/analyze_point.py` → `salamander_point.json` → `strikeX`,
+  `strikeEps`, `strikeLift`): the comb sin(nπx) fitted to each key's partial levels. Only the
+  low bass (A0-F#2) shows it (x 11.65-12.30 %, 16-59 % of the partial-to-partial variation;
+  notches 7-23 dB); from A2 up it is weak (ε ≥ 0.55) and those keys take the bass's median x and
+  ε 0.55, a judgment. The control scales each key's x by setting / 12 %; partials change by the
+  ratio of combs, rise by no more than their measured dip below their neighbours (`strikeLift`,
+  or 6 dB), and turn by π when the hammer crosses their node. Lessons: one x for every key puts
+  the comb a quarter period off by the 25th partial; undoing notches deeper than the recordings'
+  raises single partials clear of their neighbours (a comb-filter ring: PR #11's did, up to 29 dB
+  on F#4); a floor added under sin² everywhere flattens the low partials' tilt, so it starts
+  past the first antinode. `tools/measure/strikepoint.py` sweeps it (no recordings needed).
+  Rerun `analyze_point.py` after `analyze.py`/`analyze_modes.py`.
 - **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
   scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
   `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and

@@ -482,6 +482,26 @@ def main():
     out.write("// the hammer's spectrum, 1 / (1 + (f / fc)^2): its corner per key and layer (Hz), from how the\n"
               "// partials brighten from soft to loud (a faster hammer is a shorter contact); Hardness moves it\n")
     out.write("constexpr float hammerFc[kKeys][kLayers] = {\n" + ",\n".join(rows_h) + "\n};\n\n")
+    # where the hammer strikes each key's string and how deep its comb's notches are
+    # (tools/analyze_point.py); without the file, the old single reference
+    ppath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_point.json")
+    pk = {h["key"]: h for h in json.load(open(ppath))["keys"]} if os.path.exists(ppath) else {}
+    out.write("// the strike point per key (fraction of the string's length) and the floor of its comb, sin²(nπx) + ε²\n"
+              "// past the first antinode: measured from the partials in the low bass, a design value above\n"
+              "// (tools/analyze_point.py). Strike Point moves x from here; at its default nothing changes\n")
+    out.write("constexpr float strikeX[kKeys] = {" + ", ".join("%.5ff" % pk.get(k["key"], {}).get("x", 0.12) for k in keys) + "};\n")
+    out.write("constexpr float strikeEps[kKeys] = {" + ", ".join("%.3ff" % pk.get(k["key"], {}).get("eps", 0.55) for k in keys) + "};\n\n")
+    rows_lift = []
+    for k in keys:
+        lift = pk.get(k["key"], {}).get("lift", {})
+        for p in sorted(k["partials"], key=lambda p: p["n"]):
+            if "_levels" in p:                 # the partials the table holds, in its order
+                rows_lift.append(round(lift.get(str(p["n"]), 0.0)))
+    assert len(rows_lift) == len(rows_p)
+    out.write("// how far each partial sits below its neighbours on the recordings (dB; measured keys only): the\n"
+              "// most Strike Point gives it back when the hammer moves off its node\n")
+    out.write("constexpr unsigned char strikeLift[kPartials] = {\n" +
+              "\n".join("  " + ", ".join(str(v) for v in rows_lift[i:i + 40]) + "," for i in range(0, len(rows_lift), 40)) + "\n};\n\n")
     write_mech(out, os.path.join(os.path.dirname(sys.argv[1]), "salamander_mech.json"))
     out.write("}  // namespace piano_data\n")
     write_strike(os.path.join(os.path.dirname(sys.argv[1]), "salamander_strike.npz"), [k["key"] for k in keys],

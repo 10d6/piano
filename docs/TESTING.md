@@ -216,13 +216,21 @@ Also:
   own (where the hammer strikes against its partials, how its unison beats) its
   neighbours can't predict, and the per-partial levels of a key differ from its
   neighbours' by 5-10 dB here and there. A strike-position comb (partial levels
-  ∝ |sin(π n x0)|, x0 ≈ 1/8.3 from A0 to C4) explains 35-60 % of that
-  variation, but x0 is nearly the same on neighbouring keys, so it doesn't help
-  between them. Blending partly by frequency rather than partial number
+  ∝ |sin(π n x0)|) explains 16-59 % of that variation in the low bass (A0-F#2, x0
+  11.65-12.30 %, each key its own: `tools/analyze_point.py`) and under 10 % from A2 up, where
+  the notches are shallow. An earlier fit put 35-60 % up to C4 with one x0 ≈ 1/8.3; it wasn't
+  kept, and with the recordings at hand it should be rechecked. The bass keys' x0 differ by up to
+  0.5 points, so blending their combs by partial number misplaces the notches between them:
+  untried so far as a fix for the keys between. Blending partly by frequency rather than partial number
   (`BY_FREQUENCY` in Synth.cpp) was inconclusive (25.6 % against 26.3 %
   perceptually, a little worse in octave bands at A2) and is off.
 - `../diagnose.py`: attack rise time, attack brightness, noise between the
   partials, partial pitch (within ~2 cents).
+- `strikepoint.py`: Strike Point swept per key, against the default (no recordings needed). The
+  partials follow each key's comb within 0.1-2.5 dB rms; from A2 up no partial ends more than
+  4-10 dB clear of its neighbours (PR #11's: 5-29 dB from A2 to F#4), in the bass 3-14 dB
+  (3-18; F#2 at 10 % shows 19 in both), where most of what is left is a partial between two new
+  notches.
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
   the on-screen keyboard plays velocity 100, and nothing reaches the console.
 
@@ -287,7 +295,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | the interpolation between keys | + `holdout.py --perceptual` over several keys at once |
 | voices, notes, pedal, events | + `stress.py` 300 and 200 overlap, `notes.py` |
 | the treble or the noise | + `between.py`, and compare per key at velocity 100 (the on-screen keyboard's) and across layers |
-| a control that changes the model (Hardness, Strike Point) | + renders at default against the previous build, byte for byte; a sweep and a page of renders |
+| a control that changes the model (Hardness, Strike Point) | + renders at default against the previous build, byte for byte; a sweep and a page of renders; for Strike Point, `tools/measure/strikepoint.py` on both builds (the partials follow the model; no partial left standing clear of its neighbours) |
 | the body's ring | + `between.py` and `ring.py`, and `tools/listen/ab_ring.py` for an A/B against the recording's own ring |
 | the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |

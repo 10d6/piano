@@ -40,6 +40,7 @@ plays that layer.
 | `panel.cjs build-web/web/piano.html` | Does the page's velocity graph work, and what velocity does the on-screen keyboard play? | graph caption shows a key; velocity 100 |
 | `../diagnose.py` | Attack swell time, attack brightness, noise between partials, partial pitch | rise 10–20 ms; partial pitch within ~2 cents |
 | `../bench-web.cjs` | Browser speed | worst case (pedalled 88-key glissando) > ~2× realtime |
+| `strikepoint.py` | What does Strike Point do to each key's partials? Against the default, with no recordings: do they follow the key's own comb (`../analyze_point.py`), and is any partial left standing clear of its neighbours (a comb-filter ring)? | off the model ≤ ~2.5 dB rms; new bumps ≤ ~10 dB from A2 up |
 
 `docs/TESTING.md` describes the methods behind these, what to run after which
 change, and the known gaps. Some lessons these taught (details in the git
