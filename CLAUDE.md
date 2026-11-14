@@ -114,7 +114,8 @@ from CI at milestones.
   12 % is bit-identical at any Depth. Presets *Hollow Strike*, *Glass Strike*; test
   `strike-depth`. Presets are embedded at build time: rebuild before `--check` after editing one.
 - **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md): not measured (no recordings with it
-  down), so its sizes are a judgment. Felt: Hardness −60 % at full (half by C7). Unison, from half
+  down), so its sizes are a judgment. Felt: Hardness −60 % at full (half by C7; no lower than costs the fundamental 3 dB, or soft
+  notes lose 16 dB). Unison, from half
   pedal, keys from F#2-C3 up: each partial starts 3.5 dB lower and comes back to +2 dB as fast as
   its prompt sound fades, as a gain over time on the whole partial (a second, faster-fading copy
   of each component in `PianoVoice::add`; `unaEarly`/`unaLate`/`unaExtra` are set only while a
@@ -169,7 +170,17 @@ from CI at milestones.
   first second (one line can't follow it; the long tail high notes need went
   17-27 dB too weak at 2-3 s).
 - The page's on-screen keyboard always plays velocity 100 (mouse and
-  computer keys); judge velocity response with MIDI or renders.
+  computer keys); judge velocity response with MIDI or renders. The owner plays from the page,
+  so anything that depends on velocity (the whole Playing panel) can hardly be heard from the
+  keys: the velocity graph is playable for that (press it: soft at the left, hard at the right;
+  `ui/custom.js`, checked by `panel.cjs`). A kit keyboard with velocity would be better (kit gap).
+- **Check a setting can be heard** (`tools/measure/settings.py`): the owner reported the Playing
+  panel, Resonance and Stiffness as doing little, and measured they did (0-15 % at velocity 100;
+  Resonance's strings 22-43 dB under the sound; Stiffness 1-2 % in the middle). Since then: Soft
+  Attack runs to 600 % (an effect past 100 %: the felt's own swell is a few ms and inaudible),
+  Stiffness to 800 %, Resonance to +24 dB with `kCoupling` 0.06 (was 0.015: the one change to the
+  default sound, 0.6 dB in a pedalled tail, nothing without the pedal). Every description says
+  what lower and higher do and where to listen (`paramInfo` in `ui/layout.json`): keep that up.
 - Known gaps: the dampers' imperfect stop (the `harm*` release samples hold
   each note's residual ring after its damper lands), half-pedalling. The recordings' late tails on top notes are partly mains hum (50 Hz
   and harmonics) and rumble: don't model those (the mechanics analysis leaves
@@ -245,7 +256,8 @@ from CI at milestones.
   and the RT60s to report.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
-- Kit gaps found so far (candidates for synthkit PRs): continuous CC64 for
+- Kit gaps found so far (candidates for synthkit PRs): velocity on the on-screen keyboard and
+  computer keys (always 100), continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
   access in `Voice::start`, sostenuto (CC66), an arp flag on the `NoteOn` that `allocateVoice`
   sees (`StartInfo::arp` comes only after the slot is chosen), a random seed per LFO that

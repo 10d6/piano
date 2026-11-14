@@ -64,7 +64,7 @@ constexpr float kReleaseVelTrack = 0.82f; // how much the release noise follows 
 constexpr int kBankMaxPartial = 16;       // the string bank: each string's partials up to the 16th…
 constexpr float kBankMaxHz = 4000.f;      // …and 4 kHz
 constexpr float kStrikePointRef = 0.12f;  // Strike Point's default: every key's own measured strike point (pd::strikeX, about 12 %)
-constexpr float kCoupling = 0.015f;       // how strongly sound at a free string's partial drives it (1/s)
+constexpr float kCoupling = 0.06f;        // how strongly sound at a free string's partial drives it (1/s)
 
 inline float dbToGain(float db) { return std::pow(10.f, db * 0.05f); }
 
@@ -270,7 +270,7 @@ struct Piano : Synth {
     dynamics = b.add("play.dynamics").name("Dynamics").range(25, 150).def(100).unit("%").group("Playing");
     toneRange = b.add("play.tone").name("Tone Range").range(0, 150).def(100).unit("%").group("Playing");
     velMap = b.add("play.velmap").name("Velocity Map").choices({"Smooth", "As Recorded"}).group("Playing");
-    softAttack = b.add("play.softattack").name("Soft Attack").range(0, 100).def(25).unit("%").group("Playing");
+    softAttack = b.add("play.softattack").name("Soft Attack").range(0, 600).def(25).unit("%").group("Playing");
     softPedal = b.add("play.softpedal").name("Soft Pedal").range(0, 100).def(0).unit("%").cc(67).group("Playing");
     bright = b.add("tone.bright").name("Brightness").range(-6, 6).def(0).unit("dB").modulatable().group("Tone");
     attack = b.add("tone.attack").name("Attack").range(25, 400).log().def(100).unit("%").modulatable().group("Tone");
@@ -282,12 +282,12 @@ struct Piano : Synth {
     mech = b.add("tone.mech").name("Key & Pedal").range(-40, 12).def(0).unit("dB").group("Tone");
     unison = b.add("string.unison").name("Unison").range(0, 300).def(100).unit("%").modulatable().group("Strings");
     stretch = b.add("string.stretch").name("Stretch").range(0, 200).def(100).unit("%").group("Strings");
-    stiffness = b.add("string.stiffness").name("Stiffness").range(0, 300).def(100).unit("%").group("Strings");
+    stiffness = b.add("string.stiffness").name("Stiffness").range(0, 800).def(100).unit("%").group("Strings");
     overtoneDecay = b.add("string.overtonedecay").name("Overtone Decay").range(-100, 100).def(0).unit("%").modulatable().group("Strings");
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
     topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
-    resonance = b.add("string.resonance").name("Resonance").range(-40, 12).def(0).unit("dB").modulatable().group("Strings");
+    resonance = b.add("string.resonance").name("Resonance").range(-40, 24).def(0).unit("dB").modulatable().group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").modulatable().group("Space");
     room = b.add("space.room").name("Reverb").range(0, 100).def(12).unit("%").modulatable().group("Space");
     // the reverb (Reverb.h): early reflections by convolution, a feedback-network tail
@@ -1167,10 +1167,20 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   unaExtra = 0;
   // (less in the top two octaves, where Hardness takes far more of a note's level: half by C7)
   float unaFelt = kUnaFelt * una * (1 - 0.5f * std::clamp((note - 72) / 24.f, 0.f, 1.f));
-  float hardPct = una > 0 ? std::clamp(ctx.get(synth.hardness) - unaFelt, -100.f, 100.f) : ctx.get(synth.hardness);
-  float hard = hardPct * 0.01f;
+  float hard = ctx.get(synth.hardness) * 0.01f;
   auto fcAt = [&](int k) { return pd::hammerFc[k][l0] + (pd::hammerFc[k][l0 + 1] - pd::hammerFc[k][l0]) * lf; };
   float hammerFc = std::exp(std::log(fcAt(s.a)) + (std::log(fcAt(s.b)) - std::log(fcAt(s.a))) * s.w);
+  if (una > 0) {
+    // A soft strike's corner is already near its fundamental, and 1.8 octaves lower took the
+    // fundamental with it: a soft note with the pedal came out 16 dB quieter. The pedal's felt
+    // lowers the corner only as far as costs the fundamental kUnaMaxDb.
+    constexpr float kUnaMaxDb = 3.f;
+    float f0 = 440.f * std::exp2((note - 69) / 12.f);
+    float fcUser = hammerFc * std::exp2(3.f * hard), a = f0 / fcUser;
+    float fcFloor = f0 / std::sqrt(std::max((1 + a * a) * dbToGain(kUnaMaxDb) - 1, 1e-6f));
+    float fcPedal = std::max(fcUser * std::exp2(-0.03f * unaFelt), std::min(fcUser, fcFloor));
+    hard = std::clamp(std::log2(fcPedal / hammerFc) / 3.f, -1.f, 1.f);
+  }
   float hammerFcNew = hammerFc * std::exp2(3.f * hard);
   auto hammerDb = [&](float f) {
     if (hard == 0) return 0.f;
@@ -1289,6 +1299,11 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // time goes as 1 / the hammer's corner; the swell is partly the soundboard's, so half that)
   float hardSwell = std::exp2(-1.5f * hard);
   float tau = std::max(tauMs * ctx.get(synth.attack) * 0.01f * std::exp2(soft) * hardSwell, 0.05f) * 0.001f;
+  // Up to 100 % this is the felt's doing and small (a few ms: 0-0.5 % by the perceptual distance,
+  // not to be heard). The range goes on to 600 % as an effect: soft notes swell in over tens to
+  // hundreds of ms, no further than kSwellMax.
+  constexpr float kSwellMax = 0.3f;
+  if (ctx.get(synth.softAttack) > 100.f) tau = std::min(tau, kSwellMax);
   float onset = 8.6858896f / tau;   // dB/s of the twin's extra decay: 1 − e^{−t/τ}
   // Struck again while still sounding: the old vibration hands over to the new one, fading as the
   // new strike swells in. Adding the new partials on top of the old ones would let them cancel

@@ -220,7 +220,9 @@ the hammer's contact and the soundboard's response.
   the component. The measured phases are advanced by d, so the swell lines up
   with t = 0. **Attack** scales τ. **Soft Attack** lengthens it for gentler
   strikes: τ·2^(soft·2·(1 − v)), so at 100 % a half-velocity strike swells
-  twice as slowly.
+  twice as slowly. That is the felt's doing and a few ms: 0-0.5 % by the perceptual distance,
+  not to be heard. The control runs on to 600 % as an effect (τ no longer than 0.3 s): soft and
+  medium notes swell in over tens to hundreds of ms (16-30 % at velocity 30-64, 2-10 % at 100).
 
 ### Levels and phases per velocity and microphone
 
@@ -297,7 +299,13 @@ recorded layer) and **level**:
   that layer.
 
 The page's graph (`ui/custom.js`, messages `vel.query`, `vel.point`,
-`vel.note`) is drawn from the same function.
+`vel.note`) is drawn from the same function. **It can be played**: pressing it strikes the key
+it shows at the velocity under the pointer, soft at the left and hard at the right, until
+released. The on-screen keyboard and the computer keys always play velocity 100 (the kit's
+keyboard has no velocity), and these settings shape soft and medium notes: at 100 the ends of
+Touch, Dynamics, Tone Range and the map are 0-15 % from the default by the perceptual distance,
+at 30-64 they are 12-100 % (`tools/measure/settings.py`). Without the graph or a MIDI keyboard
+the panel can hardly be heard, which is how the owner found it.
 
 ## The strike
 
@@ -559,7 +567,9 @@ down, so this is the physics applied to what was measured, with sizes that are a
 
 - **The felt** (the whole pedal travel, every key): Hardness comes down by up to 60 %, the
   hammer's corner 1.8 octaves lower, and with it the partials, the recorded strike and the swell
-  (The hammer, above). Half as much by C7: Hardness takes far more of a top note's level.
+  (The hammer, above). Half as much by C7: Hardness takes far more of a top note's level. And
+  no lower than costs the fundamental 3 dB: a soft strike's corner is already near its
+  fundamental, and a soft note with the pedal came out 16 dB quieter (now 4-6 dB at velocity 30).
 - **The unison** (from half pedal to full, on the keys with three strings: fading in from F#2
   to C3). Struck together, a unison's strings move in phase, press on the bridge together and
   lose their energy fast: the prompt sound. With one string left out, a third of the motion is
@@ -588,12 +598,15 @@ Two controls change the strings around what was measured; at their defaults (100
 output is exactly the measured piano's (bit for bit). Both reach the voices and the sympathetic
 string bank alike.
 
-**Stiffness** (`string.stiffness`, 0-300 %) scales the strings' inharmonicity. Partial n of a
+**Stiffness** (`string.stiffness`, 0-800 %) scales the strings' inharmonicity. Partial n of a
 string is at n·√((1 + B n²) / (1 + B)) times its fundamental, then `dev` cents off that line where
 it was measured elsewhere (`partialRatio`); Stiffness scales B and those offsets alike. At 0 % the
 strings are ideal, the partials at whole multiples of the fundamental (harp-like; organ-like in the
 bass); at 300 % they spread three times as far (C4's 12th partial: +33 cents as measured, +253 at
-300 %), towards bells. It applies at the strike, so to the notes struck next; the stretch tuning
+300 %), towards bells. The middle of the keyboard has little stiffness to scale (0 % and 300 %
+are 1-2 % from the measured piano at C3-C4 by the perceptual distance, 6-11 % at C2 and C6), so
+the range runs to 800 % (6-19 %; the distance sees loudness, not pitch, and underrates this).
+It applies at the strike, so to the notes struck next; the stretch tuning
 (Stretch) is kept as it is.
 
 **Overtone Decay** (`string.overtonedecay`, −100…+100 %) changes how long the upper partials ring
@@ -681,12 +694,28 @@ aftersound decay for a medium strike.
   the upper string going, a fifth sets its twelfth, and so on. A voice driving
   its own string would double it, so voices report `sounding[note]` each
   block.
-- **Coupling.** The drive is z += K·x/fs, with K = 0.015/s (`kCoupling`)
-  scaled by **Resonance**. It is a judgment: the recordings were made note by
-  note, so no two notes sound together in them. The free strings above E6 do
-  ring along in every recording, though (What the ring is, above), so it could
-  be measured from them. The default puts the halo 20–40 dB under a
-  mid-range note a second or two in.
+- **Coupling.** The drive is z += K·x/fs, with K = 0.06/s (`kCoupling`)
+  scaled by **Resonance** (−40…+24 dB). It is a judgment: the recordings were made note by
+  note, so no two notes sound together in them. K was 0.015/s, and Resonance (then to +12 dB)
+  could not be heard: on a short arpeggio with the pedal held the sympathetic strings were
+  43 dB under all the sound while it played and 22 dB under it in the tail. Now
+  (`tools/measure/settings.py`):
+
+  | Resonance | under all the sound, 0.5-1.5 s | in the tail, 4-5 s | the tail is louder by |
+  |---|---|---|---|
+  | −12 dB (the old default) | 43 dB | 22 dB | 0.1 dB |
+  | 0 dB | 31 dB | 10 dB | 0.6 dB |
+  | +12 dB | 19 dB | 2 dB | 4.8 dB |
+  | +24 dB | 9 dB | 0.3 dB | 14.9 dB |
+
+  The default is a halo just to be heard after the notes; the top of the range is a wash as
+  loud as the notes' own tails. Without the pedal nothing changes that can be heard (a chord
+  differs from before 78 dB under its sound), and the distances from the recordings are the same.
+  One measurement points the same way, further than this goes: the free strings above E6 that
+  aren't at one of the note's partials ring 34-45 dB louder in the single-note recordings than
+  the bank makes them (C3-C6, 71 strings standing 10 dB clear of their surroundings). That is
+  the strike shaking them through the bridge, which this drive (the sound at the string's own
+  frequency) doesn't model, so it isn't a value for K.
 - **The pedal's lift.** When the pedal goes down, the strings whose dampers
   lift get a random-phase kick per partial. Its size per band is set so the
   free strings together ring as `pedalD` does over 0.3–1.0 s. The model
