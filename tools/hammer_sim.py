@@ -148,6 +148,73 @@ def simulate(st, surf, ratio, v, fs=192000.0, tmax=0.03, y0=None, u0=None, energ
     return out
 
 
+class Tipped:
+    """A hard tip on the felt (a tack): a small rigid mass, `frac` of the hammer's, between the
+    string and the felt `inner`, with the rest of the hammer behind the felt. The felt holds the
+    tip both ways (it is driven in), so it can't fly off, but it can leave the string and return."""
+
+    def __init__(self, inner, frac):
+        self.inner, self.frac = inner, frac
+
+
+def simulate_tip(st, tip, ratio, v, fs=768000.0, tmax=0.03, fc=40000.0):
+    """As simulate, for a Tipped hammer. The tip meets the string through a spring as stiff as the
+    time step allows (its resonance with the tip and the string's modes at fc)."""
+    v = np.atleast_1d(np.asarray(v, float))
+    V, dt, frac, inner = len(v), 1.0 / fs, tip.frac, tip.inner
+    g = 2.0 * ratio * st.phi
+    c, s = np.cos(st.w * dt), np.sin(st.w * dt)
+    dec = np.exp(-st.sigma * dt)
+    q, u = np.zeros((V, len(st.f))), np.zeros((V, len(st.f)))
+    yt, yb, vt, vb = np.zeros(V), np.zeros(V), v.copy(), v.copy()
+    kc = (2 * np.pi * fc) ** 2 / (1 / frac + 2 * ratio * (st.phi ** 2).sum())
+
+    def held(xi, dxi):
+        return np.where(xi >= 0, inner.force(xi, dxi), -inner.K * np.abs(xi) ** inner.p)
+
+    steps = int(tmax * fs)
+    F = np.zeros((V, steps))
+    reach = np.zeros(V)
+    fs_, fi = kc * np.maximum(yt - q @ st.phi, 0), held(yb - yt, vb - vt)
+    last = steps
+    for i in range(steps):
+        F[:, i] = fs_
+        u += (0.5 * dt) * fs_[:, None] * (g / st.w)
+        vt += (0.5 * dt) * (fi - fs_) / frac
+        vb -= (0.5 * dt) * fi / (1 - frac)
+        q, u = dec * (c * q + s * u), dec * (c * u - s * q)
+        yt += vt * dt
+        yb += vb * dt
+        ys = q @ st.phi
+        fs_, fi = kc * np.maximum(yt - ys, 0), held(yb - yt, vb - vt)
+        u += (0.5 * dt) * fs_[:, None] * (g / st.w)
+        vt += (0.5 * dt) * (fi - fs_) / frac
+        vb -= (0.5 * dt) * fi / (1 - frac)
+        reach = np.maximum(reach, np.abs(ys))
+        if i % 64 == 0 and np.all(vb < 0) and np.all(vt < 0) and np.all(ys - yt > 2 * reach + 1e-6):
+            last = i + 1
+            break
+    stable = bool(np.all(np.isfinite(vb)) and np.all(np.abs(vb) <= 1.01 * np.abs(v) + 1e-12))
+    return {"F": F[:, :last], "dt": dt, "v_out": vb.copy(), "stable": stable}
+
+
+def run(s, surf, ratio, v, st):
+    """One variant (variants()): its string s, its surface, at the speeds v. st is the felt's string:
+    a string with more modes than that is a hard contact and gets the finer time step."""
+    if isinstance(surf, Tipped):
+        return simulate_tip(s, surf, ratio, v)
+    return simulate(s, surf, ratio, v, fs=768000.0 if len(s.f) > len(st.f) else 192000.0)
+
+
+def pulses(F):
+    """How many separate contacts each force history holds (above 2 % of its peak)."""
+    out = []
+    for r in F:
+        on = r > 0.02 * r.max()
+        out.append(int(np.sum(on[1:] & ~on[:-1]) + on[0]))
+    return out
+
+
 def spectrum(F, dt, f):
     """|F̂| (dB) of each pulse at the frequencies f."""
     S = np.abs(np.fft.rfft(F, NFFT, axis=1)) * dt
@@ -222,6 +289,13 @@ def check():
     lv = spectrum(b["F"], b["dt"], fq)
     d = d[lv > lv.max() - 60]
     report("worst difference within 60 dB of the top", f"{d.max():.2f} dB", d.max() < 0.5)
+    print("a hard tip that is nearly all of the hammer is the rigid hammer (C4, to 8 kHz)")
+    st = String(261.6, 3e-4, 0.12, width=0.008, fmax=60000)
+    fq = np.geomspace(200, 8000, 40)
+    a = simulate(st, rigid(st, 0.25), 0.25, [2.5], fs=768000)
+    b = simulate_tip(st, Tipped(Surface(3e12, 2.5), 0.999), 0.25, [2.5])
+    d = np.abs(spectrum(a["F"], a["dt"], fq) - spectrum(b["F"], b["dt"], fq))
+    report("mean / worst difference", f"{d.mean():.2f} / {d.max():.2f} dB", d.mean() < 0.3 and d.max() < 1.5 and b["stable"])
     print("all checks pass" if ok else "CHECKS FAILED")
     return ok
 
@@ -402,6 +476,9 @@ def variants(k, fit, st):
     out["hammer ×0.5 mass"] = (st, Surface(felt.K * 2, felt.p, felt.eta), ratio * 0.5)
     out["hammer ×2 mass"] = (st, Surface(felt.K / 2, felt.p, felt.eta), ratio * 2)
     out["rigid, ×0.3 mass (a light hard hammer)"] = (fine, rigid(fine, ratio * 0.3), ratio * 0.3)
+    # a hard tip on the felt (a tack): a small rigid mass at the string, the felt and the hammer behind it
+    out["a hard tip, 5 % of the mass (a tack)"] = (fine, Tipped(felt, 0.05), ratio)
+    out["a hard tip, 20 % of the mass"] = (fine, Tipped(felt, 0.2), ratio)
     # contact width
     pt = String(k["f0"], k["B"], k["x"], width=0.0)
     out["a point (width 0)"] = (pt, felt, ratio)
@@ -438,9 +515,8 @@ def surface_key(job):
     grid = GRID[(GRID > 0.7 * k["f0"]) & (GRID < top)]
     part = st.f[(st.f < top)]
     for name, (s, surf, ratio) in variants(k, fit, st).items():
-        fs = 768000.0 if s is not st and len(s.f) > len(st.f) else 192000.0
         # a lighter or heavier hammer keeps its speed (the same key press): the force per string mass is what counts
-        r = simulate(s, surf, ratio, v, fs=fs)
+        r = run(s, surf, ratio, v, st)
         scale = 20 * np.log10(ratio / fit["ratio"])        # F is per unit hammer mass: back to a common scale
         S = spectrum(r["F"], r["dt"], grid) + scale
         P = spectrum(r["F"], r["dt"], part) + scale
@@ -450,7 +526,9 @@ def surface_key(job):
         if name == "felt":
             base = (S, P)
         assert r["stable"], name
-        entry = {"corner_hz": [corner_hz(s, surf, ratio, x, fs=fs) for x in v], "contact_ms": contact_ms(r["F"], r["dt"]).round(3).tolist(), "ratio_db": (S - base[0]).round(2).tolist(),
+        fine_step = 768000.0 if len(s.f) > len(st.f) else 192000.0
+        entry = {"pulses": pulses(r["F"]),
+                 "corner_hz": None if isinstance(surf, Tipped) else [corner_hz(s, surf, ratio, x, fs=fine_step) for x in v], "contact_ms": contact_ms(r["F"], r["dt"]).round(3).tolist(), "ratio_db": (S - base[0]).round(2).tolist(),
                  "partials_db": (P - base[1]).round(2).tolist()}
         # Can the engine's form follow it? The engine applies model(new) − model(felt) with
         # model = −10 q log10(1 + (f / fc)²), q = 2 today (12 dB per octave). Judged where the partials

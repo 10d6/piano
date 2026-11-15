@@ -108,7 +108,7 @@ from CI at milestones.
   (`simulate` reports `stable`; `rigid()` sets the stiffest it can); the parameters trade against each
   other (only the force's spectrum is pinned). Found: harder is the slope above the corner, which
   Hardness can't reach; mass and a hard core under thin felt are audible; the exponent alone is small;
-  width and loss aren't worth a control.
+  width and loss aren't worth a control; a hard tip (a tack) is a moderate Edge.
 - **The hammer's surface: Edge, Weight, Core, Morph + Material** (`hammer.*`; `PianoVoice::strike`,
   `surfDbAt`, `surfComp`; docs/MODEL.md, The hammer's surface): not measured, the simulated hammer as
   three curves (`tools/analyze_surface.py` → `salamander_surface.json` → `surf*` in the header; rerun
@@ -125,8 +125,18 @@ from CI at milestones.
   strike's part is small with Edge up (the partials carry the top). Weight at 50/200 % is subtle
   (4-10 %): don't call it strong; Edge is steep at its top. `tools/measure/surfaces.py` (ENGINE rows);
   stress with `hammer.edge=100 hammer.weight=30 hammer.core=60`. Presets *Tack Piano*, *Early Piano*,
-  *Hits Through*, *Shifting Hammers*; tests `hammer-surface`, `mod-surface`. Not done: a surface's own
-  sound (click, a ringing head, chatter), stage 3.
+  *Hits Through*, *Shifting Hammers*; tests `hammer-surface`, `mod-surface`.
+- **A surface's own sound** was looked for with a hard tip on the felt (`Tipped`, `simulate_tip` in
+  `hammer_sim.py`: a tack) and isn't a thing of its own: what a hammer adds within the strike reaches
+  the note as force, and the tip's is the felt's with a floor under its cliff, 7-9 % from Edge 25 %
+  (20 % of the mass: Edge 50 %). No control came of it. It chatters (7-97 contacts), but inside the
+  strike's few ms. Left: a sound that outlasts the strike (a loose part buzzing on the string).
+- **Wear and Uneven** (`hammer.wear`, `hammer.uneven`; docs/MODEL.md): judgments. Wear is Edge by
+  √Wear, most at D4. Uneven is two fixed numbers per key from a hash (`keyRandom`: never the voice's
+  generator), voicing (softer: Hardness down; harder: Edge up, by √) and mass. 0 % bit-identical
+  (`cmp`). Lesson: linear, Uneven 100 % left 19 of 25 keys under 7 % and Wear 50 % at 2-6 %: Edge
+  does little at its low end, hence the roots. Uneven is subtle below about 50 % (say so).
+  `tools/measure/surfaces.py --uneven`; preset *Worn Hammers*; test `hammer-wear`.
 - **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md, The soft pedal): not measured (no recordings
   with it down), so its sizes are a judgment (`kUna…`). 0 % must stay bit-identical (`cmp`). Lesson:
   never scale a partial's modes one by one: they were fitted to add up, and unequal gains made C4 2 dB

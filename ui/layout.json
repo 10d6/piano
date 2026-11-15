@@ -264,9 +264,17 @@
                     {
                       "param": "hammer.core",
                       "label": "Core"
+                    },
+                    {
+                      "param": "hammer.wear",
+                      "label": "Wear"
+                    },
+                    {
+                      "param": "hammer.uneven",
+                      "label": "Uneven"
                     }
                   ],
-                  "info": "What the hammer is made of. This piano's hammers are felt, which gives under the string: the upper overtones fall away steeply, and more so the softer the strike. Edge, Weight and Core change that, from a simulated hammer on these strings; Hardness (Tone) still softens or hardens the felt itself. With Morph on, Material sets all three at once, from felt through worn felt, leather on a light hammer and wood to metal, and their own knobs aren't read. Each note takes its hammer as it is struck, so a route from velocity, the key or a random value to Material gives every note its own. Loudness is kept. At the defaults the piano is as measured. The on-screen keys play one velocity: press the velocity graph (Playing) to hear soft and loud strikes.",
+                  "info": "What the hammer is made of. This piano's hammers are felt, which gives under the string: the upper overtones fall away steeply, and more so the softer the strike. Edge, Weight and Core change that, from a simulated hammer on these strings; Hardness (Tone) still softens or hardens the felt itself. With Morph on, Material sets all three at once, from felt through worn felt, leather on a light hammer and wood to metal, and their own knobs aren't read. Wear packs the felt hard where a piano is played most, and Uneven gives every key a hammer of its own; both work on top of the others, with Morph on or off. Each note takes its hammer as it is struck, so a route from velocity, the key or a random value to Material gives every note its own. Loudness is kept. At the defaults the piano is as measured. The on-screen keys play one velocity: press the velocity graph (Playing) to hear soft and loud strikes.",
                   "collapsed": true
                 },
                 {
@@ -392,7 +400,9 @@
     "hammer.weight": "The hammer's mass. 100% is as measured. Lighter (lower) gives the low overtones less and leaves the high ones: thinner and brighter, towards an early piano, most with Edge up. Heavier (higher) is fuller and rounder. Loudness is kept, so it changes colour only.",
     "hammer.core": "A hard core under thin felt. 0% is felt all the way through. Higher makes the felt thinner: soft strikes stay mellow, and from a certain velocity up the hammer hits through to the core and the note turns bright, as Edge does. At 100% every strike reaches it. Around 30-50% the on-screen keys (velocity 100) are past it and soft strikes on the velocity graph are not.",
     "hammer.morph": "On: Material sets Edge, Weight and Core together, and their own knobs aren't read. Off: they are set by hand.",
-    "hammer.material": "With Morph on: what the hammer is made of. 0% felt (the piano as measured), 25% worn felt (bright only when struck hard), 50% leather on a light hammer (thinner and brighter, an early piano), 75% wood (lighter and harder still), 100% metal (a tack in a full-weight hammer: bright and full). A route from velocity or a random value here gives each note its own hammer."
+    "hammer.material": "With Morph on: what the hammer is made of. 0% felt (the piano as measured), 25% worn felt (bright only when struck hard), 50% leather on a light hammer (thinner and brighter, an early piano), 75% wood (lighter and harder still), 100% metal (a tack in a full-weight hammer: bright and full). A route from velocity or a random value here gives each note its own hammer.",
+    "hammer.wear": "Felt packed hard by years of playing. 0% is new felt. Higher makes the hammers harder and brighter, as Edge does, most around the middle of the keyboard, where a piano is played most, and a third as much at its ends. Play a scale from the bass to the top to hear it come and go.",
+    "hammer.uneven": "Every key its own hammer. 0% is an evenly voiced piano. Higher makes some keys' felt softer and duller, others' harder and brighter, and their hammers a little lighter or heavier: always the same on the same key, unlike a random route, which changes with every strike. Play neighbouring keys one after another to hear it."
   },
   "keyboard": true
 }

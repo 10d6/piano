@@ -788,8 +788,28 @@ What it says is worth building:
 - **The form.** Two corners at 12 dB per octave, today's, leave 2-5 dB rms of these changes over
   the partials that are played; a corner and a slope both moved leave 1-4 dB.
 
-What it can't say: what a surface sounds like itself (a click, a head that rings, chatter
-against the string), which isn't the force on the string; anything above D#5; and whether a
+**A hard tip on the felt** (`Tipped`, `simulate_tip`: a tack). A small rigid mass at the string,
+held by the felt, with the rest of the hammer behind it. It was meant to find a surface's own
+sound, and found there is little of one: what a hammer adds to a note reaches it as force on
+the string, and the tip's force is the felt's with a floor under its cliff. Below 2-3 kHz
+nothing changes (the string still meets the whole hammer through the felt); above, the tip
+alone carries on where the felt has fallen away, and from 4-6 kHz it is the rigid hammer's. It
+does chatter (7-28 separate contacts at C3-C5, 50-97 at C2, as the tip is thrown between the
+string and the felt), but within the few ms of the strike, where it is part of that spectrum.
+
+| | layer 4 | layer 8 | layer 13 | layer 16 |
+|---|---|---|---|---|
+| a tip of 5 % of the hammer's mass, from the felt | 7-13 % | 5-18 % | 7-10 % | 7-17 % |
+| … and from the engine's Edge 25 % | 6-12 % | 6-14 % | 7-9 % | 6-14 % |
+| a tip of 20 %, from the felt | 15-25 % | 10-25 % | 9-20 % | 9-22 % |
+| … and from the engine's Edge 50 % | 8-16 % | 5-16 % | 7-14 % | 7-15 % |
+
+So a tack is a moderate Edge (25-50 %, as near as Edge 100 % is to the simulated rigid hammer:
+9-20 %), and no control of its own. Material's last stop, metal, at Edge 100 %, is a harder
+hammer than a tack in felt.
+
+What it can't say: a sound that lasts longer than the strike (a loose part buzzing on against
+the string, as a mandolin rail's tabs do); anything above D#5; and whether a
 real tack or leather hammer does this, since there are no recordings of one here. The string is
 one string with fixed ends: no bridge, no unison. The predictions change the partials and the
 strike by one curve, as Hardness does, and move nothing in time.
@@ -873,9 +893,34 @@ levels matched; C2, C3, C4, C5; layer 13 is the on-screen keyboard's velocity 10
 Cost: nothing at the defaults. On, a pedalled glissando rendered in 18 % more time (Edge 100 %,
 Weight 30 %, Core 60 %): Edge starts partials the default leaves under its range.
 
+#### Wear and Uneven
+
+Two more, on top of Edge and Weight wherever those come from (set by hand or by Material), and
+both bit-identical at 0 %. Judgments, not measurements.
+
+**Wear** (`hammer.wear`): felt packed hard by years of playing is a stiffer felt, and the
+simulation's felt ten times stiffer is a rigid surface but for 1-3 dB at 2-4 kHz. So Wear adds
+Edge: 0.9 × √Wear at D4, where a piano is played most, falling to 35 % of that at the ends of
+the keyboard (0.35 + 0.65 e^(−((key − 62) / 17)²)). The root because Edge does little at its low
+end. At velocity 100: Wear 100 % is 19 % at C4, 12 % at C5, 9 % at C3, 5 % at C2, 3 % at C1 and
+C6 and nothing at C7; Wear 50 % is 11 % at C4 and 7 % at C5.
+
+**Uneven** (`hammer.uneven`): every key its own hammer, the same each time it is struck (a
+random route changes with every strike; this doesn't). Each key has two fixed numbers from a
+hash of its key number, −1…1. The first is its voicing, by √(Uneven × the number): below 0 a
+softer felt (Hardness down by that much), above 0 a harder one (Edge up by that much). The
+second is its mass: 0.6 octaves × Uneven × the number. At velocity 100, from C3 to C5 against the
+same key at 0 %: Uneven 100 % moves a key by 8 % (median; 0-22 %; 9 of 25 keys under 7 %), and
+neighbouring keys' changes differ by 8 %; the softened keys are up to 2.6 dB quieter, as soft
+hammers are. At 50 % it is 4 % (0-12 %) and at 25 % no key reaches 7 %: it is subtle below about
+half, as an ordinary piano's voicing is.
+
+Both are read at the strike and are modulation destinations.
+
 What it doesn't do:
-- **A surface's own sound**: the click of metal, a head that rings, chatter against the string.
-  The strike is still the felt hammer's, reshaped.
+- **A sound that outlasts the strike**: a loose part buzzing on against the string. What a
+  surface adds within the strike is in the force (The hammer, simulated: a hard tip), which is
+  what these controls shape. The strike is the felt hammer's recording, reshaped.
 - **The swell** is left as measured (the simulation's contact barely shortens for a rigid
   surface), and the **strike below A2** (band noise) and the **body's ring** aren't changed, as
   with Hardness.
@@ -884,8 +929,8 @@ What it doesn't do:
 - Each key's own lumps in the force (reflections coming back under the hammer), which the
   simulation has and the shared curves leave out.
 
-Presets: *Tack Piano*, *Early Piano*, *Hits Through*, *Shifting Hammers*. Tests:
-`hammer-surface`, `mod-surface`.
+Presets: *Tack Piano*, *Early Piano*, *Hits Through*, *Shifting Hammers*, *Worn Hammers*.
+Tests: `hammer-surface`, `mod-surface`, `hammer-wear`.
 
 ### Strike Point
 
@@ -1359,7 +1404,7 @@ engine reads them:
 
 | Read | Destinations | What a route does |
 |---|---|---|
-| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.strikedepth`, `tone.body`, `string.restrike`, `hammer.edge`, `hammer.weight`, `hammer.core`, `hammer.material` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
+| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.strikedepth`, `tone.body`, `string.restrike`, `hammer.edge`, `hammer.weight`, `hammer.core`, `hammer.material`, `hammer.wear`, `hammer.uneven` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
 | each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `listen.depth`, `listen.point`, `listen.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
 | each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Dampers and Overtone Decay globally too (not Unison: the bank has no beating), so a per-voice route to those moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |
@@ -1429,6 +1474,7 @@ Every parameter, by the ID a patch stores, with the section that explains it.
 | Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
 | Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support; higher, an ideal string's comb and every change multiplied (3× at 100 %) |
 | Edge, Weight, Core, Morph, Material | `hammer.*` | the hammer's surface: from felt to a surface that doesn't give, the hammer's mass, a hard core under thin felt; Morph on, Material sets the three (The hammer's surface, above) |
+| Wear, Uneven | `hammer.wear`, `hammer.uneven` | felt packed hard where the piano is played most; every key its own hammer |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |

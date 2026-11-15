@@ -98,7 +98,9 @@ doesn't give, a tack or bare wood: bright at every velocity, where Hardness runs
 hammer's mass) and **Core** (a hard core under thin felt: mellow until struck hard), in the
 Synthesis tab; with **Morph** on, **Material** sets all three, from felt through worn felt, leather
 and wood to metal. Not measured (no recordings of another hammer): the simulation's physics, with
-loudness kept. Try *Tack Piano*, *Early Piano*, *Hits Through*, *Shifting Hammers*. **Strike Point** moves where the hammer meets the string, from each key's own
+loudness kept. **Wear** packs the felt hard where a piano is played most, and **Uneven** gives every
+key a hammer of its own (the same each time, unlike a random route). Try *Tack Piano*, *Early
+Piano*, *Hits Through*, *Shifting Hammers*, *Worn Hammers*. **Strike Point** moves where the hammer meets the string, from each key's own
 strike point (measured in the low bass: 11.6-12.3 % of the string, `tools/analyze_point.py`): the partials with a node under
 the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. **Strike Depth** takes that
 further than a real hammer goes: an ideal string's silent nodes, then every change multiplied, up to three
