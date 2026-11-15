@@ -74,7 +74,8 @@ Everything about a component comes from measurement.
   uses one 3 s spectrum of the four loudest layers summed: peaks within ±6 %
   of f0 of the prediction, weighted least squares on (f_n/n)² = f0²(1 + B n²),
   iterated. The key's pitch is the recording's own **stretch tuning**: bass
-  up to 22 cents flat, top up to 34 sharp. It's scaled by the Stretch
+  up to 22 cents flat, top up to 53 sharp (A7 +40, C8 +53: the header's `cents` are the
+  fundamental's, f0·√(1 + B), against equal temperament). It's scaled by the Stretch
   parameter in `tune()`. Where the top keys' fits fail, `make_header.repair`
   replaces B or cents along the line through the two keys below.
 - **Where partials really are** (`refine_partials`). In the treble the formula
@@ -97,12 +98,13 @@ Everything about a component comes from measurement.
   angle (±0.6 rad), so left and right fluctuate differently. Narrower ones
   use the beat model below.
 
-  Only A5 and up have been re-analysed with the refinement and clusters so
-  far. The other keys' data predates them, and their offsets are 0.
+  Clusters were recorded for A5 and up only. Below A5, `analyze_modes.py` moves each partial to
+  its peak in a 3 s spectrum (`refine_long`), so `dev` is set there too: nearly every partial of
+  every key has a nonzero offset.
 
 ### Modes: the partial fitted as the engine plays it
 
-Most partials (about three quarters, and most of the sound below C6) are now played as their
+Most partials (1073 of the 1251, 86 %, and most of the sound below C6) are now played as their
 **modes**, fitted by `tools/analyze_modes.py`. The subsections after this one describe the
 older description, which the remaining partials keep.
 
@@ -326,7 +328,7 @@ noise on every key. But it isn't noise: it is the same response every time the k
   page's on-screen keyboard plays) with every partial notched out, 0.3 s, faded out from
   0.15 s (the body's ring carries on after that). The notches: every partial and cluster
   component the model plays, then the stiff-string series up to 22 kHz, ±max(16 Hz, 4 % of
-  f0, the modes' spread), raised-cosine edges; zero-phase over one long FFT, so nothing between
+  f0, 1.5 × the modes' spread + 8 Hz), raised-cosine edges; zero-phase over one long FFT, so nothing between
   them is touched. Not the mains hum: notches that narrow smear the strike's burst at those
   frequencies over hundreds of ms, as faint tones at 250, 300, 350 Hz… In PR #10's strikes they
   stood 1-6 dB under the strike's own 125 Hz-1 kHz from 40 ms on; without them, the treble came
@@ -336,7 +338,7 @@ noise on every key. But it isn't noise: it is the same response every time the k
   at 2-4 kHz than a velocity-100 one, a loud one 5-14 dB more. A first-order high shelf
   follows that within 1-3 dB per octave band (125 Hz-8 kHz, first 40 ms; with level alone,
   3-11 dB): one corner frequency per key (250 Hz-2.5 kHz, mostly 1-2 kHz) and a gain per layer
-  (about −10…−24 dB at layer 1, +5…+16 at layer 16), smoothed across the layers and kept within
+  (about −10…−24 dB at layer 1, +4…+15 at layer 16), smoothed across the layers and kept within
   −24…+18 dB, since the softest layers' top bands are the recordings' floor. A more flexible
   shelf (second order, a corner per layer) fitted no better.
 - **And its level**, per layer and mic, in two windows: the knock (0-40 ms) and its slower part
@@ -501,8 +503,9 @@ partials' levels at the strike, over the louder layers together, with a smooth t
 *What the control does.* It scales every key's x by setting / 12 %, and each partial changes by
 the ratio of the moved comb to the key's own, so at 12 % nothing changes (bit for bit):
 
-- **Level.** A partial coming off a node rises by no more than its lift (or 6 dB, the comb's
-  broad shape), so none is raised clear of its neighbours on the strength of a notch that wasn't
+- **Level.** A partial coming off a node rises by no more than its lift or 6 dB, whichever is
+  more (the comb's broad shape), and only past the first antinode (n·x > ½; before it the comb
+  is sin alone), so none is raised clear of its neighbours on the strength of a notch that wasn't
   there; a partial landing on a node falls to the floor (−20 dB in the low bass, −6 above).
   Between measured keys each side's ratio is blended like its levels.
 - **Phase.** A partial whose node the hammer has crossed turns by π (all its modes, both mics),
@@ -672,7 +675,7 @@ whole recording, so the lowest band is resolved, with the hum left out.
 
 | Noise | When | Level |
 |---|---|---|
-| Key release (rel1–88) | each key's note-off | sfz −37 dB, following the strike's velocity (82 % of 40·log10 v), since the kit has no release velocity |
+| Key release (rel1–88) | each key's note-off | sfz −37 dB, following the strike's velocity (82 % of 40·log10 v, with v from 0 to 1: full velocity is 0 dB, half about −10 dB), since the kit has no release velocity |
 | Pedal down (pedalD) | CC64 rising past half, takes alternating | the thump only (the recording less its string ring), sfz −20 dB |
 | Pedal up (pedalU) | CC64 falling past half | sfz −19 dB |
 
@@ -867,7 +870,7 @@ convolver's impulse is fixed once audio runs).
   is jittered by 3 cm per bounce so the pattern isn't too regular; the last 30 % of the window
   fades into the tail.
 - **Tail.** 16 delay lines through an orthogonal Hadamard matrix (lossless), their lengths
-  log-spaced over 0.6-2.2 times the space's mean free path (V/S × 4) in travel time. Each line
+  log-spaced over 0.6-2.2 times the space's mean free path in travel time (4V/S for Room, Chamber and Hall; Cathedral's is set to 24 m, Plate's to 3.4 m). Each line
   loses, per pass, what its length takes at the RT60s below and above a first-order split at
   2 kHz, so the decay is exact for any length. Four lines are modulated ±0.3 ms at 0.3-0.9 Hz
   against ringing. Left and right take orthogonal sign patterns of the lines (decorrelated).
@@ -1097,9 +1100,9 @@ engine reads them:
 
 | Read | Destinations | What a route does |
 |---|---|---|
-| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body`, `string.restrike` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
+| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.strikedepth`, `tone.body`, `string.restrike` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
 | each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `listen.depth`, `listen.point`, `listen.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
-| each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Unison, Dampers and Overtone Decay globally too, so a per-voice route there moves the struck strings but not the free ones |
+| each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Dampers and Overtone Decay globally too (not Unison: the bank has no beating), so a per-voice route to those moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |
 | kit | `sk.pitch`, `sk.level` | vibrato and tremolo, through `ctx.pitchHz()` and after the voice. The string bank's concert pitch is worked out from both pitch and Hz, so vibrato doesn't retune the free strings. The body's ring and the bank live in the synth, so `sk.level` doesn't reach them |
 
@@ -1164,7 +1167,7 @@ them.
   output doesn't feed back into the voices.
 - **The body ring follows one decay per band.** It's a few dB strong at
   0.4–1 s and weak at 2–3 s on many keys.
-- **Partials 13–24** come out about 5 dB weak by 1.4 s.
+- **Partials 13–24** come out about 5 dB weak at 0.4 s.
 - **A6's** attack brightens less from soft to loud than the recordings at 2-4 kHz.
 - **The strike's finer changes with velocity** (one response per key, shaped by a shelf and two
   gains), and **between the measured keys** (the nearer key's response).
