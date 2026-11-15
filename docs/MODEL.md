@@ -775,6 +775,7 @@ aftersound decay for a medium strike.
 | Resonance | `string.resonance` | sympathetic drive |
 | Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
 | Touch Point | `touch.*` | a finger on the strings: harmonics and mutes (Creative: Touch Point, below); Press 0 by default |
+| Listening Point | `listen.*` | where along the string the sound is taken (Creative: Listening Point, below); Depth 0 by default |
 | Partial Arp | `parp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default. `arp.*` until patchVersion 2 |
 | Arpeggiator / Sequencer | `arp.*` | synthkit's (API.md §4b); Off by default (Creative: the kit's arpeggiator and sequencer, below) |
 
@@ -858,6 +859,7 @@ the string's. The table is worked out again only when a setting moves.
 | Point | `touch.point` | where it rests, 2-50 % of the string |
 | Width | `touch.width` | how much of the string it covers, 0-30 % |
 | Snap | `touch.snap` | On (the default): Point goes to the nearest 1/k of the string (k = round(1 / Point), 2-50), so it steps through the harmonics. Off: exactly where Point says |
+| Dry | `touch.dry` | 0-100 %, default 0: how much of the finger's damping reaches the key's ring in the body (below) |
 
 Press, Point and Width are modulation destinations, read per voice each control block like the
 strings' decay settings, so a note can be touched after it is struck (a Shape, the wheel or
@@ -883,7 +885,11 @@ What it doesn't do:
   and the ring is measured from notes left to sound. After a mute it is what remains: 35-43 dB
   under the strike a second in, and the slow end of the mute's 0.3-1.3 s above (with Body at
   −40 dB: 0.2-0.5 s). A muted string would feed the body less than a sounding one, by an amount
-  these recordings can't give; *Felt Mute* turns Body down 12 dB.
+  these recordings can't give. **Dry** (`touch.dry`, default 0 %) is the choice of sound: the
+  key's ring fades faster by Press × ½ × Dry (a wide finger's share), in `Piano::touchBody`, and
+  stays stopped until the key is struck again. It isn't physics (the finger doesn't reach the
+  body or the other strings). At 100 % the mute above is 40 dB down in 0.2-0.5 s (0.3-1.3 s
+  without); on a harmonic it changes 1-4 % by the distance. *Felt Mute* uses it.
 - **The sympathetic strings aren't touched** (the finger is on the keys played). Once a touched
   note's voice has ended, its string in the bank is free again while the key or the pedal is
   down, and can ring along with other notes.
@@ -893,6 +899,65 @@ What it doesn't do:
 
 Presets: *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*. Tests:
 `touch-point`, `mod-touch`.
+
+## Creative: Listening Point
+
+Not part of the measured piano: with **Depth** at 0 (the default) the output is bit-identical to
+the piano without it. Where along the string the sound is taken, as a pickup on an electric
+instrument takes it (`listen.*`, `PianoVoice::listenBlock`).
+
+**The physics.** At the fraction y of its length the string's partial n moves by sin(nπy):
+nothing at the partial's nodes, most at its antinodes, and the other way up past each node. A
+pickup w of the string wide averages that to
+
+    heard(n) = sin(nπy) · sinc(nw)
+
+Near the end of the string the low partials hardly move, and the sound is thin and bright; at
+the middle every second partial is silent. It is Strike Point's comb again, on the way out
+instead of on the way in. The piano's own sound comes from the bridge, where the measured levels
+already are what they are: every partial at 1.
+
+**In the engine.** Each partial's gain to the mics is c · ((1 − Depth) + Depth · heard(n)), signed,
+so a partial passes smoothly through silence and turns over as the point crosses its node. It
+is applied where the Partial Arp's gains are (`pnGain`, ramped over each control block), and
+multiplies with them. c keeps the note's loudness: the note's energy over its first half second
+(each component's power × how long it lasts, summed per partial as the strike adds them,
+`listenPow`) stays what it was, by no more than 12 dB.
+
+Unlike Touch Point it scales what is heard and never the vibration, so **nothing is lost when
+the point moves**: Depth, Point and Width are modulation destinations, read per voice each
+control block.
+
+| Control | ID | |
+|---|---|---|
+| Depth | `listen.depth` | 0-100 %: the piano's own sound to the listening point alone |
+| Point | `listen.point` | 2-50 % of the string |
+| Width | `listen.width` | 0-20 %: wider quietens the high partials |
+
+Measured (`tools/measure/listen.py`: C2-C6 at velocity 100, Depth 100 %, against Depth 0):
+
+| | |
+|---|---|
+| partials 2-6 against the 1st, away from nodes | within 1.3 dB of sin(nπy) (mean 0.2 dB) |
+| level over the first half second | −4.0…+1.1 dB (the low end where the 12 dB limit is reached: Point 4 % in the treble) |
+| distance, Point 50 % / 25 % / 12 % / 4 % | 12-30 / 5-10 / 7-20 / 14-34 % |
+| moving (*Wandering Ear*: the point between about 3 and 31 % at 0.25 Hz, C2-C5) | 27-136 % from the plain note window by window (0.25 s, levels matched); partials 1-6 swing 14-16 dB |
+
+**A still point is subtle in the middle of its range** (5-20 % at 12-25 %: a notch takes one
+partial per node, Strike Depth's lesson); the ends are plainer, and the sound is in the
+movement. Cost: the Partial Arp's (the same path): 16-30 % on 36 pedalled notes, where the arp
+measured 18-32 % on the same machine; a moving point costs two sines and two cosines a block more.
+
+What it doesn't do:
+- **The strike, the body's ring and the sympathetic strings are heard as before**: they aren't
+  this string's vibration. At Point 2-6 %, where the partials are thinned most, the strike
+  stands out more.
+- **Loudness is kept from the strike's balance of partials**, not followed through the note:
+  late in a note, when only the low partials are left, a point near the end is quieter than the
+  plain note (as a pickup there would be).
+- A magnetic pickup's own distortion (an electric piano's bark) isn't modelled.
+
+Presets: *Wandering Ear*, *Opening Ear*, *Bridge Pickup*. Tests: `listening-point`, `mod-listen`.
 
 ## Creative: the partial arpeggiator
 
@@ -966,7 +1031,7 @@ engine reads them:
 | Read | Destinations | What a route does |
 |---|---|---|
 | at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
-| each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
+| each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `listen.depth`, `listen.point`, `listen.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
 | each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Unison, Dampers and Overtone Decay globally too, so a per-voice route there moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |
 | kit | `sk.pitch`, `sk.level` | vibrato and tremolo, through `ctx.pitchHz()` and after the voice. The string bank's concert pitch is worked out from both pitch and Hz, so vibrato doesn't retune the free strings. The body's ring and the bank live in the synth, so `sk.level` doesn't reach them |

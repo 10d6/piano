@@ -45,6 +45,7 @@ plays that layer.
 | `strikepoint.py` | What does Strike Point do to each key's partials? Against the default, with no recordings: do they follow the key's own comb (`../analyze_point.py`), and is any partial left standing clear of its neighbours (a comb-filter ring)? | off the model ≤ ~2.5 dB rms; new bumps ≤ ~10 dB from A2 up (Strike Point 6-20 %, Strike Depth 0; `--depth D` sweeps Strike Depth, where bumps are intended) |
 | `softpedal.py` | What does the soft pedal do to a note (level over time, brightness, distance from no pedal)? No recordings: there are none with it down | quieter at the strike (1-6 dB), sustain within ~2 dB; 11-22 % from no pedal at full |
 | `touch.py` | What does Touch Point do to a note (the low partials against the untouched note at 1/2 and 1/3 of the string; a mute's fall time; distance from untouched)? No recordings: it isn't part of the measured piano | partials with a node under the finger within ~1 dB, the others 20 dB or more down; 25-54 % from untouched; mute 40 dB down in 0.3-1.3 s |
+| `listen.py` | What does Listening Point do to a note (partials against sin(nπy), the level kept, distance from Depth 0 at four points, and the *Wandering Ear* preset's movement)? No recordings | partials within ~1.5 dB of sin(nπy) away from nodes; level within −4…+1 dB; 5-34 % still, 27 % and more moving |
 
 `docs/TESTING.md` describes the methods behind these, what to run after which
 change, and the known gaps. Some lessons these taught (details in the git

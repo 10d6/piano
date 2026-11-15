@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Wandering Ear", "params": {"listen.depth": 100, "listen.point": 10, "lfo1.rate": 0.25, "lfo1.mode": 1, "space.room": 22}, "mod": [{"src": "lfo1", "dst": "listen.point", "amt": 0.35}]}
