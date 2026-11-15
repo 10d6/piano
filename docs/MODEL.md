@@ -794,7 +794,7 @@ sound, and found there is little of one: what a hammer adds to a note reaches it
 the string, and the tip's force is the felt's with a floor under its cliff. Below 2-3 kHz
 nothing changes (the string still meets the whole hammer through the felt); above, the tip
 alone carries on where the felt has fallen away, and from 4-6 kHz it is the rigid hammer's. It
-does chatter (7-28 separate contacts at C3-C5, 50-97 at C2, as the tip is thrown between the
+does chatter (7-33 separate contacts at C3-C5, 50-100 at C2, as the tip is thrown between the
 string and the felt), but within the few ms of the strike, where it is part of that spectrum.
 
 | | layer 4 | layer 8 | layer 13 | layer 16 |
