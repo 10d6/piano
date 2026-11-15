@@ -248,7 +248,14 @@ Also:
   by the perceptual distance from the realistic hammer (MODEL.md: 14-81 % at 100 % from C2 to C5;
   the first version, deeper notches only, was 1-7 % and the owner could hardly hear it).
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
-  the on-screen keyboard plays velocity 100, and nothing reaches the console.
+  the on-screen keyboard plays velocity 100, pressing the graph at its left, middle and right
+  strikes velocity 19, 64 and 121 (as the engine reports them), and nothing reaches the console.
+- `settings.py`: can the Playing settings, Stiffness and Resonance be heard? Each at its ends
+  against the default, by the perceptual distance (no recordings needed). Playing at velocity
+  30 / 64 / 100: Touch 33-84 / 42 / 6-15 %, Dynamics 38-103 / 18-37 / 2-5 %, Tone Range 3-52 /
+  17-23 / 1-2 %, As Recorded 17 / 12 / 0 %, Soft Attack at 600 % 22 / 16 / 2 % (at 100 %: under
+  1 %), Soft Pedal 23 / 41 / 16 %; nothing but the Soft Pedal at 127. Stiffness at 0, 300 and
+  800 %: 1-6, 2-11 and 6-19 %. Resonance: MODEL.md's table.
 
 ### Note handling: `tools/stress.py`
 

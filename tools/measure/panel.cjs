@@ -1,5 +1,6 @@
 // The page in Chromium, played: checks the velocity graph fills in, that the on-screen
-// keyboard plays (at velocity 100, whatever the click height or computer key), and that
+// keyboard plays (at velocity 100, whatever the click height or computer key), that pressing
+// the velocity graph strikes soft to hard, and that
 // nothing goes to the console but a web-font request; saves a screenshot.
 //
 //   node tools/measure/panel.cjs build-web/web/piano.html [out.png]
@@ -28,12 +29,23 @@ const { chromium } = require("playwright");
     vels.push(await p.$eval(".kb-vel", (e) => e.textContent));
     await p.mouse.up(); await p.waitForTimeout(80);
   }
+  // the velocity graph played: pressing it near its left, middle and right strikes soft to hard
+  const graph = await p.$(".vel-curve canvas");
+  const gb = await graph.boundingBox();
+  const graphVels = [];
+  for (const u of [0.15, 0.5, 0.95]) {
+    await p.mouse.move(gb.x + 28 + u * (gb.width - 36), gb.y + gb.height / 2);
+    await p.mouse.down(); await p.waitForTimeout(250);
+    graphVels.push(await p.$eval(".vel-curve", (e) => e.dataset.lastVelocity));
+    await p.mouse.up(); await p.waitForTimeout(150);
+  }
   await p.waitForTimeout(600);
   await p.screenshot({ path: png });
   const caption = await p.$eval(".vel-caption", (e) => e.textContent).catch(() => "(no velocity graph)");
   const bad = errs.filter((e) => !/ERR_TUNNEL_CONNECTION_FAILED|fonts\.g/.test(e));
   console.log(`velocity graph: ${caption}`);
   console.log(`on-screen keyboard velocity (top, middle, bottom of a key): ${vels.join(", ")}`);
+  console.log(`velocity graph pressed at its left, middle and right: velocity ${graphVels.join(", ")}`);
   console.log(`console problems: ${bad.length ? bad.join(" | ") : "none"}`);
   console.log(`screenshot: ${png}`);
   await b.close();

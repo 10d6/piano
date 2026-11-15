@@ -108,8 +108,9 @@ layer with that loudness. The Playing panel shapes it: **Touch** (how hard
 you have to play), **Dynamics** (the loudness range), **Tone Range** (how
 much the tone darkens as you play softer) and **Soft Attack** (how much
 softer notes swell in more slowly), with a graph of loudness and tone across
-velocity for the last key played. The page's on-screen keyboard always plays
-velocity 100; use a MIDI keyboard to play dynamics.
+velocity for the last key played. These settings shape soft and medium notes, and the page's
+on-screen keyboard always plays velocity 100, where they do little: press the graph to play
+that key at any velocity (soft at the left, hard at the right), or use a MIDI keyboard.
 
 **How close is it?** `tools/measure/perceptual.py` measures how different a note sounds from
 its recording, from a model of the ear (an ERB filterbank, loudness, a ~1 dB tolerance), in the
