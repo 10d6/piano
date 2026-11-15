@@ -96,22 +96,37 @@ from CI at milestones.
   `tools/measure/strikepoint.py` sweeps it (no recordings needed). Presets *Hollow Strike*, *Glass
   Strike*; test `strike-depth`. Presets are embedded at build time: rebuild before `--check` after
   editing one.
-- **The hammer, simulated** (`tools/hammer_sim.py`, offline; docs/MODEL.md): stage 1 of other hammer
-  surfaces than felt. Nothing in the engine uses it yet. `check` (the scheme), `fit` (this piano's felt
-  per key → `salamander_hammer_sim.json`, ~10 min on two cores; rerun after `analyze.py`/`analyze_modes.py`/
-  `analyze_point.py`), `surfaces` + `report` (each property changed alone), then
-  `tools/measure/surfaces.py` (how audible each would be: renders filtered by the force's change).
-  Lessons: the felt's fit is good from A0 to D#5 and poor above, so judge surfaces from C2 to C5; a
-  contact's length isn't a usable measure of hardness (the string throws the hammer off and catches it
-  again), nor is the 12 dB corner on the hard side (the hammer's mass sets it: the felt at velocity 100
-  is already there), so variants are defined by K, p and mass directly; the explicit step can't follow
-  a contact stiffer than the rate allows (`simulate` reports `stable`; `rigid()` sets the stiffest it
-  can); the parameters trade against each other (only the force's spectrum is pinned). Found: harder
-  is the slope above the corner (felt 20-31 dB/octave, rigid 6), which Hardness can't reach (+100 %
-  is 1-3 % at velocity 100; a rigid surface 16-31 %); mass and a hard core under thin felt are
-  audible; the exponent alone is small; width and loss aren't worth a control. The planned controls
-  are separate parameters plus a Morph switch that, when on, drives them from one Material position
-  (the owner's choice).
+- **The hammer, simulated** (`tools/hammer_sim.py`, offline; docs/MODEL.md): `check` (the scheme),
+  `fit` (this piano's felt per key → `salamander_hammer_sim.json`, ~10 min on two cores; rerun after
+  `analyze.py`/`analyze_modes.py`/`analyze_point.py`), `surfaces` + `report` (each property changed
+  alone), then `tools/measure/surfaces.py` (how audible each would be: renders filtered by the force's
+  change; and the engine's own surface controls beside them). Lessons: the felt's fit is good from A0
+  to D#5 and poor above, so judge surfaces from C2 to C5; a contact's length isn't a usable measure of
+  hardness (the string throws the hammer off and catches it again), nor is the 12 dB corner on the hard
+  side (the hammer's mass sets it: the felt at velocity 100 is already there), so variants are defined
+  by K, p and mass directly; the explicit step can't follow a contact stiffer than the rate allows
+  (`simulate` reports `stable`; `rigid()` sets the stiffest it can); the parameters trade against each
+  other (only the force's spectrum is pinned). Found: harder is the slope above the corner, which
+  Hardness can't reach; mass and a hard core under thin felt are audible; the exponent alone is small;
+  width and loss aren't worth a control.
+- **The hammer's surface: Edge, Weight, Core, Morph + Material** (`hammer.*`; `PianoVoice::strike`,
+  `surfDbAt`, `surfComp`; docs/MODEL.md, The hammer's surface): not measured, the simulated hammer as
+  three curves (`tools/analyze_surface.py` → `salamander_surface.json` → `surf*` in the header; rerun
+  after `hammer_sim.py fit`, then `make_header.py`). Defaults, and Morph on at Material 0, must stay
+  bit-identical (`cmp`); Hardness is the owner's to keep as it is. Morph on: Material sets the three
+  and their own values aren't read (the owner's design; the page can't grey them out: kit gap). The
+  Material stops (`kMaterial`) are a judgment. Loudness is kept (`surfComp`, its own loop: don't fold
+  it into `pointComp`'s, which must stay bit-identical). Lessons: the felt's spectrum is a cliff
+  (−12 (f/f12)^γ), not a corner and a slope (a rising shelf fitted to rigid − felt pegged at 48 dB per
+  octave); one γ for every key made C4-C5 twice as strong as their own simulation (γ falls up the
+  keyboard: it has a slope); shared curves, not per-key ones, or neighbouring keys answer unevenly;
+  band levels of an Edge render against the default mislead (Edge starts partials the default leaves
+  under its range: 60-80 dB "changes" in bands that were empty), so check partial by partial; the
+  strike's part is small with Edge up (the partials carry the top). Weight at 50/200 % is subtle
+  (4-10 %): don't call it strong; Edge is steep at its top. `tools/measure/surfaces.py` (ENGINE rows);
+  stress with `hammer.edge=100 hammer.weight=30 hammer.core=60`. Presets *Tack Piano*, *Early Piano*,
+  *Hits Through*, *Shifting Hammers*; tests `hammer-surface`, `mod-surface`. Not done: a surface's own
+  sound (click, a ringing head, chatter), stage 3.
 - **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md, The soft pedal): not measured (no recordings
   with it down), so its sizes are a judgment (`kUna…`). 0 % must stay bit-identical (`cmp`). Lesson:
   never scale a partial's modes one by one: they were fitted to add up, and unequal gains made C4 2 dB
@@ -284,7 +299,8 @@ from CI at milestones.
   computer keys (always 100), continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
   access in `Voice::start`, sostenuto (CC66), an arp flag on the `NoteOn` that `allocateVoice`
-  sees (`StartInfo::arp` comes only after the slot is chosen), a random seed per LFO that
+  sees (`StartInfo::arp` comes only after the slot is chosen), a way for the page to show that one control
+  holds others (Morph: greyed-out knobs), a random seed per LFO that
   doesn't depend on how many LFOs and shapes there are. API.md doesn't say that an
   event's `.sample` counts from the host block's start, nor that
   `processEvents` runs once per host block and `processGlobal` once per

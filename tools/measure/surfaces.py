@@ -14,8 +14,10 @@ is plain.
 It is the change to the hammer's force alone: a surface's own sound (a click, a head that
 rings, chatter) isn't in it.
 
-Also: the engine's own Hardness at ±33 % and ±100 % (its corner one and three octaves either
-way), for scale.
+Also the engine's own controls (ENGINE): Hardness for scale, and the hammer's surface (Edge,
+Weight, Core, Material) beside the simulated change each is meant to follow, with the distance
+between the two. The engine keeps a note's loudness; the simulation's changes don't, so the two
+are compared with levels matched.
 
     python3 -I tools/measure/surfaces.py [--keys 36,48,60,72] [--layers 4,8,13,16] [--wav DIR]
 """
@@ -34,6 +36,19 @@ sys.path.insert(0, str(M.TOOLS))
 import hammer_sim as H  # noqa: E402
 
 LENGTH = 3.3
+# The engine's own controls: name, parameters, and the simulated change each is meant to follow
+ENGINE = [("engine: Hardness +100 %", {"tone.hardness": 100}, None),
+          ("engine: Hardness −100 %", {"tone.hardness": -100}, None),
+          ("engine: Edge 50 %", {"hammer.edge": 50}, None),
+          ("engine: Edge 100 %", {"hammer.edge": 100}, "rigid (a tack)"),
+          ("engine: Weight 50 %", {"hammer.weight": 50}, "hammer ×0.5 mass"),
+          ("engine: Weight 200 %", {"hammer.weight": 200}, "hammer ×2 mass"),
+          ("engine: Edge 100 %, Weight 30 %", {"hammer.edge": 100, "hammer.weight": 30}, "rigid, ×0.3 mass (a light hard hammer)"),
+          ("engine: Core 48 %", {"hammer.core": 48}, "thin felt over a hard core"),
+          ("engine: Material 25 % (worn felt)", {"hammer.morph": 1, "hammer.material": 25}, None),
+          ("engine: Material 50 % (leather)", {"hammer.morph": 1, "hammer.material": 50}, None),
+          ("engine: Material 75 % (wood)", {"hammer.morph": 1, "hammer.material": 75}, None),
+          ("engine: Material 100 % (metal)", {"hammer.morph": 1, "hammer.material": 100}, None)]
 LIMIT = 36.0     # dB: the most a partial may change, as far as Hardness reaches today (3 octaves at 12 dB)
 QUIET = {"tone.body": -40, "tone.mech": -40}
 
@@ -99,11 +114,18 @@ def case(job):
             y = apply(tone, f, db) + rest
             made[name] = y
             cells[name] = score(y)
-        for name, hard in (("engine: Hardness +33 %", 33.3), ("engine: Hardness +100 %", 100), ("engine: Hardness −33 %", -33.3),
-                           ("engine: Hardness −100 %", -100)):
-            y = note(tool, k["key"], layer, {"tone.hardness": hard})[:n]
+        for name, prm, _ in ENGINE:
+            if not set(prm) <= P.known_params(tool):
+                continue
+            y = note(tool, k["key"], layer, prm)[:n]
             made[name] = y
             cells[name] = score(y)
+        for name, _, sim in ENGINE:
+            if sim and name in made:
+                a, b = made[name], made[sim]
+                b = b * 10 ** ((level(a) - level(b)) / 20)
+                cells[f"  … against the simulation's {sim.split(' (')[0]}"[:44] + ("" if name.count(",") == 0 else " ")] = \
+                    (P.distance(P.loudness(a), P.loudness(b))["score"], 0.0)
         if wav:
             peak = max(np.abs(y).max() for y in made.values())
             g = 0.5 / max(peak, np.abs(full).max())

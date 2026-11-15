@@ -18142,6 +18142,14 @@ constexpr unsigned char strikeLift[kPartials] = {
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
+// The hammer's surface (tools/analyze_surface.py; docs/MODEL.md). The force's spectrum, in dB against its
+// level at low frequencies: felt −12 (f / f12)^γ, per layer at C4, with f12 × e^(surfKeySlope (key − 60))
+// and γ + surfGammaSlope (key − 60) along the keyboard; a rigid surface −10 log10(1 + (f / surfRigidHz)²);
+// the hammer's mass, a shelf from surfMassHz at C4, × e^(surfMassSlope (key − 60)) along the keyboard
+constexpr float surfF12[kLayers] = {814.3f, 967.9f, 1047.7f, 1098.5f, 1195.0f, 1218.6f, 1265.7f, 1316.8f, 1342.3f, 1380.7f, 1422.3f, 1455.4f, 1505.7f, 1578.0f, 1646.4f, 1712.5f};
+constexpr float surfGamma[kLayers] = {1.377f, 1.334f, 1.276f, 1.250f, 1.217f, 1.201f, 1.201f, 1.191f, 1.167f, 1.155f, 1.089f, 1.048f, 1.048f, 1.045f, 1.006f, 0.969f};
+constexpr float surfKeySlope = 0.006314f, surfGammaSlope = -0.008135f, surfRigidHz = 494.2f, surfMassHz = 518.3f, surfMassSlope = 0.014259f;
+
 // Mechanical noises, from the release and pedal recordings: envelopes in 10 ms frames (dB under
 // the loudest; -128 ends one), band gains per mic (hundredths of a dB, as noiseLevels)
 constexpr float kMechFrameS = 0.01f;
