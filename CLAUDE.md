@@ -233,11 +233,21 @@ from CI at milestones.
   per-block destinations. It is destructive, as on a string: what the finger takes doesn't come
   back, so a moving Point leaves less and less (say so; the Partial Arp is the non-destructive
   one). The body's ring, the strike and the sympathetic bank aren't touched: a mute's tail is the
-  body's ring (35-43 dB under the strike a second in; *Felt Mute* lowers Body). Its display names
+  body's ring (35-43 dB under the strike a second in), unless Dry is up. Its display names
   are Press / Point / Width / Snap: `play.touch` (Touch, the velocity curve) is another thing.
   `tools/measure/touch.py` (no recordings): node partials within ~1 dB, the others ≥ 20 dB down.
   Presets *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*; tests `touch-point`,
-  `mod-touch`.
+  `mod-touch`. **Dry** (`touch.dry`, default 0) lets the finger stop the key's body ring too
+  (`Piano::touchBody`): the owner asked for it as an option, not physics; *Felt Mute* uses it.
+- **Listening Point** (`listen.*`; `PianoVoice::listenBlock`; docs/MODEL.md): a creative feature, where along the
+  string the sound is taken. Each partial's gain is c·((1 − Depth) + Depth·sin(nπy)·sinc(nw)),
+  signed, multiplied into the Partial Arp's `pnGain` (output gain, never state), so it is the
+  non-destructive one and can move while notes ring. c keeps the first half second's energy
+  (`listenPow`, summed in `add`; at most 12 dB). Depth 0 must stay bit-identical, and so must the
+  Partial Arp's tests (`cmp`). A strike's new components take their gains at once (`struckFrom`)
+  only while it is on. A still point is subtle (5-20 % at Point 12-25 %); the movement is the
+  sound (*Wandering Ear* 27 % and more): don't call a still setting strong. `tools/measure/listen.py`.
+  Presets *Wandering Ear*, *Opening Ear*, *Bridge Pickup*; tests `listening-point`, `mod-listen`.
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
@@ -248,15 +258,15 @@ from CI at milestones.
   Sequencer on needs Top Dampers All keys (lanes above E6 ring on, correctly).
 - **Modulation** (`features.modSlots` 16, `standardLfos` 4, `shapes` 4; docs/MODEL.md): with no
   routes the piano must stay bit-identical (`cmp`). A parameter is a destination only where every
-  reader can follow it: strike-time tone settings (per voice), the strings' decay settings and the
-  Partial Arp (per voice, per block), Space and Resonance (global); the kit makes the phrase
+  reader can follow it: strike-time tone settings (per voice), the strings' decay settings, Touch Point,
+  Listening Point and the Partial Arp (per voice, per block), Space and Resonance (global); the kit makes the phrase
   envelope one (global). Not Stiffness or Stretch (voices and the sympathetic bank must agree),
   not `play.*` (`processEvents` and the voice both map velocity). Changing the LFO or shape count
   moves Drift/S&H LFOs' random paths (*Tape Wow*'s render). Shape curves in presets must start and
   end level where they restart, or they click. Presets *Tape Wow*, *Tremolo Ballad*, *Living
   Hammer*, *Breathing Strings*, *Notch Sweep*, *Beat Pump*, *Tidal Arp*; tests `mod-*`.
 - **The page** (`ui/layout.json`): tabs **Piano** (Playing, Tone, Strings, Space) and
-  **Synthesis** (one wide accordion: Partial Arp, Touch Point, the kit's arp panels, LFOs, Shapes, the matrix,
+  **Synthesis** (one wide accordion: Partial Arp, Touch Point, Listening Point, the kit's arp panels, LFOs, Shapes, the matrix,
   all folded but the matrix); Output below both. New creative features go in the accordion.
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,
