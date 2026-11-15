@@ -21,6 +21,7 @@ checked against the real piano.
   - [Velocity](#velocity)
   - [Brightness, range and cut](#brightness-range-and-cut)
   - [The hammer's spectrum and Hardness](#the-hammers-spectrum-and-hardness)
+    - [The hammer, simulated](#the-hammer-simulated)
   - [Strike Point](#strike-point)
   - [Strike Depth](#strike-depth)
   - [The soft pedal](#the-soft-pedal)
@@ -690,9 +691,106 @@ the measured one, (1 + (f/fc)²) / (1 + (f/fc')²):
 Softer is strong: at velocity 80, −100 % takes 18-28 dB off the attack above 2 kHz from C2 to C5,
 and the treble's fundamentals, above the moved corner, lose 14-18 dB (a felt-piano mute). Harder
 saturates: +100 % adds 4-6 dB above 2 kHz, since the measured hammer is already flat up to its
-corner at medium velocity, and a spectrum can't brighten past flat. A harder surface than felt (a
-hammer that rings, or partials above the recordings' floor) would need more than this model.
+corner at medium velocity, and a spectrum can't brighten past flat. A harder surface than felt
+needs more than this model: The hammer, simulated (below) says what.
 The strike below A2 (band noise) isn't changed by it.
+
+#### The hammer, simulated
+
+`tools/hammer_sim.py`: offline only, nothing in the engine uses it yet. It is the first stage of
+modelling other hammer surfaces than felt, and answers which properties of a surface change the
+sound enough to earn a control, before any is built.
+
+**The model.** A key's string as its modes (hinged ends; the measured f0 and B, the key's strike
+point, a 5 mm contact), struck by a mass through its surface:
+
+    F = K ξ^p · (1 + η ξ')        ξ: how far the surface is compressed
+
+p is the surface's character: 1 is a plain spring (wood, metal), felt stiffens as it is pressed
+(2-4); η is its loss. Each partial ends up with the force's spectrum at its frequency, so a
+surface is heard through how |F̂(f)| changes: what Hardness moves today, as one corner. Time
+stepping is a split step with the modes' exact free motion. `check` verifies it: energy kept
+to about 1e-8, a rigid hammer's pulse on an ideal string within 2 % of the analytic
+2Z v e^(−2Zt/m), a plain spring's pulse the same shape at every speed, felt's contact shortening
+as v^(−(p−1)/(p+1)), and partial levels within 0.1 dB between 192 and 768 kHz.
+
+**The felt of this piano** (`fit` → `tools/salamander_hammer_sim.json`). Per measured key, K, p,
+η and the hammer's mass against the string's are fitted to the same data as the corner above:
+how each partial changes from layer to layer. From A0 to D#5 the simulated felt explains them as
+well as the fitted corner does (median 80 % against 77 %; rms 1.9-4.0 dB against 1.9-4.9; nearer
+on 13 of 19 keys), with **p = 2.3-2.7 on 18 of those 19 keys** (D#2: 5.3), contacts of 0.8-4 ms
+at layer 13 that mostly shorten from the softest layer to the loudest (C4: 1.6 to 1.0 ms), and a
+hammer 0.03-0.2 of the string's mass up to C4 and 0.3-0.8 from D#4 to D#5: the range usually
+quoted for a grand's hammers (exponents of 2-3, contacts of a few ms in the bass and about 1 ms
+in the middle). From F#5 up it does worse than the corner (48 % against 65 %; C6, D#6 and D#7
+at or near no model): few, noisy partials, and a 5 mm hammer on a string a few centimetres long is
+more than this model holds. The surfaces below are judged from C2 to C5 for that reason. The
+parameters aren't pinned one by one (the loss sits at a bound on 16 of 29 keys; mass and
+stiffness trade): it is the force's spectrum that is fitted.
+
+**The same partials, another description.** As a corner and a slope, the simulated felt's
+spectrum is a corner near 1.5 kHz falling at 20-31 dB per octave (steeper for soft strikes),
+where the engine has 3-12 kHz and 12 dB per octave. The recordings can't tell the two apart (in
+a quick refit, a free slope moved the corner's rms by 0-0.7 dB, trading against α). They differ in what they
+say a harder hammer does.
+
+**How much harder a hammer can be.** A rigid surface is not infinitely bright: the hammer rides
+the string, which takes its momentum in m/2Z (the hammer's mass against the string's wave
+impedance), so its force falls at 6 dB per octave from a corner the mass sets. Measured 12 dB
+down, this piano's felt at velocity 100 is already within 0.2 octaves of that corner from C2 to
+C5. What a harder surface has left to change is the slope above it, from the felt's 20-31 dB
+per octave towards 6. That is why Hardness saturates: one corner at 12 dB per octave has nowhere
+to go.
+
+**Each property, changed alone** (`surfaces`, `report`; `tools/measure/surfaces.py` for the
+last four columns). The change in the force's spectrum is applied to a render's partials and
+strike with a zero-phase filter, within ±36 dB, and compared with the plain note by the
+perceptual distance with levels matched (C2, C3, C4, C5; layer 13 is the on-screen keyboard's
+velocity 100). The change at 2 / 4 kHz is the mean over C1-C5 at layer 13.
+
+| Change to the fitted felt | 2 / 4 kHz at layer 13 | layer 4 | layer 8 | layer 13 | layer 16 |
+|---|---|---|---|---|---|
+| felt 10 × stiffer | +7 / +20 dB | 20-33 % | 14-30 % | 11-25 % | 10-26 % |
+| felt 10 × softer | −21 / −25 dB | 22-30 % | 21-30 % | 18-27 % | 15-21 % |
+| rigid (a tack, bare wood) | +5 / +23 dB | 25-42 % | 19-38 % | 16-31 % | 14-27 % |
+| rigid and 0.3 × the mass (a light, hard hammer) | +2 / +21 dB, −11 dB below 500 Hz | 44-73 % | 41-57 % | 36-48 % | 38-46 % |
+| hammer 0.5 × the mass | −5 dB below 500 Hz | 9-21 % | 10-19 % | 9-17 % | 7-16 % |
+| hammer 2 × the mass | +3…+5 dB below 500 Hz | 10-14 % | 10-13 % | 11-14 % | 11-13 % |
+| thin felt over a hard core (reached from layer 6) | +6 / +23 dB | 0 % | 5-23 % | 14-26 % | 13-27 % |
+| a plain spring, p = 1, as hard as the felt at layer 13 | −4 / +5 dB | 6-10 % | 4-9 % | 7-8 % | 9-14 % |
+| p = 1.5 (leather), the same | −4 / +1 dB | 1-4 % | 2-4 % | 4-6 % | 5-9 % |
+| more progressive, p + 1.5, the same | +4 / +11 dB | 4-7 % | 4-9 % | 5-10 % | 5-12 % |
+| contact 3 × wider (worn flat); a point | −1 / −7 dB; 0 / +1 dB | 0-1 % | 0-1 % | 0-1 % | 1 % |
+| the felt's loss × 4; none | under 0.3 dB | 0 % | 0 % | 0 % | 0 % |
+| *the engine's Hardness +100 %* | | 24-47 % | 10-15 % | 1-3 % | 1-2 % |
+| *the engine's Hardness −100 %* | | 43-56 % | 33-42 % | 20-26 % | 10-17 % |
+
+What it says is worth building:
+
+- **Harder, done as the slope.** A stiffer or rigid surface is plain at every velocity
+  (10-31 % at layers 13 and 16), where Hardness +100 % is 1-3 %: the largest gap in today's
+  hammer. Softer is already covered.
+- **The hammer's mass.** Not in the first proposal. A lighter hammer gives the low partials
+  less (−5 dB below 500 Hz at half the mass) and leaves the top: 9-17 % with levels matched.
+  With a rigid surface it is the largest change here (36-48 %): thin and bright, towards an
+  early piano.
+- **Two layers.** Nothing below the velocity that reaches the core, 14-27 % above it: a hammer
+  that is mellow until it is hit through.
+- **The exponent alone is small**: 4-14 % for a plain spring as hard as the felt at one
+  velocity (softer strikes brighter, loud ones a little duller in the middle). It belongs in the
+  model (it is what makes a hard surface the same colour at every dynamic), not as a control of
+  its own.
+- **Not worth a control:** the contact's width (0-1 % up to C5; the top treble, where the felt
+  covers 5-10 % of the string, isn't judged here) and the felt's loss (nothing, as far as this
+  form of loss and this fit can say).
+- **The form.** Two corners at 12 dB per octave, today's, leave 2-5 dB rms of these changes over
+  the partials that are played; a corner and a slope both moved leave 1-4 dB.
+
+What it can't say: what a surface sounds like itself (a click, a head that rings, chatter
+against the string), which isn't the force on the string; anything above D#5; and whether a
+real tack or leather hammer does this, since there are no recordings of one here. The string is
+one string with fixed ends: no bridge, no unison. The predictions change the partials and the
+strike by one curve, as Hardness does, and move nothing in time.
 
 ### Strike Point
 
