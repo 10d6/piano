@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Chance Harmonics", "params": {"touch.press": 500, "touch.point": 25, "touch.width": 0.5, "string.sustain": 140, "space.room": 26}, "mod": [{"src": "random", "dst": "touch.point", "amt": 0.2}]}

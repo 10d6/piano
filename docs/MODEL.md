@@ -774,6 +774,7 @@ aftersound decay for a medium strike.
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
 | Resonance | `string.resonance` | sympathetic drive |
 | Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
+| Touch Point | `touch.*` | a finger on the strings: harmonics and mutes (Creative: Touch Point, below); Press 0 by default |
 | Partial Arp | `parp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default. `arp.*` until patchVersion 2 |
 | Arpeggiator / Sequencer | `arp.*` | synthkit's (API.md §4b); Off by default (Creative: the kit's arpeggiator and sequencer, below) |
 
@@ -824,6 +825,74 @@ convolver's impulse is fixed once audio runs).
   convolver; two while one rings out after a change.
 - It replaced a 1.6 s generated noise room (one convolver, a 0.32 s amplitude decay, so an
   RT60 of 2.2 s, low-passed towards 600 Hz as it faded).
+
+## Creative: Touch Point
+
+Not part of the measured piano: with **Press** at 0 (the default) the output is bit-identical to
+the piano without it. A finger resting on the strings, as a player reaches into a grand to sound
+harmonics or mute a note (`touch.*`, `PianoVoice::touchBlock`).
+
+**The physics.** A finger at the fraction y of the string, w of its length wide, takes energy
+from partial n where that partial moves under it: sin²(nπs) averaged over the finger,
+
+    share(n) = ½ (1 − cos(2πny) · sinc(nw))          sinc(x) = sin(πx) / (πx)
+
+(`touchShare`). A partial with a node under a narrow finger is hardly touched and rings on; one
+with an antinode there takes all of the finger's damping. At y = ½ the even partials have their
+node there, and the note becomes its octave harmonic; at ⅓ every third partial is left (an
+octave and a fifth up), at ¼ every fourth. A wider finger spans the upper partials' nodes and
+antinodes alike, so they all take half: with a fingertip (1 %) a harmonic's own upper partials
+fade a little sooner (the 6th at 1.8 dB/s more at Press 600), and at 15-30 % it is a strip of
+felt or the flat of a hand, a mute.
+
+**In the engine.** Each partial's components fade faster by Press × share(n) dB/s: one more
+term where the poles are set (`updatePoles`), looked up by the partial number each component
+carries (`pnum`). All of a partial's components (its modes, their onset twins, the soft pedal's
+copies) take the same extra decay, so the partial keeps its shape and simply fades faster; its
+modes are never scaled one against another. Sustain doesn't scale it: it is the finger's, not
+the string's. The table is worked out again only when a setting moves.
+
+| Control | ID | |
+|---|---|---|
+| Press | `touch.press` | how fast the finger stops what moves under it, 0-2000 dB/s. 100-300: the note melts into its harmonic over half a second; 500 and up: a ping, then the harmonic |
+| Point | `touch.point` | where it rests, 2-50 % of the string |
+| Width | `touch.width` | how much of the string it covers, 0-30 % |
+| Snap | `touch.snap` | On (the default): Point goes to the nearest 1/k of the string (k = round(1 / Point), 2-50), so it steps through the harmonics. Off: exactly where Point says |
+
+Press, Point and Width are modulation destinations, read per voice each control block like the
+strings' decay settings, so a note can be touched after it is struck (a Shape, the wheel or
+aftertouch on Press: *Late Touch*) and each note can have its own harmonic (Random or Key on
+Point: *Chance Harmonics*). **What the finger takes doesn't come back**: it stops the string's
+partials themselves, so a finger sliding along a ringing string leaves less and less, as on a
+real one. (The Partial Arp is the opposite: it scales what is heard and leaves the vibration.)
+
+Measured (`tools/measure/touch.py`: C2-C6 at velocity 100, against the same note untouched, 0.4-0.9 s in):
+
+| | partials with a node under the finger | the others | distance from untouched |
+|---|---|---|---|
+| Press 600, Point 50 % (1/2), Width 1 % | −0.1…−1.1 dB | −21 dB or more | 25-50 % |
+| Press 600, Point 33.3 % (1/3), Width 1 % | −0.2…−1.1 dB | −31 dB or more | 38-54 % |
+| the mute: Press 1500, Point 8 %, Width 20 %, Snap off | | 40 dB down in 0.3-1.3 s (untouched: 1.4-3.2 s) | 36-79 % |
+
+Cost: nothing when off. On, a note is cheaper than untouched, since the stopped partials are
+dropped (36 pedalled notes over 8 s rendered in 1.4 s with the finger at ½ and 1.2 s with an LFO
+moving it, against 2.0 s untouched).
+
+What it doesn't do:
+- **The body's ring and the strike aren't touched.** The knock is the hammer's and the body's,
+  and the ring is measured from notes left to sound. After a mute it is what remains: 35-43 dB
+  under the strike a second in, and the slow end of the mute's 0.3-1.3 s above (with Body at
+  −40 dB: 0.2-0.5 s). A muted string would feed the body less than a sounding one, by an amount
+  these recordings can't give; *Felt Mute* turns Body down 12 dB.
+- **The sympathetic strings aren't touched** (the finger is on the keys played). Once a touched
+  note's voice has ended, its string in the bank is free again while the key or the pedal is
+  down, and can ring along with other notes.
+- **The strike is the same** with the finger down. On a real string the finger also changes what
+  the hammer can set going in the first place (a little, for a light touch).
+- A finger doesn't move a partial's pitch here, as a heavy one does on a real string.
+
+Presets: *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*. Tests:
+`touch-point`, `mod-touch`.
 
 ## Creative: the partial arpeggiator
 
@@ -897,7 +966,7 @@ engine reads them:
 | Read | Destinations | What a route does |
 |---|---|---|
 | at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
-| each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
+| each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
 | each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Unison, Dampers and Overtone Decay globally too, so a per-voice route there moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |
 | kit | `sk.pitch`, `sk.level` | vibrato and tremolo, through `ctx.pitchHz()` and after the voice. The string bank's concert pitch is worked out from both pitch and Hz, so vibrato doesn't retune the free strings. The body's ring and the bank live in the synth, so `sk.level` doesn't reach them |

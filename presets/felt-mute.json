@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Felt Mute", "params": {"touch.press": 1500, "touch.point": 8, "touch.width": 20, "touch.snap": 0, "tone.body": -12, "space.room": 10, "space.type": 0}}
