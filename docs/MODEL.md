@@ -602,7 +602,7 @@ string bank alike.
 string is at n·√((1 + B n²) / (1 + B)) times its fundamental, then `dev` cents off that line where
 it was measured elsewhere (`partialRatio`); Stiffness scales B and those offsets alike. At 0 % the
 strings are ideal, the partials at whole multiples of the fundamental (harp-like; organ-like in the
-bass); at 300 % they spread three times as far (C4's 12th partial: +33 cents as measured, +253 at
+bass); at 300 % they spread three times as far (800 %, the top of the range, eight times) (C4's 12th partial: +33 cents as measured, +253 at
 300 %), towards bells. The middle of the keyboard has little stiffness to scale (0 % and 300 %
 are 1-2 % from the measured piano at C3-C4 by the perceptual distance, 6-11 % at C2 and C6), so
 the range runs to 800 % (6-19 %; the distance sees loudness, not pitch, and underrates this).
@@ -703,7 +703,7 @@ aftersound decay for a medium strike.
 
   | Resonance | under all the sound, 0.5-1.5 s | in the tail, 4-5 s | the tail is louder by |
   |---|---|---|---|
-  | −12 dB (the old default) | 43 dB | 22 dB | 0.1 dB |
+  | −12 dB (what the old K gave at 0 dB) | 43 dB | 22 dB | 0.1 dB |
   | 0 dB | 31 dB | 10 dB | 0.6 dB |
   | +12 dB | 19 dB | 2 dB | 4.8 dB |
   | +24 dB | 9 dB | 0.3 dB | 14.9 dB |
