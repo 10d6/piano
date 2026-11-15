@@ -149,6 +149,7 @@ and keep the bass from getting further from its recordings on the distance alone
 | `chord.json` | a chord sounds within 20 ms, is still above −48 dB at 1.4 s, silent 2.1 s after release, limiter under 1 dB |
 | `pedal.json` | a pedalled phrase still rings at 3.5 s and has stopped 2.8 s after the pedal lifts |
 | `restrike.json` | restrikes of a sounding key, silent at the end |
+| `restrike-keep.json` | Restrike 100 % under the pedal: loud then soft on three keys, then ten fast uneven repeats on two (each above −45 dB in its first 20 ms: a strike that cancelled), silent after the pedal lifts |
 | `fast-repeats.json` | 20 fast strikes, each above −45 dB in its first 20 ms (a strike that didn't sound) |
 | `undamped-treble.json` | a key above E6 rings on after release (no damper) |
 | `glissando-pedal.json` | the heaviest load: rings at 4.9 s, stops after the pedal |
@@ -272,10 +273,17 @@ Also:
   sin(nπy) away from nodes; the first half second's level −4.0…+1.1 dB; 12-30, 5-10, 7-20 and
   14-34 % from Depth 0 at Point 50, 25, 12 and 4 %. Moving (*Wandering Ear*): 27-136 % from the
   plain note window by window, partials 1-6 swinging 14-16 dB.
+- `restrike.py`: what Restrike does when a key is struck while it rings (no recordings hold one).
+  C2-C6 under the pedal, 100 % against 0 %: loud then soft, the second after is 29-151 % from
+  0 %; fast uneven repeats differ from one another by 9-48 % (3-11 % at 0 %), their partials
+  spread 1.3-3.5 dB, the weakest attack −4.6 dB; even repeats four a second 1-4 %; the key let go
+  between strikes 0 %. With `--felt0` (a build with the felt at 0 dB) the sum: a restrike is the
+  two strikes added to 46-74 dB on modal keys (C3, C5).
 
 ### Note handling: `tools/stress.py`
 
-`python3 -I tools/stress.py build/piano_render 300` (and `… 200 overlap`)
+`python3 -I tools/stress.py build/piano_render 300` (and `… 200 overlap`; settings can follow as
+`id=value`, e.g. `… 300 overlap string.restrike=100`)
 plays random passages of fast repeats, chords, overlapping notes and pedal
 changes. Keys run A0–E6, so every key has a damper. It reports any passage
 still sounding (above −80 dBFS) 3 s after everything was released. Healthy: 0
@@ -320,7 +328,7 @@ any measurement against the recordings: they all render with Reverb 0.
 
 Hardness, Strike Point, Stiffness and Overtone Decay change the piano around what was measured, so their defaults must leave
 it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
-byte for byte (`cmp`). The same holds for the creative and room controls: Touch Point at Press 0, Listening Point at Depth 0, the Partial Arp Off
+byte for byte (`cmp`). The same holds for the creative and room controls: Restrike at 0 %, Touch Point at Press 0, Listening Point at Depth 0, the Partial Arp Off
 (and, on, Group Single with Width 0 must render as its first version did), and Reverb 0, which
 must be the dry piano byte for byte (every measurement renders with it). What they do is checked by sweeping them (attack level, centroid and share
 above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).
@@ -340,6 +348,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
 | Touch Point | + renders with Press 0 against the previous build, byte for byte; `tools/measure/touch.py` (partials with a node under the finger kept within ~1 dB, the others 20 dB or more down; the mute's fall time); `stress.py` |
+| Restrike | + renders at 0 % against the previous build, byte for byte; `tools/measure/restrike.py --felt0 <a build with -DRESTRIKE_FELT_DB=0.f>` (the sum on modal keys, the weakest attack, the variation); `stress.py` in both modes with `string.restrike=100` |
 | Listening Point | + renders with Depth 0 against the previous build, byte for byte (and the Partial Arp's own tests: it shares their path); `tools/measure/listen.py` (partials against sin(nπy), the level kept, the distances, the moving case) |
 | the Partial Arp | + renders with it Off against the previous build, byte for byte (and Single, Width 0 on `tests/partial-arp.json`); its spectrum over time (`tools/measure/partials.py` or a spectrogram) to see the steps; `stress.py` with it on |
 | the kit's arpeggiator / sequencer | + renders with it Off against the previous build, byte for byte; `stress.py` with Arp and with Sequencer on (pass extra params into the scenario; with Sequencer, Top Dampers All keys, or lanes above E6 ring on as they should) |

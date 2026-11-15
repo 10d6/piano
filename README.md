@@ -79,7 +79,11 @@ the sample rate, and only for strings that are free or still ringing.
 
 The recordings sample every minor third; keys between are interpolated. One
 voice per key: striking a key that is still sounding hands its vibration over
-to the new strike. As on a grand, keys above E6 have no dampers and ring on
+to the new strike. **Restrike** (Strings, 0 % by default) adds the new strike to the
+old vibration instead, less what the hammer's felt takes, as on a real string: a
+soft strike no longer cuts off a loud note ringing under it, and fast repeats under
+the pedal differ from one another and build. Evenly spaced repeats change little.
+Try *Struck Again*. As on a grand, keys above E6 have no dampers and ring on
 after release (**Top Dampers** can damp every key instead).
 
 **The hammer.** How a key brightens from soft to loud is mostly the felt: a faster hammer
