@@ -296,6 +296,10 @@ struct PianoVoice : Voice {
     // sections, per mic
     bool hard = false;
     float hb0 = 1, hb1 = 0, ha1 = 0, hx[2][2] = {}, hy[2][2] = {};
+    // The hammer's surface: up to three second-order sections per mic (two high shelves for Edge and
+    // Core, one first-order shelf for Weight) and the gain that keeps the note's loudness
+    int surf = 0;
+    float sc[3][5] = {}, sz[3][2][2] = {}, sg = 1;
   };
   static constexpr int kStrikeSlots = 4;
   StrikePlay plays[kStrikeSlots];
@@ -307,7 +311,7 @@ struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
       arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, restrike, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
-      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
+      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut, hamEdge, hamWeight, hamCore, hamMorph, hamMaterial;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -371,6 +375,14 @@ struct Piano : Synth {
     listenPoint = b.add("listen.point").name("Listening Point").range(2, 50).log().def(12).unit("%").modulatable().group("Listening Point");
     listenWidth = b.add("listen.width").name("Listening Width").range(0, 20).exp(3).def(0).unit("%").modulatable().group("Listening Point");
     touchDry = b.add("touch.dry").name("Touch Dry").range(0, 100).def(0).unit("%").group("Touch Point");
+    // The hammer's surface (PianoVoice::strike; docs/MODEL.md): other surfaces than this piano's felt. At
+    // their defaults (and Morph on at Material 0) the piano is bit-identical. Morph on: Material sets
+    // Edge, Weight and Core, and their own values aren't read
+    hamEdge = b.add("hammer.edge").name("Hammer Edge").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
+    hamWeight = b.add("hammer.weight").name("Hammer Weight").range(25, 400).log().def(100).unit("%").modulatable().group("Hammer Surface");
+    hamCore = b.add("hammer.core").name("Hammer Core").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
+    hamMorph = b.add("hammer.morph").name("Hammer Morph").toggle().group("Hammer Surface");
+    hamMaterial = b.add("hammer.material").name("Hammer Material").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
     b.kitDefault("arp.envMode", 0);
@@ -1382,6 +1394,93 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float x0 = pd::strikeX[k], x = std::min(x0 * strikeScale, 0.5f);
     return std::sin(0.5f * kTwoPi * n * x) * std::sin(0.5f * kTwoPi * n * x0) < 0;
   };
+  // The hammer's surface (docs/MODEL.md, The hammer's surface). A simulated hammer on this piano's
+  // strings (tools/hammer_sim.py, tools/analyze_surface.py) gives the force's spectrum, in dB against
+  // its level at low frequencies, as
+  //   felt   −12 (f / f12)^γ              falling like a cliff: a soft surface is a smooth pulse
+  //   rigid  −10 log10(1 + (f / fr)²)     6 dB per octave from a corner the hammer's mass sets
+  // and each partial, and the strike, changes by what the surface changes in that spectrum:
+  //   Edge    from the felt to a surface that doesn't give (a tack, bare wood): rigid − felt, by its
+  //           share, no more than kSurfMaxDb. The rigid hammer's spectrum doesn't depend on its speed,
+  //           so at 100 % a note is the same colour at every velocity, only louder;
+  //   Core    a hard core under thin felt: Edge from a velocity up. Below it the felt alone is
+  //           pressed; above, the hammer hits through (within two layers, as the simulation has it);
+  //   Weight  the hammer's mass × μ: the partials under the mass's corner take μ times as much and
+  //           those above it are left, a first-order shelf.
+  // The note's energy over its first half second is kept (surfComp, as Strike Point's): a rigid
+  // hammer drives the treble's strings far harder and a light one everything less, and these
+  // controls change colour, not level. Morph on: Material sets all three along felt, worn felt,
+  // leather on a light hammer, wood, metal (kMaterial: a judgment), and their own values aren't read.
+  constexpr float kSurfMaxDb = 36.f, kSurfStrikeMaxDb = 24.f, kCoreLayers = 1.5f;
+  float sEdge, sCore, sMu;
+  if (ctx.on(synth.hamMorph)) {
+    // Edge %, Core %, log2 of Weight at Material 0, 25, 50, 75, 100 %
+    static constexpr float kMaterial[5][3] = {{0, 0, 0}, {10, 45, 0}, {50, 45, -1}, {85, 70, -1.5f}, {100, 100, 0}};
+    float m = std::clamp(ctx.get(synth.hamMaterial) * 0.04f, 0.f, 4.f);
+    int mi = std::min(static_cast<int>(m), 3);
+    float mf = m - mi;
+    auto at = [&](int j) { return kMaterial[mi][j] + (kMaterial[mi + 1][j] - kMaterial[mi][j]) * mf; };
+    sEdge = at(0) * 0.01f;
+    sCore = at(1) * 0.01f;
+    sMu = std::exp2(at(2));
+  } else {
+    sEdge = std::clamp(ctx.get(synth.hamEdge) * 0.01f, 0.f, 1.f);
+    sCore = std::clamp(ctx.get(synth.hamCore) * 0.01f, 0.f, 1.f);
+    sMu = std::clamp(ctx.get(synth.hamWeight) * 0.01f, 0.25f, 4.f);
+  }
+  if (std::fabs(sMu - 1.f) < 1e-4f) sMu = 1;
+  if (sCore > 0) {   // the layer from which the core is reached: none at 0 %, every one at 100 %
+    float from = (pd::kLayers - 1) - (pd::kLayers + 5) * sCore;
+    if (lp > from) sEdge += (1 - sEdge) * (1 - std::exp(-(lp - from) / kCoreLayers));
+  }
+  bool surfOn = sEdge > 0 || sMu != 1;
+  float surfF12 = (pd::surfF12[l0] + (pd::surfF12[l0 + 1] - pd::surfF12[l0]) * lf) * std::exp(pd::surfKeySlope * (note - 60));
+  float surfGamma = std::clamp(pd::surfGamma[l0] + (pd::surfGamma[l0 + 1] - pd::surfGamma[l0]) * lf + pd::surfGammaSlope * (note - 60), 0.7f, 2.f);
+  float surfMassHz = pd::surfMassHz * std::exp(pd::surfMassSlope * (note - 60));
+  auto rigidOverFelt = [&](float f) {   // dB
+    float r = f / pd::surfRigidHz;
+    return 12.f * std::pow(f / surfF12, surfGamma) - 10.f * std::log10(1 + r * r);
+  };
+  auto surfDbAt = [&](float f) {
+    float db = 0;
+    if (sEdge > 0) db += sEdge * std::clamp(rigidOverFelt(f), -6.f, kSurfMaxDb);
+    if (sMu != 1) {
+      float a = f / surfMassHz;
+      db += 20.f * std::log10(sMu) + 10.f * std::log10((1 + a * a) / (1 + sMu * sMu * a * a));
+    }
+    return db;
+  };
+  float surfComp = 0;
+  if (surfOn) {
+    double p0 = 0, p1 = 0;
+    float f0n = 440.f * std::exp2((note - 69) / 12.f);
+    for (const auto& side : {std::pair<int, float>{s.a, 1 - s.w}, std::pair<int, float>{s.b, s.w}}) {
+      const pd::Key& kk = pd::keys[side.first];
+      for (int i = kk.first; i < kk.first + kk.count; ++i) {
+        // as pointComp: each partial's power at the strike times how long it lasts in half a second
+        const pd::Partial& Q = pd::partials[i];
+        auto lasts = [](float dec) {
+          double k = std::max(0.1f, -dec) * 0.2302585;
+          return (1 - std::exp(-0.5 * k)) / k;
+        };
+        double g = 0;
+        if (Q.nm > 0) {
+          for (int j = Q.fm; j < Q.fm + Q.nm; ++j)
+            for (int mic = 0; mic < 2; ++mic) {
+              const auto& ML = pd::modeLevels[j];
+              g += 0.5 * std::pow(10.0, 0.01f * (ML[l0][mic] + (ML[l0 + 1][mic] - ML[l0][mic]) * lf) / 10.0) * lasts(pd::modes[j].decay);
+            }
+        } else {
+          g = 0.5 * (std::pow(10.0, layerLevel(i, 0) / 10.0) + std::pow(10.0, layerLevel(i, 1) / 10.0)) * lasts(shape(Q.s1));
+        }
+        g *= side.second * std::pow(10.0, hammerDb(f0n * partialRatio(Q.n, B, Q.dev, stiff)) / 10.0);
+        if (strikeMoved) g *= std::pow(10.0, pointDbAt(Q.n, side.first, i, strikeDeep) / 10.0);
+        p0 += g;
+        p1 += g * std::pow(10.0, surfDbAt(f0n * partialRatio(Q.n, B, Q.dev, stiff)) / 10.0);
+      }
+    }
+    if (p0 > 0 && p1 > 0) surfComp = std::clamp(static_cast<float>(-10.0 * std::log10(p1 / p0)), -24.f, 24.f);
+  }
   // keep a note's loudness when Brightness tilts it: compare the power with and without the tilt
   float brightComp = 0;
   if (std::fabs(bright) > 1e-3f) {
@@ -1476,6 +1575,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     float rat = partialRatio(pn, B, wa * A.dev + wb * Bp.dev, stiff);
     float extra = gainDb + missing + brightComp + bright * std::log2(static_cast<float>(pn)) +
                   hammerDb(pitchNow * rat) + wa * pointDb(pn, s.a, pa) + wb * pointDb(pn, s.b, pb);
+    if (surfOn) extra += surfDbAt(pitchNow * rat) + surfComp;
     float Ll = wa * layerLevel(pa, 0) + wb * layerLevel(pb, 0);
     float Lr = wa * layerLevel(pa, 1) + wb * layerLevel(pb, 1);
     float logDecay = 0;   // the blended characteristic decay, log(dB/s), for the modes
@@ -1677,6 +1777,43 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
       p.ha1 = (K2 - 1) / (K2 + 1);
       for (auto& v : p.hx) v[0] = v[1] = 0;
       for (auto& v : p.hy) v[0] = v[1] = 0;
+    }
+    // The hammer's surface: the strike changes as the partials do, as near as a few sections come.
+    // Edge and Core: two high shelves that together reach Edge × kSurfStrikeMaxDb (less than the
+    // partials' most: the response holds its recording's floor too), centred where rigid − felt is
+    // half that. Weight: its shelf exactly. And the gain that keeps the note's loudness.
+    p.surf = 0;
+    if (surfOn) {
+      if (sEdge > 0) {
+        float lo = std::log(100.f), hi = std::log(0.45f * sr);
+        for (int it = 0; it < 24; ++it) {
+          float mid = 0.5f * (lo + hi);
+          (rigidOverFelt(std::exp(mid)) < 0.5f * kSurfStrikeMaxDb ? lo : hi) = mid;
+        }
+        float A = std::pow(10.f, sEdge * 0.5f * kSurfStrikeMaxDb / 40.f), w0 = kTwoPi * std::exp(0.5f * (lo + hi)) / sr;
+        float cs = std::cos(w0), al = std::sin(w0) * 0.70710678f, sq = 2 * std::sqrt(A) * al;
+        float a0 = (A + 1) - (A - 1) * cs + sq;
+        for (int k = 0; k < 2; ++k) {
+          float* c = p.sc[p.surf++];
+          c[0] = A * ((A + 1) + (A - 1) * cs + sq) / a0;
+          c[1] = -2 * A * ((A - 1) + (A + 1) * cs) / a0;
+          c[2] = A * ((A + 1) + (A - 1) * cs - sq) / a0;
+          c[3] = 2 * ((A - 1) - (A + 1) * cs) / a0;
+          c[4] = ((A + 1) - (A - 1) * cs - sq) / a0;
+        }
+      }
+      if (sMu != 1) {
+        float K = std::tan(0.5f * kTwoPi * std::min(surfMassHz, 0.45f * sr) / sr);
+        float* c = p.sc[p.surf++];
+        c[0] = sMu * (K + 1) / (K + sMu);
+        c[1] = sMu * (K - 1) / (K + sMu);
+        c[2] = 0;
+        c[3] = (K - sMu) / (K + sMu);
+        c[4] = 0;
+      }
+      p.sg = dbToGain(surfComp);
+      for (auto& sec : p.sz)
+        for (auto& v : sec) v[0] = v[1] = 0;
     }
     for (int mic = 0; mic < 2; ++mic) {
       p.x1[mic] = p.y1[mic] = 0;
@@ -2177,6 +2314,20 @@ void PianoVoice::renderStrikes(Buffer& out, int frames, float damperDbPerS) {
           l = nl;
           r = nr;
         }
+      }
+      if (p.surf) {
+        for (int st = 0; st < p.surf; ++st) {
+          const float* c = p.sc[st];
+          float nl = c[0] * l + p.sz[st][0][0], nr = c[0] * r + p.sz[st][1][0];
+          p.sz[st][0][0] = c[1] * l - c[3] * nl + p.sz[st][0][1];
+          p.sz[st][1][0] = c[1] * r - c[3] * nr + p.sz[st][1][1];
+          p.sz[st][0][1] = c[2] * l - c[4] * nl;
+          p.sz[st][1][1] = c[2] * r - c[4] * nr;
+          l = nl;
+          r = nr;
+        }
+        l *= p.sg;
+        r *= p.sg;
       }
       p.env *= p.envMul;
       out.add(i, l, r);

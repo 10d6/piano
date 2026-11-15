@@ -168,6 +168,8 @@ and keep the bass from getting further from its recordings on the distance alone
 | `mod-wow.json` | *Tape Wow* (a Drift LFO and a fast sine on `sk.pitch`): a chord still sounding at 3.5 s, silent after |
 | `mod-tremolo.json` | *Tremolo Ballad* (a synced triangle on `sk.level`): a 6 Hz, ~6.5 dB ripple at 120 bpm |
 | `strike-depth.json` | *Hollow Strike* (Strike Point 50 %, Strike Depth 100 %): an arpeggio from C2 to C6 and a chord |
+| `hammer-surface.json` | *Tack Piano* (Edge 100 %): an arpeggio from C2 to C6 and a chord |
+| `mod-surface.json` | *Shifting Hammers* (Morph on; random and velocity on Material): a fast phrase |
 | `mod-strike.json` | *Living Hammer* (random and key on Hardness and Strike Point, velocity on Overtone Decay): a fast phrase |
 | `mod-strings.json` | *Breathing Strings* (LFOs on Unison, Reverb and Brightness): a pedalled-length chord in the Cathedral |
 | `mod-parp.json` | *Notch Sweep* (a Per Voice LFO on the Partial Arp's Width, another on Boost, velocity on Rate) |
@@ -259,7 +261,11 @@ Also:
   felt ten times stiffer 11-25 %, half the hammer's mass 9-17 %, a hard core under thin felt
   14-26 %, the exponent alone 4-10 %, width and loss 0-1 %; the engine's Hardness +100 % is 1-3 %
   there (MODEL.md, The hammer, simulated). `python3 -I tools/hammer_sim.py check` checks the
-  simulation itself (energy, a rigid hammer's analytic pulse, convergence).
+  simulation itself (energy, a rigid hammer's analytic pulse, convergence). It also sizes the
+  engine's own surface controls and sets each beside the simulated change it follows: at layer
+  13 Edge 100 % 21-25 % (11-14 % from the simulated rigid hammer on the same key), Weight 50 %
+  7-9 %, Core 48 % 20-24 % and 0 % at layer 4, Material 75 % 43-48 %; level within ±1.2 dB
+  (MODEL.md, The hammer's surface).
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
   the on-screen keyboard plays velocity 100, pressing the graph at its left, middle and right
   strikes velocity 19, 64 and 121 (as the engine reports them), and nothing reaches the console.

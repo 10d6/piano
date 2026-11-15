@@ -243,6 +243,33 @@
                   "collapsed": true
                 },
                 {
+                  "title": "Hammer Surface",
+                  "controls": [
+                    {
+                      "param": "hammer.morph",
+                      "label": "Morph"
+                    },
+                    {
+                      "param": "hammer.material",
+                      "label": "Material"
+                    },
+                    {
+                      "param": "hammer.edge",
+                      "label": "Edge"
+                    },
+                    {
+                      "param": "hammer.weight",
+                      "label": "Weight"
+                    },
+                    {
+                      "param": "hammer.core",
+                      "label": "Core"
+                    }
+                  ],
+                  "info": "What the hammer is made of. This piano's hammers are felt, which gives under the string: the upper overtones fall away steeply, and more so the softer the strike. Edge, Weight and Core change that, from a simulated hammer on these strings; Hardness (Tone) still softens or hardens the felt itself. With Morph on, Material sets all three at once, from felt through worn felt, leather on a light hammer and wood to metal, and their own knobs aren't read. Each note takes its hammer as it is struck, so a route from velocity, the key or a random value to Material gives every note its own. Loudness is kept. At the defaults the piano is as measured. The on-screen keys play one velocity: press the velocity graph (Playing) to hear soft and loud strikes.",
+                  "collapsed": true
+                },
+                {
                   "kit": "arp",
                   "info": "An arpeggiator and step sequencer that play piano notes from the keys you hold. Arp plays the held keys one after another; Sequencer lets each key sound and adds its own pattern of notes above it. Each note is a full piano strike, ended by its damper (Note Envelope Off, the default) or by the note envelope.",
                   "collapsed": true
@@ -360,7 +387,12 @@
     "listen.depth": "How much of the sound comes from the listening point. 0% is the piano as measured (the sound the bridge and soundboard give). 100% is the point alone; in between, a blend of the two. The note's loudness is kept.",
     "listen.point": "Where the sound is taken, as a share of the string's length from its end. Low (2-6%): close to the end, thin, bright and nasal, the fundamental weak. Around 12-25%: fuller, with single partials missing (every 8th at 12.5%, every 4th at 25%). 50%: the middle, hollow, every second partial silent. A still point is subtle in the middle of the range; the sound is in the movement. Route an LFO (Per Voice) or a Shape here: the Wandering Ear and Opening Ear presets.",
     "listen.width": "How much of the string the listening point covers. 0% is a single point: every partial up to the top. Wider averages the string's movement, which quietens the high partials: a darker, rounder sound.",
-    "string.restrike": "What happens when a key is struck while its strings still ring (under the pedal, in fast repeats, or on the top keys, which have no dampers). At 0% the new strike takes over from the old vibration: every repeat sounds the same. Turned up, the new strike is added to what is already ringing, less what the hammer's felt takes, as on a real string: a soft strike no longer cuts off a loud note ringing under it, fast repeats differ from one another and build, and now and then a strike lands against the string's motion and comes out weaker. Listen with the pedal down: play a note hard, then softly; or try the Struck Again preset, where slow dampers do the pedal's work, pressing the velocity graph at its right and then its left."
+    "string.restrike": "What happens when a key is struck while its strings still ring (under the pedal, in fast repeats, or on the top keys, which have no dampers). At 0% the new strike takes over from the old vibration: every repeat sounds the same. Turned up, the new strike is added to what is already ringing, less what the hammer's felt takes, as on a real string: a soft strike no longer cuts off a loud note ringing under it, fast repeats differ from one another and build, and now and then a strike lands against the string's motion and comes out weaker. Listen with the pedal down: play a note hard, then softly; or try the Struck Again preset, where slow dampers do the pedal's work, pressing the velocity graph at its right and then its left.",
+    "hammer.edge": "How little the hammer's surface gives. 0% is this piano's felt. Higher brings out the upper overtones and the click of the strike, towards a tack or bare wood at 100%, where a note has the same colour at every velocity, only louder. Heard at every velocity, most on soft strikes and from the bass to the middle.",
+    "hammer.weight": "The hammer's mass. 100% is as measured. Lighter (lower) gives the low overtones less and leaves the high ones: thinner and brighter, towards an early piano, most with Edge up. Heavier (higher) is fuller and rounder. Loudness is kept, so it changes colour only.",
+    "hammer.core": "A hard core under thin felt. 0% is felt all the way through. Higher makes the felt thinner: soft strikes stay mellow, and from a certain velocity up the hammer hits through to the core and the note turns bright, as Edge does. At 100% every strike reaches it. Around 30-50% the on-screen keys (velocity 100) are past it and soft strikes on the velocity graph are not.",
+    "hammer.morph": "On: Material sets Edge, Weight and Core together, and their own knobs aren't read. Off: they are set by hand.",
+    "hammer.material": "With Morph on: what the hammer is made of. 0% felt (the piano as measured), 25% worn felt (bright only when struck hard), 50% leather on a light hammer (thinner and brighter, an early piano), 75% wood (lighter and harder still), 100% metal (a tack in a full-weight hammer: bright and full). A route from velocity or a random value here gives each note its own hammer."
   },
   "keyboard": true
 }

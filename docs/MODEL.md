@@ -22,6 +22,7 @@ checked against the real piano.
   - [Brightness, range and cut](#brightness-range-and-cut)
   - [The hammer's spectrum and Hardness](#the-hammers-spectrum-and-hardness)
     - [The hammer, simulated](#the-hammer-simulated)
+  - [The hammer's surface](#the-hammers-surface)
   - [Strike Point](#strike-point)
   - [Strike Depth](#strike-depth)
   - [The soft pedal](#the-soft-pedal)
@@ -50,7 +51,8 @@ A note travels through these stages. Each has a section below.
 1. **Velocity** becomes a recorded *layer* (the tone) and a level (`Piano::velocityMap`; Velocity).
 2. **The partials** of the two measured keys nearest the note are blended into a set of decaying
    sinusoids, with per-microphone levels and phases (The partials). The controls that reshape them at
-   the strike are Brightness, Hardness, Strike Point, Strike Depth, Stiffness, Soft Pedal and Restrike.
+   the strike are Brightness, Hardness, Strike Point, Strike Depth, the hammer's surface, Stiffness, Soft
+   Pedal and Restrike.
 3. **The strike** (the hammer, the action and the soundboard) is added: a recorded response from A2 up,
    band noise below (The strike).
 4. **The body's ring** and the **mechanical noises** are band noise shared by all keys, in the synth
@@ -697,9 +699,9 @@ The strike below A2 (band noise) isn't changed by it.
 
 #### The hammer, simulated
 
-`tools/hammer_sim.py`: offline only, nothing in the engine uses it yet. It is the first stage of
-modelling other hammer surfaces than felt, and answers which properties of a surface change the
-sound enough to earn a control, before any is built.
+`tools/hammer_sim.py`: offline only. It was the first stage of modelling other hammer surfaces
+than felt, and answered which properties of a surface change the sound enough to earn a control,
+before any was built. The controls that came of it are The hammer's surface, below.
 
 **The model.** A key's string as its modes (hinged ends; the measured f0 and B, the key's strike
 point, a 5 mm contact), struck by a mass through its surface:
@@ -791,6 +793,99 @@ against the string), which isn't the force on the string; anything above D#5; an
 real tack or leather hammer does this, since there are no recordings of one here. The string is
 one string with fixed ends: no bridge, no unison. The predictions change the partials and the
 strike by one curve, as Hardness does, and move nothing in time.
+
+### The hammer's surface
+
+**Edge, Weight, Core** and a **Morph** switch with its **Material** (`hammer.*`, in the Synthesis
+tab) change what the hammer is made of. Not measured: there are no recordings of another hammer
+here. They are the simulated hammer above, in the few curves the engine needs, applied as
+Hardness is: each partial, and the strike, changes by what the surface changes in the force's
+spectrum. At their defaults (Edge 0 %, Weight 100 %, Core 0 %; Morph on at Material 0 % too) the
+output is bit-identical to the piano without them. Hardness is unchanged and works beside them.
+
+**The curves** (`tools/analyze_surface.py` → `salamander_surface.json` → `surfF12`, `surfGamma`…
+in the header). From A0 to D#5, where the simulated felt fits, the force's spectrum against its
+level at low frequencies is
+
+    felt    −12 (f / f12)^γ                     dB: a cliff. f12 0.8-1.7 kHz from the softest layer to
+                                                the loudest at C4, γ 1.4-1.0
+    rigid   −10 log10(1 + (f / 494 Hz)²)        6 dB per octave from the corner the mass sets
+    mass    μ √((1 + (f/fm)²) / (1 + (μ f/fm)²))  the hammer μ times as heavy: fm 518 Hz at C4
+
+f12 and γ are one value per layer for every key, with one slope along the keyboard each (f12
+× 1.08 per octave of keys, γ −0.10, kept within 0.7-2), and fm rises × 1.19 per octave: per-key
+values would make neighbouring keys answer unevenly, and above D#5 there is no fit to take them
+from. The shared curves are 4.3 dB rms from each key's own simulation at 0.5-2 kHz.
+
+**The controls.**
+
+| Control | ID | |
+|---|---|---|
+| Edge | `hammer.edge` | 0-100 %: from the felt to a surface that doesn't give. Each partial changes by Edge × (rigid − felt), no more than 36 dB. At 100 % nothing in the spectrum depends on the hammer's speed any more: the same colour at every velocity, only louder |
+| Weight | `hammer.weight` | 25-400 % of the hammer's mass (100 %: as measured). The mass's shelf: lighter gives the partials under fm less and leaves those above |
+| Core | `hammer.core` | 0-100 %: a hard core under thin felt, which is Edge from a velocity up. The core is reached from tone layer 15 − 21 × Core (layers counted from 0), and Edge rises to full within about two layers above it (1 − e^(−layers / 1.5), as the simulated two-layer hammer does). 0 %: never; 48 %: from layer 6; 100 %: every strike |
+| Morph | `hammer.morph` | On: Material sets Edge, Core and Weight, and their own values aren't read |
+| Material | `hammer.material` | 0 % felt (0, 0, 100 %), 25 % worn felt (Edge 10, Core 45), 50 % leather on a light hammer (50, 45, Weight 50 %), 75 % wood (85, 70, 35 %), 100 % metal, a tack in a full-weight hammer (100, 100, 100 %); straight lines between. The stops are a judgment |
+
+**Loudness is kept**, as Strike Point keeps it: the note's energy over its first half second
+stays what it was (`surfComp`, within ±24 dB). A rigid hammer drives a treble string far harder
+and a light one everything less; these controls change colour, not level (measured: within
+±1.2 dB over the first half second from C1 to A7).
+
+**The strike** (the recorded response, from A2 up) follows as near as three filter sections
+come: two high shelves for Edge and Core that together reach Edge × 24 dB, centred where
+rigid − felt is 12 dB, and the mass's shelf exactly. With Edge up the partials carry the top of
+the spectrum: above 6 kHz the strike adds under 0.5 dB to them at Edge 100 % (C3-C7, velocity
+100), so its part is small there.
+
+All five are read at the strike, like the other hammer settings: Edge, Weight, Core and Material
+are modulation destinations, so velocity, the key or a random value can give each note its own
+hammer (*Shifting Hammers*).
+
+Measured (`tools/measure/surfaces.py`: distance from the default by the perceptual distance,
+levels matched; C2, C3, C4, C5; layer 13 is the on-screen keyboard's velocity 100):
+
+| | layer 4 | layer 8 | layer 13 | layer 16 |
+|---|---|---|---|---|
+| Edge 50 % | 11-17 % | 9-10 % | 6-8 % | 4-7 % |
+| Edge 100 % | 38-49 % | 29-32 % | 21-25 % | 11-22 % |
+| … against the simulated rigid hammer on the same key | 14-20 % | 11-17 % | 11-14 % | 9-12 % |
+| Weight 50 % / 200 % | 6-9 / 5-9 % | 7-9 / 4-9 % | 7-9 / 4-9 % | 7-10 / 4-9 % |
+| Edge 100 %, Weight 30 % | 66-84 % | 56-64 % | 47-52 % | 31-47 % |
+| Core 48 % | 0 % | 18-20 % | 20-24 % | 11-22 % |
+| Material 25 / 50 / 75 % | 1-2 / 24-31 / 61-77 % | 14-16 / 34-39 / 52-59 % | 20-24 / 34-40 / 43-48 % | 11-22 / 21-36 / 28-44 % |
+| *Hardness +100 %, for scale* | 24-47 % | 10-15 % | 1-3 % | 1-2 % |
+
+- **Edge is plain at every velocity** (21-25 % at velocity 100 where Hardness +100 % is 1-3 %),
+  and steep at its top: 25 % is 2-3 % at velocity 100, 50 % 6-8 %, 75 % 12-15 %.
+- **Weight alone is subtle at 50 and 200 %** (4-10 %, with loudness kept: the simulation's 9-17 %
+  included a 5 dB change in level); its ends are plainer (25 %: 15-20 %, 400 %: 8-18 %), and with
+  Edge it is the largest change here.
+- **Core** does nothing below its velocity and is Edge above it: at 25 % the on-screen keys are
+  past it (13-16 %) and soft strikes aren't (0 %).
+- **Along the keyboard**: Edge 100 % at velocity 100 is 18 % at C1, 11 % at C6 and 2-3 % at C7 and
+  A7 (17-22 % there on soft strikes): the top keys' few partials are already above the felt's
+  cliff. The treble's numbers come from curves carried up from D#5, where the simulation stops.
+- **The engine follows the simulation's size, not each key's own simulation**: 9-20 % apart on
+  a key (the shared curves, and partials the default doesn't play that Edge brings in, which
+  the filtered prediction can't). Weight is 2-11 % from its simulation, Core 3-12 %.
+
+Cost: nothing at the defaults. On, a pedalled glissando rendered in 18 % more time (Edge 100 %,
+Weight 30 %, Core 60 %): Edge starts partials the default leaves under its range.
+
+What it doesn't do:
+- **A surface's own sound**: the click of metal, a head that rings, chatter against the string.
+  The strike is still the felt hammer's, reshaped.
+- **The swell** is left as measured (the simulation's contact barely shortens for a rigid
+  surface), and the **strike below A2** (band noise) and the **body's ring** aren't changed, as
+  with Hardness.
+- **The page doesn't show Morph's hold on the other three**: their knobs stay where they were
+  and aren't read (the kit has no way to grey a control out: a kit gap).
+- Each key's own lumps in the force (reflections coming back under the hammer), which the
+  simulation has and the shared curves leave out.
+
+Presets: *Tack Piano*, *Early Piano*, *Hits Through*, *Shifting Hammers*. Tests:
+`hammer-surface`, `mod-surface`.
 
 ### Strike Point
 
@@ -1264,7 +1359,7 @@ engine reads them:
 
 | Read | Destinations | What a route does |
 |---|---|---|
-| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.strikedepth`, `tone.body`, `string.restrike` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
+| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.strikedepth`, `tone.body`, `string.restrike`, `hammer.edge`, `hammer.weight`, `hammer.core`, `hammer.material` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
 | each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `listen.depth`, `listen.point`, `listen.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
 | each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Dampers and Overtone Decay globally too (not Unison: the bank has no beating), so a per-voice route to those moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |
@@ -1333,6 +1428,7 @@ Every parameter, by the ID a patch stores, with the section that explains it.
 | Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (Hardness, above) |
 | Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
 | Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support; higher, an ideal string's comb and every change multiplied (3× at 100 %) |
+| Edge, Weight, Core, Morph, Material | `hammer.*` | the hammer's surface: from felt to a surface that doesn't give, the hammer's mass, a hard core under thin felt; Morph on, Material sets the three (The hammer's surface, above) |
 | Body | `tone.body` | body ring level |
 | Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
 | Unison | `string.unison` | beat offsets and cluster spreads |

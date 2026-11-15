@@ -93,7 +93,12 @@ velocity from A0 to C6 (`tools/analyze_hammer.py`). **Hardness** moves that corn
 duller and slower to swell in, down to a felt-piano mute; harder, brighter), and the partials and
 the strike change with it. (A simulated hammer on a stiff string, `tools/hammer_sim.py`, fits the
 same data with a felt that stiffens as x^2.3-2.7, and says what other surfaces than felt would
-change: docs/MODEL.md, The hammer, simulated. Nothing in the engine uses it yet.) **Strike Point** moves where the hammer meets the string, from each key's own
+change: docs/MODEL.md, The hammer, simulated.) From it come **Edge** (from felt to a surface that
+doesn't give, a tack or bare wood: bright at every velocity, where Hardness runs out), **Weight** (the
+hammer's mass) and **Core** (a hard core under thin felt: mellow until struck hard), in the
+Synthesis tab; with **Morph** on, **Material** sets all three, from felt through worn felt, leather
+and wood to metal. Not measured (no recordings of another hammer): the simulation's physics, with
+loudness kept. Try *Tack Piano*, *Early Piano*, *Hits Through*, *Shifting Hammers*. **Strike Point** moves where the hammer meets the string, from each key's own
 strike point (measured in the low bass: 11.6-12.3 % of the string, `tools/analyze_point.py`): the partials with a node under
 the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. **Strike Depth** takes that
 further than a real hammer goes: an ideal string's silent nodes, then every change multiplied, up to three
@@ -191,7 +196,7 @@ arpeggiator's envelopes to the piano's controls, or to pitch and level (vibrato,
 note of a phrase, every bar or beat, or run freely with the song. LFOs and Shapes can modulate
 each other's rate and depth (a Shape that speeds up a tremolo, velocity setting vibrato depth).
 Tone and hammer settings
-(Brightness, Hardness, Strike Point, Attack, Hammer, Body) are read as each note is struck, so a
+(Brightness, Hardness, Strike Point, Attack, Hammer, Body, the hammer's Edge, Weight, Core and Material) are read as each note is struck, so a
 route gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay, Touch Point, Listening Point and
 the Partial Arp, move while notes ring; Space and the arpeggiator's phrase envelope (Attack,
 Decay, Sustain, Release) follow sources shared by all notes (Global LFOs, Shapes on First Note,
@@ -227,7 +232,8 @@ python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salam
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/analyze_hammer.py tools/salamander.json tools/salamander_hammer.json   # the hammer's spectrum (from the partials)
 python3 -I tools/analyze_point.py tools/salamander.json tools/salamander_point.json     # each key's strike point (from the partials)
-python3 -I tools/hammer_sim.py fit      # optional: the simulated hammer's felt per key → tools/salamander_hammer_sim.json (~10 min on two cores; `check` first)
+python3 -I tools/analyze_surface.py     # the hammer's surface curves, from the simulated felt → tools/salamander_surface.json (rerun after hammer_sim.py fit)
+python3 -I tools/hammer_sim.py fit      # before it, optional: the simulated hammer's felt per key → tools/salamander_hammer_sim.json (~10 min on two cores; `check` first)
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 # then build, and calibrate the band noise against the recordings (3 passes, make_header and a build between;
 # it skips keys with a recorded strike, so today it changes nothing):

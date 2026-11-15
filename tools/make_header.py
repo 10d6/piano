@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn the measurements into src/PianoData.h: tools/salamander.json (analyze.py) and, next to
 it, salamander_noise.json (with calibrate_noise.py's corrections), salamander_onset.json,
-salamander_body.json and salamander_mech.json. Also solves the noise bands' gains against the
+salamander_body.json, salamander_mech.json and salamander_surface.json. Also solves the noise bands' gains against the
 engine's own band filters (band_matrix, solve_gains), which must match Synth.cpp's.
 
     python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
@@ -502,6 +502,19 @@ def main():
               "// most Strike Point gives it back when the hammer moves off its node\n")
     out.write("constexpr unsigned char strikeLift[kPartials] = {\n" +
               "\n".join("  " + ", ".join(str(v) for v in rows_lift[i:i + 40]) + "," for i in range(0, len(rows_lift), 40)) + "\n};\n\n")
+    # the hammer's surface (tools/analyze_surface.py, from the simulated hammer): the felt's force
+    # spectrum per layer, a rigid surface's corner and the corner of the hammer's mass
+    spath = os.path.join(os.path.dirname(sys.argv[1]), "salamander_surface.json")
+    if os.path.exists(spath):
+        sf = json.load(open(spath))
+        out.write("// The hammer's surface (tools/analyze_surface.py; docs/MODEL.md). The force's spectrum, in dB against its\n"
+                  "// level at low frequencies: felt −12 (f / f12)^γ, per layer at C4, with f12 × e^(surfKeySlope (key − 60))\n"
+                  "// and γ + surfGammaSlope (key − 60) along the keyboard; a rigid surface −10 log10(1 + (f / surfRigidHz)²);\n"
+                  "// the hammer's mass, a shelf from surfMassHz at C4, × e^(surfMassSlope (key − 60)) along the keyboard\n")
+        out.write("constexpr float surfF12[kLayers] = {" + ", ".join("%.1ff" % v for v in sf["f12"]) + "};\n")
+        out.write("constexpr float surfGamma[kLayers] = {" + ", ".join("%.3ff" % v for v in sf["gamma"]) + "};\n")
+        out.write("constexpr float surfKeySlope = %.6ff, surfGammaSlope = %.6ff, surfRigidHz = %.1ff, surfMassHz = %.1ff, surfMassSlope = %.6ff;\n\n"
+                  % (sf["f12_per_key"], sf["gamma_per_key"], sf["rigid_hz"], sf["mass_hz_c4"], sf["mass_per_key"]))
     write_mech(out, os.path.join(os.path.dirname(sys.argv[1]), "salamander_mech.json"))
     out.write("}  // namespace piano_data\n")
     write_strike(os.path.join(os.path.dirname(sys.argv[1]), "salamander_strike.npz"), [k["key"] for k in keys],

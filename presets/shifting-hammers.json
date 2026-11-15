@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Shifting Hammers", "params": {"hammer.morph": 1, "hammer.material": 30, "space.room": 16}, "mod": [{"src": "random", "dst": "hammer.material", "amt": 0.25}, {"src": "velocity", "dst": "hammer.material", "amt": 0.3}]}
