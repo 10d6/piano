@@ -20,6 +20,7 @@ between the two. The engine keeps a note's loudness; the simulation's changes do
 are compared with levels matched.
 
     python3 -I tools/measure/surfaces.py [--keys 36,48,60,72] [--layers 4,8,13,16] [--wav DIR]
+    python3 -I tools/measure/surfaces.py --uneven      (Uneven 100 % on each key from C3 to C5)
 """
 import sys
 from multiprocessing import Pool
@@ -39,12 +40,15 @@ LENGTH = 3.3
 # The engine's own controls: name, parameters, and the simulated change each is meant to follow
 ENGINE = [("engine: Hardness +100 %", {"tone.hardness": 100}, None),
           ("engine: Hardness −100 %", {"tone.hardness": -100}, None),
-          ("engine: Edge 50 %", {"hammer.edge": 50}, None),
+          ("engine: Edge 25 %", {"hammer.edge": 25}, "a hard tip, 5 % of the mass (a tack)"),
+          ("engine: Edge 50 %", {"hammer.edge": 50}, "a hard tip, 20 % of the mass"),
           ("engine: Edge 100 %", {"hammer.edge": 100}, "rigid (a tack)"),
           ("engine: Weight 50 %", {"hammer.weight": 50}, "hammer ×0.5 mass"),
           ("engine: Weight 200 %", {"hammer.weight": 200}, "hammer ×2 mass"),
           ("engine: Edge 100 %, Weight 30 %", {"hammer.edge": 100, "hammer.weight": 30}, "rigid, ×0.3 mass (a light hard hammer)"),
           ("engine: Core 48 %", {"hammer.core": 48}, "thin felt over a hard core"),
+          ("engine: Wear 50 %", {"hammer.wear": 50}, None),
+          ("engine: Wear 100 %", {"hammer.wear": 100}, None),
           ("engine: Material 25 % (worn felt)", {"hammer.morph": 1, "hammer.material": 25}, None),
           ("engine: Material 50 % (leather)", {"hammer.morph": 1, "hammer.material": 50}, None),
           ("engine: Material 75 % (wood)", {"hammer.morph": 1, "hammer.material": 75}, None),
@@ -79,8 +83,7 @@ def changes(k, fit, layers):
     f = fb[sel]
     out, base = {}, None
     for name, (s, surf, ratio) in H.variants(k, fit, st).items():
-        fs = 768000.0 if len(s.f) > len(st.f) else 192000.0
-        r = H.simulate(s, surf, ratio, v, fs=fs)
+        r = H.run(s, surf, ratio, v, st)
         assert r["stable"], name
         S = H.spectrum(r["F"], r["dt"], f) + 20 * np.log10(ratio / fit["ratio"])
         S = S + 20 * np.log10(np.maximum(np.abs(np.sinc(f / k["f0"] * s.width)), 1e-3))
@@ -138,13 +141,34 @@ def case(job):
     return rows
 
 
+def uneven(tool, lo=48, hi=72, layer=13):
+    """Uneven 100 %: each key from C3 to C5 against itself at 0 % (any key renders: no simulation)."""
+    rows = []
+    for key in range(lo, hi + 1):
+        a = note(tool, key, layer)
+        b = note(tool, key, layer, {"hammer.uneven": 100})
+        n = min(len(a), len(b))
+        dl = level(b) - level(a)
+        rows.append((key, P.distance(P.loudness(a[:n]), P.loudness(b[:n] * 10 ** (-dl / 20)))["score"], dl))
+    d = np.array([r[1] for r in rows])
+    print(f"\nUneven 100 %, keys {lo}-{hi} at layer {layer}: distance from the same key at 0 % (levels matched) and level change")
+    print("  " + "  ".join(f"{r[1]:.0f}" for r in rows) + "  %")
+    print("  " + "  ".join(f"{r[2]:+.1f}" for r in rows) + "  dB")
+    print(f"  median {np.median(d):.0f} %, {d.min():.0f}-{d.max():.0f} %; {np.sum(d < 7)} of {len(d)} keys under 7 %; "
+          f"neighbours differ by {np.median(np.abs(np.diff(d))):.0f} % (median)")
+
+
 def main():
     def extra(p):
         p.add_argument("--keys", default="36,48,60,72")
         p.add_argument("--layers", default="4,8,13,16")
         p.add_argument("--wav", default="")
         p.add_argument("--procs", type=int, default=2)
+        p.add_argument("--uneven", action="store_true", help="only the Uneven sweep over neighbouring keys")
     a = M.args(__doc__, extra)
+    if a.uneven:
+        uneven(a.render)
+        return
     import json
     fits = {f["key"]: f for f in json.load(open(M.TOOLS / "salamander_hammer_sim.json"))["keys"]}
     want = [int(x) for x in a.keys.split(",")]

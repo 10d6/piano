@@ -311,7 +311,7 @@ struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
       arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, restrike, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
-      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut, hamEdge, hamWeight, hamCore, hamMorph, hamMaterial;
+      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut, hamEdge, hamWeight, hamCore, hamMorph, hamMaterial, hamWear, hamUneven;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -383,6 +383,10 @@ struct Piano : Synth {
     hamCore = b.add("hammer.core").name("Hammer Core").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
     hamMorph = b.add("hammer.morph").name("Hammer Morph").toggle().group("Hammer Surface");
     hamMaterial = b.add("hammer.material").name("Hammer Material").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
+    // Wear: the felt packed hard where the piano is played most. Uneven: every key its own hammer. On top
+    // of Edge and Weight wherever those come from (set by hand or by Material); 0 is bit-identical
+    hamWear = b.add("hammer.wear").name("Hammer Wear").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
+    hamUneven = b.add("hammer.uneven").name("Hammer Uneven").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
     b.kitDefault("arp.envMode", 0);
@@ -1299,6 +1303,31 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // (less in the top two octaves, where Hardness takes far more of a note's level: half by C7)
   float unaFelt = kUnaFelt * una * (1 - 0.5f * std::clamp((note - 72) / 24.f, 0.f, 1.f));
   float hard = ctx.get(synth.hardness) * 0.01f;
+  // Uneven (docs/MODEL.md, Wear and Uneven): every key its own hammer, the same each time it is struck.
+  // Two fixed numbers per key, −1…1: its voicing (below 0 a softer felt: Hardness down by as much as
+  // kUnevenSoft; above 0 a harder one: Edge up by as much as kUnevenEdge, further down) and its
+  // mass (kUnevenOct octaves either way). The voicing goes by the square root of Uneven × the key's
+  // number: Edge does little at its low end, and half the keys' numbers are small (linear, 19 of 25
+  // keys were under 7 % by the distance at Uneven 100 %). Their own hash: nothing is drawn from the
+  // voice's generator.
+  constexpr float kUnevenSoft = 1.f, kUnevenEdge = 1.f, kUnevenOct = 0.6f, kWearEdge = 0.9f;
+  auto keyRandom = [](int key, uint32_t salt) {
+    uint32_t h = static_cast<uint32_t>(key) * 2654435761u ^ salt;
+    h ^= h >> 15;
+    h *= 2246822519u;
+    h ^= h >> 13;
+    h *= 3266489917u;
+    h ^= h >> 16;
+    return h * (2.f / 4294967296.f) - 1.f;
+  };
+  float uneven = std::clamp(ctx.get(synth.hamUneven) * 0.01f, 0.f, 1.f);
+  float keyVoicing = 0;
+  if (uneven > 0) {
+    float r = keyRandom(static_cast<int>(note), 0x9e3779b9u);
+    keyVoicing = std::copysign(std::sqrt(uneven * std::fabs(r)), r);
+  }
+  float keyMass = uneven > 0 ? uneven * keyRandom(static_cast<int>(note), 0x85ebca6bu) : 0.f;
+  if (keyVoicing < 0) hard = std::clamp(hard + kUnevenSoft * keyVoicing, -1.f, 1.f);
   auto fcAt = [&](int k) { return pd::hammerFc[k][l0] + (pd::hammerFc[k][l0 + 1] - pd::hammerFc[k][l0]) * lf; };
   float hammerFc = std::exp(std::log(fcAt(s.a)) + (std::log(fcAt(s.b)) - std::log(fcAt(s.a))) * s.w);
   if (una > 0) {
@@ -1428,6 +1457,17 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     sCore = std::clamp(ctx.get(synth.hamCore) * 0.01f, 0.f, 1.f);
     sMu = std::clamp(ctx.get(synth.hamWeight) * 0.01f, 0.25f, 4.f);
   }
+  // Wear: felt packed hard by use is a stiffer felt, which is Edge (the simulation's felt ten times
+  // stiffer is a rigid surface but for 1-3 dB): up to kWearEdge at D4, a third of that at the ends of
+  // the keyboard, which are played least. Uneven's harder keys and each key's mass go on here too.
+  float wear = std::clamp(ctx.get(synth.hamWear) * 0.01f, 0.f, 1.f);
+  if (wear > 0) {
+    float away = (note - 62) / 17.f;
+    sEdge += kWearEdge * std::sqrt(wear) * (0.35f + 0.65f * std::exp(-away * away));   // (the root: as Uneven's)
+  }
+  if (keyVoicing > 0) sEdge += kUnevenEdge * keyVoicing;
+  if (wear > 0 || keyVoicing > 0) sEdge = std::min(sEdge, 1.f);
+  if (keyMass != 0) sMu = std::clamp(sMu * std::exp2(kUnevenOct * keyMass), 0.25f, 4.f);
   if (std::fabs(sMu - 1.f) < 1e-4f) sMu = 1;
   if (sCore > 0) {   // the layer from which the core is reached: none at 0 %, every one at 100 %
     float from = (pd::kLayers - 1) - (pd::kLayers + 5) * sCore;

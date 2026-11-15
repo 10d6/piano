@@ -169,6 +169,7 @@ and keep the bass from getting further from its recordings on the distance alone
 | `mod-tremolo.json` | *Tremolo Ballad* (a synced triangle on `sk.level`): a 6 Hz, ~6.5 dB ripple at 120 bpm |
 | `strike-depth.json` | *Hollow Strike* (Strike Point 50 %, Strike Depth 100 %): an arpeggio from C2 to C6 and a chord |
 | `hammer-surface.json` | *Tack Piano* (Edge 100 %): an arpeggio from C2 to C6 and a chord |
+| `hammer-wear.json` | *Worn Hammers* (Wear 80 %, Uneven 70 %): every key from C3 to C5 in turn, then a chord |
 | `mod-surface.json` | *Shifting Hammers* (Morph on; random and velocity on Material): a fast phrase |
 | `mod-strike.json` | *Living Hammer* (random and key on Hardness and Strike Point, velocity on Overtone Decay): a fast phrase |
 | `mod-strings.json` | *Breathing Strings* (LFOs on Unison, Reverb and Brightness): a pedalled-length chord in the Cathedral |
@@ -265,7 +266,10 @@ Also:
   engine's own surface controls and sets each beside the simulated change it follows: at layer
   13 Edge 100 % 21-25 % (11-14 % from the simulated rigid hammer on the same key), Weight 50 %
   7-9 %, Core 48 % 20-24 % and 0 % at layer 4, Material 75 % 43-48 %; level within ±1.2 dB
-  (MODEL.md, The hammer's surface).
+  (MODEL.md, The hammer's surface). A hard tip on the felt (a tack) is 7-10 % from the felt and
+  7-9 % from Edge 25 %: no control of its own. Wear 100 % is 5-19 % (C2-C5; most at C4).
+  `--uneven` plays each key from C3 to C5 at Uneven 100 %: 8 % (median; 0-22 %), neighbours 8 %
+  apart.
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
   the on-screen keyboard plays velocity 100, pressing the graph at its left, middle and right
   strikes velocity 19, 64 and 121 (as the engine reports them), and nothing reaches the console.
