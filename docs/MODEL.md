@@ -1167,7 +1167,7 @@ them.
   output doesn't feed back into the voices.
 - **The body ring follows one decay per band.** It's a few dB strong at
   0.4–1 s and weak at 2–3 s on many keys.
-- **Partials 13–24** come out about 5 dB weak by 1.4 s.
+- **Partials 13–24** come out about 5 dB weak at 0.4 s.
 - **A6's** attack brightens less from soft to loud than the recordings at 2-4 kHz.
 - **The strike's finer changes with velocity** (one response per key, shaped by a shelf and two
   gains), and **between the measured keys** (the nearer key's response).
