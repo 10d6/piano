@@ -144,6 +144,14 @@ inline float charDecay(int i) {
 
 // How much between-key blending goes by frequency rather than by partial number (0-1).
 constexpr float kByFrequency = BY_FREQUENCY;
+// Restrike: what the hammer's felt takes from the vibration it lands on, in dB, at the partials
+// that move most under it. A judgment (nothing here measures a string struck while it rings);
+// 0 makes a restrike at 100 % a plain sum of the two strikes, which tools/measure/restrike.py
+// checks on a build with it at 0.
+#ifndef RESTRIKE_FELT_DB
+#define RESTRIKE_FELT_DB 6.f
+#endif
+constexpr float kRestrikeFeltDb = RESTRIKE_FELT_DB;
 
 // Measured key k's level (per mic, dB, at layer l0 + lf) and log characteristic decay at the
 // frequency `rat` times the pitch of `note`: interpolated along k's own partials, in log frequency.
@@ -254,6 +262,14 @@ struct PianoVoice : Voice {
   bool listenStruck = false;       // a strike since the gains were worked out
   int struckFrom = -1;             // this block's strike added the components from here on
 
+  // Restrike (string.restrike): which measured mode a component is (its index in pd::modes + 1),
+  // so a new strike can add itself to the vibration already there; 0 for the rest (onset twins,
+  // the soft pedal's copies, partials without modes), −1 for what a strike has left to fade
+  short mid[kCapacity] = {};
+  short tagNext = 0;
+  float feltKeep[kMaxPartials + 1] = {};
+  void foldOld(int j, int at, int old, float fade);
+
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
   bool lastDamped = false;
@@ -290,7 +306,7 @@ struct PianoVoice : Voice {
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
-      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
+      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, restrike, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
       spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
 
   void defineParams(ParamBuilder& b) override {
@@ -315,6 +331,8 @@ struct Piano : Synth {
     sustain = b.add("string.sustain").name("Sustain").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
     damper = b.add("string.damper").name("Dampers").range(25, 400).log().def(100).unit("%").modulatable().group("Strings");
     topDampers = b.add("string.topdampers").name("Top Dampers").choices({"None above E6", "All keys"}).group("Strings");
+    // Restrike (PianoVoice::strike): a key struck while it rings. 0 hands the old vibration over (bit-identical)
+    restrike = b.add("string.restrike").name("Restrike").range(0, 100).def(0).unit("%").modulatable().group("Strings");
     resonance = b.add("string.resonance").name("Resonance").range(-40, 24).def(0).unit("dB").modulatable().group("Strings");
     width = b.add("space.width").name("Width").range(0, 150).def(100).unit("%").modulatable().group("Space");
     room = b.add("space.room").name("Reverb").range(0, 100).def(12).unit("%").modulatable().group("Space");
@@ -502,6 +520,7 @@ struct Piano : Synth {
 
   void prepare(const PrepareInfo& info) override {
     sr = static_cast<float>(info.sampleRate);
+    for (short& v : modeSlot) v = -1;
     arpOn = info.param("arp.on");
     reverb.prepare(sr);
     // The noise bands' normalisation below draws from this generator after the old room's impulse
@@ -679,6 +698,9 @@ struct Piano : Synth {
   bool keyLive[128] = {}, keyPoles[128] = {}, keyDamped[128] = {};
   float liftAmp[pd::kNoiseBands] = {};           // the pedal's lift: amplitude given to each partial, per band
   bool sounding[128] = {};                       // set by voices with partials sounding, each block
+  // Restrike: where in the striking voice each mode's component is (−1: nowhere). Filled and
+  // emptied within one strike.
+  short modeSlot[pd::kModes];
   bool liftPending = false;
   float a4Hz = 440.f;
   dsp::Rng liftRng;   // its own stream, so the lift's phases don't depend on the block size
@@ -1110,12 +1132,15 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
   if (unaExtra > 0) amp *= back != 0 ? unaLate : unaEarly;
   int each = onset > 0 ? 2 : 1;
   if (count + each * (back != 0 ? 2 : 1) > kCapacity) return;
+  short tag = tagNext;
   addOne(amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, 0);
+  tagNext = 0;   // only the component itself: its twin and the pedal's copies are passing things
   if (onset > 0) addOne(-amp, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, onset);
   if (back != 0) {
     addOne(-back, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, unaExtra);
     if (onset > 0) addOne(back, decayDb, rat, offHz, phase, dmp, gl, gr, stereoPhase, unaExtra + onset);
   }
+  tagNext = tag;
 }
 
 void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float phase, float dmp, float gl, float gr,
@@ -1134,6 +1159,50 @@ void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float 
   pr[i] = pi[i] = 0;
   pnum[i] = static_cast<unsigned char>(curPn);
   gPrev[i] = pnGain[curPn];
+  mid[i] = tagNext;
+}
+
+// Restrike: the mode j has just been added at `at` by a new strike, and the vibration from
+// before may hold the same mode (same frequency, same decay). Then the part of the old one the
+// felt leaves (feltKeep) goes into the new component, which carries both from here on, and the
+// old component keeps only the rest, fading as the hammer lands. Two components on one pole are
+// one: left = Re(z₁)·wl₁ + Re(z₂)·wl₂ = Re(ZL), right = Re(z₁c₁ + z₂c₂) = Re(ZR) with c the complex
+// gain to the right mic; so z = ZL / wl and c = ZR / z, with wl chosen to keep wl² + |c|² = 2 as
+// every component has (so |z|² stays the power, for the floor and the voice's end).
+void PianoVoice::foldOld(int j, int at, int old, float fade) {
+  int i = synth.modeSlot[j];
+  if (i < 0 || i >= old || mid[i] != j + 1) return;
+  if (ratio[i] != ratio[at] || offset[i] != offset[at] || decay[i] != decay[at] || damp[i] != damp[at]) return;
+  float k = feltKeep[pnum[at]];
+  const double kd = k, ar = re[at], ai = im[at];
+  double kr = kd * re[i], ki = kd * im[i];
+  double zlr = ar * wl[at] + kr * wl[i], zli = ai * wl[at] + ki * wl[i];
+  // z·c with c = wrr − j·wri
+  double zrr = ar * wrr[at] + ai * wri[at] + kr * wrr[i] + ki * wri[i];
+  double zri = ai * wrr[at] - ar * wri[at] + ki * wrr[i] - kr * wri[i];
+  double pl = zlr * zlr + zli * zli, prw = zrr * zrr + zri * zri;
+  if (pl + prw > 1e-24) {
+    if (prw > 1e6 * pl) {   // the left mic's parts cancel: the right carries it
+      re[at] = static_cast<float>(zrr * 0.70710678);
+      im[at] = static_cast<float>(zri * 0.70710678);
+      wl[at] = 0;
+      wrr[at] = 1.41421356f;
+      wri[at] = 0;
+    } else {
+      double w = std::sqrt(2.0 / (1.0 + prw / pl));
+      double zr = zlr / w, zi = zli / w, n = zr * zr + zi * zi;
+      re[at] = static_cast<float>(zr);
+      im[at] = static_cast<float>(zi);
+      wl[at] = static_cast<float>(w);
+      wrr[at] = static_cast<float>((zrr * zr + zri * zi) / n);    // c = ZR · conj(z) / |z|²
+      wri[at] = static_cast<float>(-(zri * zr - zrr * zi) / n);
+    }
+  }
+  re[i] *= 1 - k;
+  im[i] *= 1 - k;
+  extra[i] = std::max(extra[i], fade);
+  mid[i] = -1;
+  synth.modeSlot[j] = -1;
 }
 
 void PianoVoice::start(const NoteOn& n, const StartInfo& s) {
@@ -1360,7 +1429,27 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   // where their phases disagree, and a fast repeat could make no attack at all.
   // It fades three times as fast as the new strike swells, as the hammer's contact stops the
   // string, so the two barely overlap.
-  for (int i = 0; i < count; ++i) extra[i] = std::max(extra[i], 3.f * onset);
+  //
+  // Restrike turns that into what a string does: the new strike is added to the vibration
+  // already there, less what the felt takes while it rests on the string. The felt is a brief
+  // touch at the strike point, so it takes most from the partials that move most there
+  // (kRestrikeFeltDb × sin²(nπx)) and nothing from those with a node under it. Partial by
+  // partial the two strikes then meet in or out of step, as their timing has it: no two repeats
+  // alike, and a pedalled repeat builds. At 0 % (the default) the handover above is all there is.
+  const int old = count;
+  const float fade = 3.f * onset;
+  const float keep = std::clamp(ctx.get(synth.restrike) * 0.01f, 0.f, 1.f);
+  if (keep <= 0 || old == 0) {
+    for (int i = 0; i < count; ++i) extra[i] = std::max(extra[i], fade);
+  } else {
+    float x = std::min((pd::strikeX[s.a] + (pd::strikeX[s.b] - pd::strikeX[s.a]) * s.w) * strikeScale, 0.5f);
+    for (int n = 1; n <= kMaxPartials; ++n) {
+      float sn = std::sin(0.5f * kTwoPi * n * x);
+      feltKeep[n] = keep * dbToGain(-kRestrikeFeltDb * sn * sn);
+    }
+    for (int i = 0; i < old; ++i)
+      if (mid[i] > 0) synth.modeSlot[mid[i] - 1] = static_cast<short>(i);
+  }
   nzRise = 1;
   nzRiseMul = std::exp(-1.f / (tau * sr));
   int layerNear = static_cast<int>(std::lround(lp));
@@ -1491,7 +1580,11 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         if (flip != 0) ph0 += flip;
         float g0 = dbToGain(ml), g1 = dbToGain(mr);
         float a = std::sqrt(0.5f * (g0 * g0 + g1 * g1));
+        int at = count;
+        tagNext = static_cast<short>(j + 1);
         add(a, pd::modes[j].decay * decScale, rat, pd::modes[j].off, ph0, dmp, g0 / a, g1 / a, sp, onset);
+        tagNext = 0;
+        if (keep > 0 && count > at) foldOld(j, at, old, fade);
       }
       continue;
     }
@@ -1517,6 +1610,27 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     // measured levels and the partners the beat on top
     part(after, s2);
   }
+  // Restrike, for what the new strike had no place for (partials without modes, modes this
+  // strike left out, the old strike's passing parts): the kept share goes on as a component of
+  // its own, and the rest fades as the hammer lands. With no room left, it all fades.
+  if (keep > 0)
+    for (int i = 0; i < old; ++i) {
+      if (mid[i] > 0) synth.modeSlot[mid[i] - 1] = -1;
+      if (mid[i] >= 0) {
+        float k = feltKeep[pnum[i]];
+        if (count < kCapacity && (re[i] * re[i] + im[i] * im[i]) * k * k > 1e-8f) {
+          int c = count++;
+          re[c] = re[i] * k; im[c] = im[i] * k; pr[c] = pr[i]; pi[c] = pi[i];
+          wl[c] = wl[i]; wrr[c] = wrr[i]; wri[c] = wri[i];
+          ratio[c] = ratio[i]; offset[c] = offset[i]; decay[c] = decay[i]; damp[c] = damp[i]; extra[c] = extra[i];
+          pnum[c] = pnum[i]; gPrev[c] = gPrev[i]; mid[c] = mid[i];
+          re[i] *= 1 - k;
+          im[i] *= 1 - k;
+        }
+        mid[i] = -1;
+      }
+      extra[i] = std::max(extra[i], fade);
+    }
   unaEarly = unaLate = 1;
   unaExtra = 0;
   for (int i = count; i < ((count + kLanes - 1) & ~(kLanes - 1)); ++i)
@@ -1867,7 +1981,7 @@ void PianoVoice::cull() {
       re[i] = re[j]; im[i] = im[j]; pr[i] = pr[j]; pi[i] = pi[j];
       wl[i] = wl[j]; wrr[i] = wrr[j]; wri[i] = wri[j];
       ratio[i] = ratio[j]; offset[i] = offset[j]; decay[i] = decay[j]; damp[i] = damp[j]; extra[i] = extra[j];
-      pnum[i] = pnum[j]; gPrev[i] = gPrev[j];
+      pnum[i] = pnum[j]; gPrev[i] = gPrev[j]; mid[i] = mid[j];
       re[j] = im[j] = pr[j] = pi[j] = wl[j] = wrr[j] = wri[j] = 0;
       gPrev[j] = 1;
     } else {

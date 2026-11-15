@@ -6,12 +6,15 @@ note-on gets its note-off, keys A0-E6 so every key has a damper), renders each a
 that still sound 3 s after everything was released.
 
     python3 -I tools/stress.py build/piano_render 150
+    python3 -I tools/stress.py build/piano_render 150 overlap string.restrike=100
 """
 import json, subprocess, numpy as np, soundfile as sf, sys, random
 tool=sys.argv[1]; n=int(sys.argv[2])
 # balanced: a key is released before it is struck again (a keyboard); overlap: a key can be struck
 # again while still down, and each press gets its own note-off later (a sequencer)
 mode=sys.argv[3] if len(sys.argv)>3 else "balanced"
+# further arguments: settings for every passage, id=value (string.restrike=100)
+extra={a.split("=")[0]:float(a.split("=")[1]) for a in sys.argv[4:]}
 fails=0
 for seed in range(n):
     rnd=random.Random(seed); ev=[]; t=0.0; down={}
@@ -36,7 +39,7 @@ for seed in range(n):
         for _ in range(c): ev.append({"t":round(t,4),"off":k})
     ev.append({"t":round(t,4),"cc":64,"value":0})
     end=t
-    sc={"patch":"init","params":{"space.room":0},"length":round(end+4.0,3),"events":ev}
+    sc={"patch":"init","params":{"space.room":0,**extra},"length":round(end+4.0,3),"events":ev}
     open('/tmp/f.json','w').write(json.dumps(sc)); r=subprocess.run([tool,'/tmp/f.json','--out','/tmp/f.wav'],capture_output=True,text=True)
     y,sr=sf.read('/tmp/f.wav',always_2d=True); m=np.abs(y).max(1)
     tail=20*np.log10(m[int((end+3.0)*sr):].max()+1e-12)

@@ -734,7 +734,8 @@ aftersound decay for a medium strike.
 - **One voice per key** (`allocateVoice`).
   - Striking a key that's still sounding **hands the old vibration over**: the
     old components fade three times as fast as the new strike swells, so fast
-    repeats can't cancel.
+    repeats can't cancel. **Restrike** adds the new strike to the old vibration
+    instead (the next section).
   - A voice holds up to 2048 components.
   - It ends when its total level is under −84 dBFS.
 - **Dampers** take 70 dB/s at A0 rising to 300 dB/s at E6, 3 % faster per
@@ -749,6 +750,71 @@ aftersound decay for a medium strike.
   piano before the reverb existed. The space is in **Space, below**.
 - **Headroom.** Output is the recordings' level −10 dB (`kTrimDb`); one loud
   recorded note peaks near 0 dBFS.
+
+## A key struck while it rings: Restrike
+
+Not measured: no recording here holds a key struck while it still sounds. With **Restrike**
+(`string.restrike`) at 0 %, the default, the handover above is all there is and the output is
+bit-identical to the piano without it.
+
+**The physics.** A hammer meeting a string that already moves adds its own motion to it: to
+first order the result is the old vibration plus the new strike. Partial by partial the two
+meet in step or out of it, as the moment of the strike has it, so no two repeats come out
+alike, a repeat under the pedal builds on the last, and now and then a strike lands against
+the string and comes out weaker. And the felt rests on the string for a few milliseconds: a
+brief touch at the strike point, which takes most from the partials that move most there and
+nothing from those with a node under it (Touch Point's rule).
+
+**In the engine** (`PianoVoice::strike`, `foldOld`). At Restrike r each old partial n keeps
+
+    k(n) = r × 10^(−6 dB × sin²(nπx) / 20)
+
+of itself (x: the key's strike point, as Strike Point has moved it), and the rest fades as the
+hammer lands, as the whole of it does at 0 %. The 6 dB is a judgment (`kRestrikeFeltDb`).
+
+- **Where the partial is modes** (most of the keyboard), a mode's frequency and decay are the
+  same on every strike, whatever the velocity. So the kept part goes *into* the new strike's
+  component for that mode, and one component carries both strikes from then on: two components
+  on one pole are one, with the gains to the two mics worked out again for the sum. A key
+  struck a hundred times holds no more components than one struck twice.
+- **Elsewhere** (partials without modes, modes a softer strike leaves out, the old strike's
+  onset twins) the kept part goes on as a component of its own. These build up over repeats
+  until they fade under the floor: C4, which has no modes, levels off at 683 components in a
+  ten-a-second trill under the pedal (259 at 0 %), far under the 2048 a voice holds; with no room
+  left, the old part fades as at 0 %.
+
+The strike's knock and the body's ring are added as on any strike. What the hammer itself does
+differently on a moving string (a harder or softer blow as the string comes towards it or
+goes away) isn't modelled: that needs a simulated hammer.
+
+Measured (`tools/measure/restrike.py`, C2-C6, under the pedal, Restrike 100 % against 0 %):
+
+| | Restrike 0 % | Restrike 100 % |
+|---|---|---|
+| loud, then soft (velocity 115, then 35 half a second later): the second after | the soft note alone | −2.4…+5.2 dB, **29-151 %** from 0 % by the perceptual distance |
+| fast uneven repeats (velocity 90, 70-130 ms apart): strike to strike, levels matched | 3-11 % | **9-48 %** |
+| … the first six partials' spread over the strikes | 0.0-0.5 dB | 1.3-3.5 dB |
+| … the weakest strike's first 30 ms against the first strike's | −0.1…+0.2 dB | −4.6…+0.1 dB |
+| … the last strike against the first | +0.0…+0.4 dB | +0.9…+5.3 dB |
+| even repeats, four a second: the passage's distance from 0 % | | 1-4 % |
+| the key let go between strikes, no pedal | | 0 % (0-2 % with Dampers at 400 %) |
+
+So it is heard where old vibration is still strong when the hammer lands: a soft strike on a
+loud note, fast repeats, the pedal down, the undamped top keys. **At an even four strikes a
+second it changes almost nothing**: by then the old vibration has faded far, and evenly spaced
+strikes meet it the same way each time. Without the pedal the dampers have stopped it.
+
+The sum itself is checked on a build with the felt at 0 dB (`-DRESTRIKE_FELT_DB=0.f`): two
+strikes at Restrike 100 % against the two rendered alone and added. On keys whose partials are
+all modes the difference is 46-74 dB under the sum (C3, C5; strikes 50, 137 and 500 ms apart at
+different velocities). On C2, C4 and C6 it is 24-47 dB, which is not the restrike's error: there
+each strike draws its own beat rates (partials without modes), and below A2 the strike is noise.
+
+Cost: nothing at 0 %. At 100 %, 36 pedalled keys struck three times rendered in the same time
+(+1 %); a ten-a-second trill on one key took up to 18 % longer.
+
+Preset *Struck Again* (with Dampers at 400 %, so it can be heard without a pedal: press the
+velocity graph at its right, then at its left). Test: `restrike-keep`.
 
 ## Parameters
 
@@ -771,6 +837,7 @@ aftersound decay for a medium strike.
 | Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
 | Sustain | `string.sustain` | all string decays (voices and bank) |
 | Dampers | `string.damper` | damper speed |
+| Restrike | `string.restrike` | a key struck while it rings: 0 % hands the old vibration over (the default), 100 % adds the new strike to it, less what the felt takes |
 | Top Dampers | `string.topdampers` | None above E6 / All keys |
 | Resonance | `string.resonance` | sympathetic drive |
 | Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
@@ -1030,7 +1097,7 @@ engine reads them:
 
 | Read | Destinations | What a route does |
 |---|---|---|
-| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
+| at the strike (`PianoVoice::strike`) | `tone.bright`, `tone.attack`, `tone.hammer`, `tone.hardness`, `tone.strikepoint`, `tone.body`, `string.restrike` | sets each note's tone as it's struck (per-voice sources: velocity, key, random, a Per Voice LFO); a note that's ringing keeps its tone |
 | each control block, per voice | `string.sustain`, `string.unison`, `string.damper`, `string.overtonedecay`; `touch.press`, `touch.point`, `touch.width`; `listen.depth`, `listen.point`, `listen.width`; `parp.rate`, `parp.overlap`, `parp.boost`, `parp.others`, `parp.width` | moves ringing notes: `updatePoles` runs on any change, so a moving route recomputes every component's pole each block (about 10 % slower with 36 notes ringing under the pedal) |
 | each control block, globally (`processGlobal`) | `string.resonance`, `space.room`, `space.width`, `space.decay`, `space.size`, `space.damping`, `space.highcut` | global modulation only: per-voice sources count as 0. The sympathetic bank reads Sustain, Unison, Dampers and Overtone Decay globally too, so a per-voice route there moves the struck strings but not the free ones |
 | kit, with the arpeggiator | `arp.phraseAttack`, `arp.phraseDecay`, `arp.phraseSustain`, `arp.phraseRelease` (synthkit #26) and the kit's own arp destinations (`arp.gate`, `arp.swing`, `arp.evolve`, `arp.pattern`, `arp.xfade`, `arp.keyLevel`, `arp.seqLevel`) | the phrase envelope (each sequencer lane's too) follows global modulation once per host block; a moved Sustain is reached at the Decay rate. Per-voice sources count as 0 |

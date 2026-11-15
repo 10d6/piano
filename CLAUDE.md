@@ -205,7 +205,18 @@ from CI at milestones.
   in parallel and combine them with `--merge` (see `main()`).
 - Voices: one per key. A restrike hands the old vibration over to the new
   (it fades three times as fast as the new strike swells), so fast repeats
-  can't cancel. A voice ends when its total level is under −84 dBFS. The
+  can't cancel. **Restrike** (`string.restrike`, default 0 = that handover, bit-identical;
+  docs/MODEL.md) adds the new strike to the old vibration instead: each old partial keeps
+  r × 10^(−6 dB·sin²(nπx)/20) (the felt, a judgment: `kRestrikeFeltDb`). Modal components carry a
+  tag (`mid`, the mode's index + 1; move it wherever components move, as `cull` does) and the
+  kept part is folded into the new strike's component for the same mode (`foldOld`: one pole,
+  one component, mic gains recomputed), so repeats don't add components; the rest (no modes,
+  twins) is kept as components of its own and can pile up (C4: 683 in a trill). It only works
+  because a mode's frequency and decay don't depend on the layer: keep that so, or folds stop
+  matching (they check, and fall back). Heard where old vibration is strong (loud then soft
+  29-151 %, fast uneven repeats); even repeats at 4/s and unpedalled playing change ~0 %: say
+  so. `tools/measure/restrike.py` (`--felt0` with a `-DRESTRIKE_FELT_DB=0.f` build checks the sum);
+  stress with `string.restrike=100`. Preset *Struck Again*; test `restrike-keep`. A voice ends when its total level is under −84 dBFS. The
   body ring lives in the synth, per key, and is damped from note and pedal
   events in `processEvents` (keys/pedal followed there), not by the voice.
 - After any change to voices, notes or pedal handling, run

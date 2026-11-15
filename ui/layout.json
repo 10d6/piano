@@ -88,6 +88,9 @@
                   "param": "string.damper"
                 },
                 {
+                  "param": "string.restrike"
+                },
+                {
                   "param": "string.topdampers"
                 },
                 {
@@ -356,7 +359,8 @@
     "touch.dry": "How much of the finger's damping reaches the ring the note leaves in the piano's body. At 0% the ring stays, as it would in a real piano (the finger is on the strings, not the soundboard): after a mute a faint wash remains. Turned up, the ring stops with the strings: a dry thud. Listen on the Felt Mute preset; on harmonics it makes little difference.",
     "listen.depth": "How much of the sound comes from the listening point. 0% is the piano as measured (the sound the bridge and soundboard give). 100% is the point alone; in between, a blend of the two. The note's loudness is kept.",
     "listen.point": "Where the sound is taken, as a share of the string's length from its end. Low (2-6%): close to the end, thin, bright and nasal, the fundamental weak. Around 12-25%: fuller, with single partials missing (every 8th at 12.5%, every 4th at 25%). 50%: the middle, hollow, every second partial silent. A still point is subtle in the middle of the range; the sound is in the movement. Route an LFO (Per Voice) or a Shape here: the Wandering Ear and Opening Ear presets.",
-    "listen.width": "How much of the string the listening point covers. 0% is a single point: every partial up to the top. Wider averages the string's movement, which quietens the high partials: a darker, rounder sound."
+    "listen.width": "How much of the string the listening point covers. 0% is a single point: every partial up to the top. Wider averages the string's movement, which quietens the high partials: a darker, rounder sound.",
+    "string.restrike": "What happens when a key is struck while its strings still ring (under the pedal, in fast repeats, or on the top keys, which have no dampers). At 0% the new strike takes over from the old vibration: every repeat sounds the same. Turned up, the new strike is added to what is already ringing, less what the hammer's felt takes, as on a real string: a soft strike no longer cuts off a loud note ringing under it, fast repeats differ from one another and build, and now and then a strike lands against the string's motion and comes out weaker. Listen with the pedal down: play a note hard, then softly; or try the Struck Again preset, where slow dampers do the pedal's work, pressing the velocity graph at its right and then its left."
   },
   "keyboard": true
 }
