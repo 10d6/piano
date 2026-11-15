@@ -1839,7 +1839,7 @@ bool PianoVoice::listenBlock(VoiceContext& ctx) {
     sy0 = sy1; sy1 = ny; sw0 = sw1; sw1 = nw;
     listenGain[n] = g;
     p0 += listenPow[n];
-    p1 += listenPow[n] * g * g;
+    p1 += static_cast<double>(listenPow[n]) * g * g;
   }
   float comp = p0 > 0 && p1 > 0 ? static_cast<float>(std::min(std::sqrt(p0 / p1), 4.0)) : 1.f;
   for (int n = 1; n <= kMaxPartials; ++n) listenGain[n] *= comp;
