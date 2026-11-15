@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Opening Ear", "params": {"listen.depth": 100, "listen.point": 3, "shape1.trigger": 0, "shape1.sync": 0, "shape1.time": 3, "shape1.loop": 0, "space.room": 22}, "mod": [{"src": "shape1", "dst": "listen.point", "amt": 1.0}], "shapes": [{"curves": [{"points": [[0, 0, 0, 0], [1, 1, 0, 0]]}]}]}

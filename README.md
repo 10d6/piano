@@ -152,7 +152,16 @@ and a fifth up, and so on down the string (**Point**, which **Snap** keeps on th
 from a fingertip to a strip of felt, a mute. All three can be modulated, so a note can be touched
 after it is struck, or each note given its own harmonic. What the finger takes doesn't come back
 until the key is struck again. Try the *Octave Harmonics*, *Late Touch*, *Chance Harmonics* and
-*Felt Mute* presets. At Press 0, the piano is as measured.
+*Felt Mute* presets. At Press 0, the piano is as measured. **Dry** lets the finger stop the ring
+the note leaves in the piano's body too (a real finger wouldn't): a drier mute.
+
+**Listening Point** (a creative extra, off by default): where along the string the sound is
+taken, as a pickup takes it. Each partial is heard as strongly as the string moves there: thin
+and bright near the end, hollow at the middle. Nothing is taken from the vibration, so **Point**
+can move while notes ring (an LFO or a Shape on it) and the partials rise and fall one after
+another; **Depth** blends it with the piano's own sound and **Width** rounds the top off. A still
+point is subtle in the middle of its range: the sound is in the movement. Try the *Wandering
+Ear*, *Opening Ear* and *Bridge Pickup* presets. At Depth 0, the piano is as measured.
 
 **Partial Arp** (a creative extra, off by default): each note's partials take their turn, as a
 melody inside the note. By default a turn digs the partials out (a moving notch, −20 dB);
@@ -177,7 +186,7 @@ note of a phrase, every bar or beat, or run freely with the song. LFOs and Shape
 each other's rate and depth (a Shape that speeds up a tremolo, velocity setting vibrato depth).
 Tone and hammer settings
 (Brightness, Hardness, Strike Point, Attack, Hammer, Body) are read as each note is struck, so a
-route gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay, Touch Point, and
+route gives each note its own tone; the strings' Sustain, Unison, Dampers and Overtone Decay, Touch Point, Listening Point and
 the Partial Arp, move while notes ring; Space and the arpeggiator's phrase envelope (Attack,
 Decay, Sustain, Release) follow sources shared by all notes (Global LFOs, Shapes on First Note,
 Bar, Beat or Free, the wheel, the beat). With no routes the piano is as measured. Try *Tape Wow*,
@@ -186,7 +195,7 @@ pumping the level on every beat) and *Tidal Arp* (a 4-bar Shape swelling the arp
 phrase).
 
 **The page** has two tabs. **Piano** holds the instrument (Playing, Tone, Strings, Space).
-**Synthesis** holds the creative parts, each folding at its title: Partial Arp, Touch Point, Arp / Sequencer,
+**Synthesis** holds the creative parts, each folding at its title: Partial Arp, Touch Point, Listening Point, Arp / Sequencer,
 its pattern, note and phrase envelopes, LFO 1-4, Shape 1-4 and the Mod Matrix (open by default).
 Output stays below both. The page remembers which tab and panels you left open; **Modulate…**
 (right-click a knob) opens the matrix wherever it is.

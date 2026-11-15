@@ -198,6 +198,7 @@ struct PianoVoice : Voice {
               float stereoPhase, float extraDb);
   void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma);
   bool touchBlock(VoiceContext& ctx);
+  bool listenBlock(VoiceContext& ctx);
   void cull();
   void arpBlock(VoiceContext& ctx, int frames, int pattern);
   void arpSequence(int scale, int lo, int hi, bool octaves);
@@ -245,6 +246,14 @@ struct PianoVoice : Voice {
   float lastTouchPress = 0, lastTouchPoint = -1, lastTouchWidth = -1;
   bool lastTouchSnap = false;
 
+  // Listening Point (listen.*): each partial's share of the note's first half second (set as the
+  // strike adds its components), and the gain per partial number the settings and those give
+  float listenPow[kMaxPartials + 1] = {};
+  float listenGain[kMaxPartials + 1] = {};
+  float lastListenDepth = 0, lastListenPoint = -1, lastListenWidth = -1;
+  bool listenStruck = false;       // a strike since the gains were worked out
+  int struckFrom = -1;             // this block's strike added the components from here on
+
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
   bool lastDamped = false;
@@ -281,7 +290,7 @@ struct PianoVoice : Voice {
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
-      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, touchSnap, spaceType, spaceDecay, spaceSize, spacePredelay,
+      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
       spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
 
   void defineParams(ParamBuilder& b) override {
@@ -339,6 +348,11 @@ struct Piano : Synth {
     touchPoint = b.add("touch.point").name("Touch Point").range(2, 50).log().def(50).unit("%").modulatable().group("Touch Point");
     touchWidth = b.add("touch.width").name("Touch Width").range(0, 30).exp(3).def(1).unit("%").modulatable().group("Touch Point");
     touchSnap = b.add("touch.snap").name("Touch Snap").toggle().def(1).group("Touch Point");
+    // Listening Point (PianoVoice::listenBlock): where along the string the sound is taken. Depth 0 leaves the piano bit-identical
+    listenDepth = b.add("listen.depth").name("Listening Depth").range(0, 100).def(0).unit("%").modulatable().group("Listening Point");
+    listenPoint = b.add("listen.point").name("Listening Point").range(2, 50).log().def(12).unit("%").modulatable().group("Listening Point");
+    listenWidth = b.add("listen.width").name("Listening Width").range(0, 20).exp(3).def(0).unit("%").modulatable().group("Listening Point");
+    touchDry = b.add("touch.dry").name("Touch Dry").range(0, 100).def(0).unit("%").group("Touch Point");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
     b.kitDefault("arp.envMode", 0);
@@ -583,6 +597,13 @@ struct Piano : Synth {
     bodyDamp[key] = std::max(dampDbPerS, 0.f);
     if (dampDbPerS <= 0) return;
     for (int b = 0; b < pd::kNoiseBands; ++b) bodyDec[key][b] = std::min(bodyDec[key][b], -dampDbPerS);
+  }
+  // Touch Point's Dry: the finger stops the key's ring in the body too. A choice of sound, not
+  // physics: the ring is the body and the other strings answering the strike, which a finger on
+  // this key's strings doesn't reach. It stays stopped until the key is struck again.
+  void touchBody(int key, float dbPerS) {
+    key = std::clamp(key, 0, 127);
+    for (int b = 0; b < pd::kNoiseBands; ++b) bodyDec[key][b] = std::min(bodyDec[key][b], -dbPerS);
   }
   void clearBody() {
     for (int k = 0; k < 128; ++k) {
@@ -1079,6 +1100,9 @@ void PianoVoice::add(float amp, float decayDb, float rat, float offHz, float pha
   // a component and its onset twin go in together or not at all: either alone would click.
   // Below −80 dBFS the twin is left out: so quiet a component's start can't be heard as a click.
   if (std::fabs(amp) < 1e-4f) onset = 0;
+  // Listening Point's loudness: what this component adds to the note's first half second, roughly
+  // (its power × how long it lasts: ½ s for a slow one, 1/k for a fast one; changes no sound)
+  listenPow[curPn] += amp * amp * 0.5f * (gl * gl + gr * gr) / (2.f + 0.2302585f * std::fabs(decayDb));
   // the soft pedal: amp × (late − (late − early)·e^{−t/τ}), the second term as a copy that fades
   // faster by unaExtra (and is left out under −80 dBFS, like the onset twin)
   float back = unaExtra > 0 ? amp * (unaLate - unaEarly) : 0.f;
@@ -1131,6 +1155,8 @@ void PianoVoice::start(const NoteOn& n, const StartInfo& s) {
 
 void PianoVoice::strike(VoiceContext& ctx, float vel) {
   lastPitch = -1;         // recompute every pole
+  for (float& v : listenPow) v = 0;
+  listenStruck = true;
   // the arpeggiator starts its pattern again with each strike; its own random stream, so the
   // voice's (the beats, the noise) is the same with it on or off
   arpPh = 0;
@@ -1782,6 +1808,44 @@ bool PianoVoice::touchBlock(VoiceContext& ctx) {
   return true;
 }
 
+// Listening Point, once per control block: where along the string the sound is taken, as a
+// pickup would take it. At the fraction y the string's partial n moves by sin(nπy), signed (it
+// turns over past each of its nodes), and a pickup w of the string wide averages that to
+// sin(nπy)·sinc(nw). Depth blends this with the piano's own sound, which is the bridge's: every
+// partial at 1. The blend is scaled so the note's energy over its first half second stays what it
+// was (by no more than 12 dB): the point changes colour, not level. It scales what each component
+// sends to the mics (the Partial Arp's path), never the vibration, so it can move while notes
+// ring and nothing is lost. False at Depth 0.
+bool PianoVoice::listenBlock(VoiceContext& ctx) {
+  float d = std::clamp(ctx.get(synth.listenDepth) * 0.01f, 0.f, 1.f);
+  if (d <= 0) {
+    lastListenDepth = 0;
+    return false;
+  }
+  float y = std::clamp(ctx.get(synth.listenPoint) * 0.01f, 0.02f, 0.5f);
+  float w = std::clamp(ctx.get(synth.listenWidth) * 0.01f, 0.f, 0.2f);
+  if (d == lastListenDepth && y == lastListenPoint && w == lastListenWidth && !listenStruck) return true;
+  lastListenDepth = d; lastListenPoint = y; lastListenWidth = w; listenStruck = false;
+  double p0 = 0, p1 = 0;
+  // sin(nθ) = 2 cos θ · sin((n−1)θ) − sin((n−2)θ), for the point and for the width: two cosines
+  // and two sines a block while the point moves, not two sines a partial
+  const float ty = 0.5f * kTwoPi * y, tw = 0.5f * kTwoPi * w;
+  const float cy = 2 * std::cos(ty), cw = 2 * std::cos(tw);
+  float sy0 = 0, sy1 = std::sin(ty), sw0 = 0, sw1 = std::sin(tw);
+  for (int n = 1; n <= kMaxPartials; ++n) {
+    float a = tw * n;
+    float g = (1 - d) + d * sy1 * (a > 1e-4f ? sw1 / a : 1.f);
+    float ny = cy * sy1 - sy0, nw = cw * sw1 - sw0;
+    sy0 = sy1; sy1 = ny; sw0 = sw1; sw1 = nw;
+    listenGain[n] = g;
+    p0 += listenPow[n];
+    p1 += static_cast<double>(listenPow[n]) * g * g;
+  }
+  float comp = p0 > 0 && p1 > 0 ? static_cast<float>(std::min(std::sqrt(p0 / p1), 4.0)) : 1.f;
+  for (int n = 1; n <= kMaxPartials; ++n) listenGain[n] *= comp;
+  return true;
+}
+
 void PianoVoice::cull() {
   // Finished: the whole voice is below kVoiceEndDb (each component's gains to the two mics are
   // normalised around 1, so |z|² summed is close to the output power)
@@ -1814,8 +1878,10 @@ void PianoVoice::cull() {
 
 void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   if (arpVoice && !damped && note >= 0) synth.arpUp[note & 127] = true;   // holds its damper up
+  struckFrom = -1;
   if (pending) {
     pending = false;
+    struckFrom = count;
     strike(ctx, pendingVel);
   }
   float pitch = static_cast<float>(ctx.pitchHz());
@@ -1824,6 +1890,10 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   float dmp = ctx.get(synth.damper) * 0.01f;
   float gam = ctx.get(synth.overtoneDecay) * 0.01f;
   bool touched = touchBlock(ctx);
+  if (lastTouchPress > 0) {   // Dry: half the finger's damping (a wide finger's share) at 100 %
+    float dry = ctx.get(synth.touchDry) * 0.01f;
+    if (dry > 0) synth.touchBody(note, 0.5f * lastTouchPress * dry);
+  }
   if (pitch != lastPitch || sus != lastSustain || uni != lastUnison || dmp != lastDamper || damped != lastDamped ||
       gam != lastGamma || touched) {
     updatePoles(pitch, sus, uni, dmp, gam);
@@ -1833,9 +1903,16 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   const int frames = out.frames;
   const int padded = (count + kLanes - 1) & ~(kLanes - 1);
   int arpPattern = ctx.choice(synth.arpPattern);
-  if (arpPattern > 0 || gainsLive) {
+  bool listening = listenBlock(ctx);
+  if (arpPattern > 0 || listening || gainsLive) {
     arpBlock(ctx, frames, arpPattern);
-    gainsLive = arpPattern > 0;   // off: this block ramps every gain back to 1, then the plain path
+    if (listening) {
+      for (int n = 1; n <= kMaxPartials; ++n) pnGain[n] *= listenGain[n];
+      // a strike's new components start at their gains (they were added at last block's, or at 1)
+      if (struckFrom >= 0)
+        for (int i = struckFrom; i < count; ++i) gPrev[i] = pnGain[pnum[i]];
+    }
+    gainsLive = arpPattern > 0 || listening;   // off: this block ramps every gain back to 1, then the plain path
     const float inv = 1.f / static_cast<float>(std::max(frames, 1));
     for (int c = 0; c < padded; c += kLanes) {
       float r[kLanes], m[kLanes], a[kLanes], b[kLanes], gl[kLanes], gr[kLanes], gi[kLanes], g[kLanes], dg[kLanes];
