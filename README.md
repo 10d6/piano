@@ -72,8 +72,9 @@ as the dampers lift: that ring is calibrated against the pedal recording
 (within ~1 dB per band over its 6 s). How strongly played notes drive the
 strings isn't in the recordings (they were made note by note), so its
 default (**Resonance**, 0 dB) is a judgment, to be tuned by playing: the halo
-sits 20–40 dB under a mid-range note a second or two in, closer under high
-notes, whose own sound fades sooner than the lower strings' ring. The bank runs at half
+sits about 30 dB under a pedalled arpeggio while it plays and 10 dB under its tail, which
+the control raises to +24 dB (a wash as loud as the notes' tails); high notes are closer,
+as their own sound fades sooner than the lower strings' ring. The bank runs at half
 the sample rate, and only for strings that are free or still ringing.
 
 The recordings sample every minor third; keys between are interpolated. One
@@ -97,7 +98,7 @@ felt, then one string of each three left out, so notes start quieter and rounder
 It is modelled from the physics, not measured: these recordings have none with it down.
 
 **The strings.** **Stiffness** scales their measured inharmonicity, from ideal harmonic strings
-(harp-like) through the recorded piano to three times as stiff (bell-like). **Overtone Decay**
+(harp-like) through the recorded piano to eight times as stiff (bell-like; the middle of the keyboard has little stiffness to scale, so it is plainest in the bass and the top). **Overtone Decay**
 makes the upper partials ring on longer than the fundamental (bright, steely) or die sooner
 (dark, gut-like). At their defaults the piano is as measured.
 
