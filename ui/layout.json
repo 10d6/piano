@@ -194,6 +194,29 @@
                   "collapsed": true
                 },
                 {
+                  "title": "Touch Point",
+                  "controls": [
+                    {
+                      "param": "touch.press",
+                      "label": "Press"
+                    },
+                    {
+                      "param": "touch.point",
+                      "label": "Point"
+                    },
+                    {
+                      "param": "touch.width",
+                      "label": "Width"
+                    },
+                    {
+                      "param": "touch.snap",
+                      "label": "Snap"
+                    }
+                  ],
+                  "info": "A finger resting on the strings, as a player reaches into a grand to sound harmonics or mute a note. It takes the partials that move under it and leaves those that have a still point (a node) there: at half the string every second partial rings on, an octave up; at a third, every third, an octave and a fifth up. Press 0 leaves the piano as measured. What the finger takes doesn't come back until the key is struck again.",
+                  "collapsed": true
+                },
+                {
                   "kit": "arp",
                   "info": "An arpeggiator and step sequencer that play piano notes from the keys you hold. Arp plays the held keys one after another; Sequencer lets each key sound and adds its own pattern of notes above it. Each note is a full piano strike, ended by its damper (Note Envelope Off, the default) or by the note envelope.",
                   "collapsed": true
@@ -302,7 +325,11 @@
     "space.damping": "How much faster the treble dies than the rest. 50 % is the space's own; 0 % keeps the treble as long as the body (bright, glassy); 100 % makes it die quickly (warm, dark).",
     "space.early": "The early reflections' level against the tail: up for a sense of walls close by, down for a tail that blooms on its own.",
     "space.lowcut": "Takes the bass out of the reverb only, so low notes don't turn muddy.",
-    "space.highcut": "Takes the top out of the reverb only, for a softer, more distant space."
+    "space.highcut": "Takes the top out of the reverb only, for a softer, more distant space.",
+    "touch.press": "How hard the finger rests on the string: how fast it stops the partials moving under it. 0 is no finger. Around 100-300 dB/s the note melts into its harmonic over half a second; 500 and more leaves a short ping and then the harmonic; near the top, with a wide finger, the note is a muted thud. Route a Shape, the mod wheel or aftertouch here to touch a note after it is struck (the Late Touch preset).",
+    "touch.point": "Where the finger rests, as a share of the string's length from its end. 50% is the middle: the octave harmonic. 33.3% leaves every third partial (an octave and a fifth up), 25% every fourth (two octaves), 20% every fifth (two octaves and a third). With Snap off, nearly everything is stopped between those points. Route Random or Key here and each note gets its own harmonic (the Chance Harmonics preset).",
+    "touch.width": "How much of the string the finger covers. Narrow (around 1%) is a fingertip: clean harmonics. Wider reaches across the upper partials' still points too, so they all fade: darker harmonics, and at 15-30% a strip of felt or the flat of a hand, a mute (the Felt Mute preset, with Snap off).",
+    "touch.snap": "On, the finger goes to the nearest point that divides the string into whole parts (1/2, 1/3, 1/4, 1/5...), where harmonics are, so Point steps through the harmonics. Off, it rests exactly where Point says, for mutes and for the dull, bell-like sounds between the harmonics."
   },
   "keyboard": true
 }

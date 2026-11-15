@@ -117,6 +117,18 @@ inline float overtoneDecayDb(float decayDb, float ratio, float gamma) {
   return std::min(decayDb * std::clamp(std::pow(ratio, gamma), 0.25f, 4.f), -0.3f);
 }
 
+// Touch Point: a finger (or a strip of felt) resting on the string at the fraction y of its
+// length, w of the length wide. It takes energy from partial n where that partial moves under it:
+// sin²(nπs) averaged over the finger, ½(1 − cos(2πny)·sinc(nw)). A partial with a node under a
+// narrow finger (the 2nd, 4th, 6th… at ½; every third at ⅓) is hardly touched and rings on, a
+// harmonic; one with an antinode there takes the whole of the finger's damping. A wide finger
+// spans the upper partials' nodes and antinodes alike, and they all take half: a mute.
+inline float touchShare(int n, float y, float w) {
+  float a = 0.5f * kTwoPi * n * w;
+  float sinc = a > 1e-4f ? std::sin(a) / a : 1.f;
+  return 0.5f * (1.f - std::cos(kTwoPi * n * y) * sinc);
+}
+
 inline float damperRate(int note, int last = kLastDamper) {
   if (note > last) return 0.f;
   float t = std::clamp((note - 21) / 67.f, 0.f, 1.f);
@@ -185,6 +197,7 @@ struct PianoVoice : Voice {
   void addOne(float amp, float decayDb, float ratio, float offsetHz, float phase, float damp, float wl, float wr,
               float stereoPhase, float extraDb);
   void updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma);
+  bool touchBlock(VoiceContext& ctx);
   void cull();
   void arpBlock(VoiceContext& ctx, int frames, int pattern);
   void arpSequence(int scale, int lo, int hi, bool octaves);
@@ -226,6 +239,12 @@ struct PianoVoice : Voice {
   int seq[kMaxPartials] = {}, seqN = 0, seqKey = -1;
   bool inSeq[kMaxPartials + 1] = {};   // the partials the pattern covers (in the scale and range)
 
+  // Touch Point (touch.*): the finger's extra decay per partial number (dB/s, positive; all 0
+  // with no finger on the string), and the settings it was worked out from
+  float touchDb[kMaxPartials + 1] = {};
+  float lastTouchPress = 0, lastTouchPoint = -1, lastTouchWidth = -1;
+  bool lastTouchSnap = false;
+
   // pole inputs last used, to recompute only on change
   float lastPitch = -1, lastSustain = -1, lastUnison = -1, lastDamper = -1, lastGamma = 0;
   bool lastDamped = false;
@@ -262,7 +281,7 @@ struct PianoVoice : Voice {
 struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
-      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
+      arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, touchSnap, spaceType, spaceDecay, spaceSize, spacePredelay,
       spaceDamping, spaceEarly, spaceLowCut, spaceHighCut;
 
   void defineParams(ParamBuilder& b) override {
@@ -315,6 +334,11 @@ struct Piano : Synth {
     arpOthers = b.add("parp.others").name("Partial Arp Rest").range(-40, 0).def(0).unit("dB").modulatable().group("Partial Arp");
     arpGroup = b.add("parp.group").name("Partial Arp Group").choices({"Single", "Octaves"}).def(1).group("Partial Arp");
     arpWidth = b.add("parp.width").name("Partial Arp Width").range(0, 1).def(0).unit("oct").modulatable().group("Partial Arp");
+    // Touch Point (PianoVoice::touchBlock): a finger on the strings. Press 0 leaves the piano bit-identical
+    touchPress = b.add("touch.press").name("Touch Press").range(0, 2000).exp(3).def(0).unit("dB/s").modulatable().group("Touch Point");
+    touchPoint = b.add("touch.point").name("Touch Point").range(2, 50).log().def(50).unit("%").modulatable().group("Touch Point");
+    touchWidth = b.add("touch.width").name("Touch Width").range(0, 30).exp(3).def(1).unit("%").modulatable().group("Touch Point");
+    touchSnap = b.add("touch.snap").name("Touch Snap").toggle().def(1).group("Touch Point");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
     b.kitDefault("arp.envMode", 0);
@@ -1729,12 +1753,33 @@ void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScal
   float nyq = 0.47f * sr;
   for (int i = 0; i < count; ++i) {
     float f = pitchHz * ratio[i] + offset[i] * unisonScale;
-    float db = overtoneDecayDb(decay[i], ratio[i], gamma) / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f);
+    float db = overtoneDecayDb(decay[i], ratio[i], gamma) / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f) -
+               touchDb[pnum[i]];
     float rad = f < nyq ? std::pow(10.f, db * 0.05f / sr) : 0.f;
     float w = kTwoPi * f / sr;
     pr[i] = rad * std::cos(w);
     pi[i] = rad * std::sin(w);
   }
+}
+
+// Touch Point, once per control block: the finger's damping per partial number, worked out again
+// when Press, Point or Width has moved. True when it changed (the poles then follow). A partial's
+// components (its modes, their onset twins, the soft pedal's copies) all take the same extra
+// decay, so the partial keeps its shape and simply fades faster. Not scaled by Sustain: it is the
+// finger's, not the string's.
+bool PianoVoice::touchBlock(VoiceContext& ctx) {
+  float press = ctx.get(synth.touchPress);
+  if (press <= 0 && lastTouchPress <= 0) return false;   // no finger, now or last block
+  float y = std::clamp(ctx.get(synth.touchPoint) * 0.01f, 0.02f, 0.5f);
+  float w = std::clamp(ctx.get(synth.touchWidth) * 0.01f, 0.f, 0.3f);
+  bool snap = ctx.on(synth.touchSnap);
+  if (press == lastTouchPress && y == lastTouchPoint && w == lastTouchWidth && snap == lastTouchSnap) return false;
+  lastTouchPress = press; lastTouchPoint = y; lastTouchWidth = w; lastTouchSnap = snap;
+  // Snap: the nearest point that divides the string into whole parts (1/2, 1/3, 1/4…), where
+  // a light finger leaves a harmonic
+  if (snap) y = 1.f / std::clamp(std::round(1.f / y), 2.f, 50.f);
+  for (int n = 1; n <= kMaxPartials; ++n) touchDb[n] = press > 0 ? press * touchShare(n, y, w) : 0.f;
+  return true;
 }
 
 void PianoVoice::cull() {
@@ -1778,8 +1823,9 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   float uni = ctx.get(synth.unison) * 0.01f;
   float dmp = ctx.get(synth.damper) * 0.01f;
   float gam = ctx.get(synth.overtoneDecay) * 0.01f;
+  bool touched = touchBlock(ctx);
   if (pitch != lastPitch || sus != lastSustain || uni != lastUnison || dmp != lastDamper || damped != lastDamped ||
-      gam != lastGamma) {
+      gam != lastGamma || touched) {
     updatePoles(pitch, sus, uni, dmp, gam);
     lastPitch = pitch; lastSustain = sus; lastUnison = uni; lastDamper = dmp; lastDamped = damped; lastGamma = gam;
   }

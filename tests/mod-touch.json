@@ -1,0 +1,1 @@
+{"patch": "late-touch", "length": 7.0, "events": [{"t": 0, "on": 43, "vel": 95}, {"t": 0, "on": 55, "vel": 95}, {"t": 0, "on": 62, "vel": 95}, {"t": 2.0, "on": 67, "vel": 95}, {"t": 4.0, "off": 43}, {"t": 4.0, "off": 55}, {"t": 4.0, "off": 62}, {"t": 4.0, "off": 67}], "expect": {"soundBy": 0.02, "silentAfter": 6.8, "limiterBelow": 1, "levelAt": [{"t": 3.5, "above": -55}]}}

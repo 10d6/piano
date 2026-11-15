@@ -226,6 +226,18 @@ from CI at milestones.
   alone sounds resonant and artificial to the owner; negative Boost (a notch, the default:
   −20 dB) or Octaves + Width sound more natural. `tests/partial-arp.json` and the *Harmonic Arp* / *Partial Notch* presets
   exercise it.
+- **Touch Point** (`touch.*`; `PianoVoice::touchBlock`, `touchShare`; docs/MODEL.md): a creative feature, a finger on
+  the strings. Each partial fades faster by Press × ½(1 − cos(2πny)·sinc(nw)) dB/s, one term in
+  `updatePoles` looked up by `pnum`, the same for all of a partial's components (never its modes
+  one by one). Press 0 must stay bit-identical (`cmp`). Press, Point and Width are per-voice,
+  per-block destinations. It is destructive, as on a string: what the finger takes doesn't come
+  back, so a moving Point leaves less and less (say so; the Partial Arp is the non-destructive
+  one). The body's ring, the strike and the sympathetic bank aren't touched: a mute's tail is the
+  body's ring (35-43 dB under the strike a second in; *Felt Mute* lowers Body). Its display names
+  are Press / Point / Width / Snap: `play.touch` (Touch, the velocity curve) is another thing.
+  `tools/measure/touch.py` (no recordings): node partials within ~1 dB, the others ≥ 20 dB down.
+  Presets *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*; tests `touch-point`,
+  `mod-touch`.
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
@@ -244,7 +256,7 @@ from CI at milestones.
   end level where they restart, or they click. Presets *Tape Wow*, *Tremolo Ballad*, *Living
   Hammer*, *Breathing Strings*, *Notch Sweep*, *Beat Pump*, *Tidal Arp*; tests `mod-*`.
 - **The page** (`ui/layout.json`): tabs **Piano** (Playing, Tone, Strings, Space) and
-  **Synthesis** (one wide accordion: Partial Arp, the kit's arp panels, LFOs, Shapes, the matrix,
+  **Synthesis** (one wide accordion: Partial Arp, Touch Point, the kit's arp panels, LFOs, Shapes, the matrix,
   all folded but the matrix); Output below both. New creative features go in the accordion.
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,

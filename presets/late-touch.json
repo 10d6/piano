@@ -1,0 +1,1 @@
+{"synthkit": 1, "synth": "piano", "patchVersion": 2, "name": "Late Touch", "params": {"touch.point": 33.3, "touch.width": 1, "shape1.trigger": 0, "shape1.sync": 0, "shape1.time": 1.6, "shape1.loop": 0, "space.room": 24}, "mod": [{"src": "shape1", "dst": "touch.press", "amt": 0.75}], "shapes": [{"curves": [{"points": [[0, 0, 0, 0], [0.35, 0, 0.4, 0], [1, 1, 0, 0]]}]}]}

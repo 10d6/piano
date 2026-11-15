@@ -156,6 +156,8 @@ and keep the bass from getting further from its recordings on the distance alone
 | `pedal-noise.json` | the pedal's thump and the strings' ring when it goes down; silence after it comes up |
 | `demo.json` | a musical passage: sounds, limiter under 3 dB |
 | `partial-arp.json` | the *Harmonic Arp* settings over a held chord: sounds within 20 ms, still above −48 dB at 4.2 s, silent at 6.8 s, limiter under 1 dB |
+| `touch-point.json` | Touch Point at 1/2 (Press 600 dB/s): four notes from C2 to E4 ring on as their octave harmonics (above −50 dB at 2.8 s), silent 1.6 s after release |
+| `mod-touch.json` | *Late Touch* (Shape 1 on Note → Touch Press, Point 1/3): a chord rings, then melts into its third partials; a later note does the same on its own clock; silent after release |
 | `migrate-v1.json` | the same as a patchVersion 1 patch (the Partial Arp's old `arp.*` IDs): migrates and renders byte for byte as `partial-arp.json` did before the rename |
 | `kit-arp.json` | the kit's arpeggiator, Up/Down over two octaves on a held triad: plays through the hold, silent by 5 s |
 | `kit-seq.json` | the sequencer with Crossfade (two voices on one key) on two keys entered at different times: silent by 6 s |
@@ -257,6 +259,13 @@ Also:
   1 %), Soft Pedal 23 / 41 / 16 %; nothing but the Soft Pedal at 127. Stiffness at 0, 300 and
   800 %: 1-6, 2-11 and 6-19 %. Resonance: MODEL.md's table.
 
+- `touch.py`: what Touch Point does to a note, against the same note untouched (no recordings
+  needed). At 1/2 and 1/3 of the string (Press 600 dB/s, Width 1 %), C2-C6: the partials with a
+  node under the finger change −0.1…−1.1 dB by 0.4-0.9 s and the others fall 21 dB or more; 25-50 %
+  and 38-54 % from untouched by the perceptual distance. The mute (Press 1500, Point 8 %, Width
+  20 %): 40 dB down in 0.3-1.3 s against 1.4-3.2 s, 36-79 % from untouched; its tail is the body's
+  ring, which the finger doesn't reach (MODEL.md).
+
 ### Note handling: `tools/stress.py`
 
 `python3 -I tools/stress.py build/piano_render 300` (and `… 200 overlap`)
@@ -304,7 +313,7 @@ any measurement against the recordings: they all render with Reverb 0.
 
 Hardness, Strike Point, Stiffness and Overtone Decay change the piano around what was measured, so their defaults must leave
 it exactly as measured: renders of `tests/*.json` with the previous build and this one are compared
-byte for byte (`cmp`). The same holds for the creative and room controls: the Partial Arp Off
+byte for byte (`cmp`). The same holds for the creative and room controls: Touch Point at Press 0, the Partial Arp Off
 (and, on, Group Single with Width 0 must render as its first version did), and Reverb 0, which
 must be the dry piano byte for byte (every measurement renders with it). What they do is checked by sweeping them (attack level, centroid and share
 above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of renders on the PR).
@@ -323,6 +332,7 @@ above 2 kHz per key; MODEL.md has the numbers) and by listening (a page of rende
 | the recorded strike (`analyze_strike.py`) | + `make_header`, build, `perceptual.py`, `velocity.py` (its brightening from soft to loud), `between.py`, `holdout.py --perceptual`, and `tools/listen/ab_strike.py` for an A/B by ear; rerun it after `analyze.py` or `analyze_modes.py` (its notches follow the partials) |
 | `analyze.py` | + rerun `analyze_onset`, `analyze_modes` (clear its cache), `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes` |
 | `analyze_modes.py` | + `analyze_noise`, `analyze_body`, `make_header`, build, `calibrate_noise` ×3, `choose_modes`, `calibrate_attack` ×3 (clear `attack_adjust` first), then `perceptual.py` and `holdout.py --perceptual` |
+| Touch Point | + renders with Press 0 against the previous build, byte for byte; `tools/measure/touch.py` (partials with a node under the finger kept within ~1 dB, the others 20 dB or more down; the mute's fall time); `stress.py` |
 | the Partial Arp | + renders with it Off against the previous build, byte for byte (and Single, Width 0 on `tests/partial-arp.json`); its spectrum over time (`tools/measure/partials.py` or a spectrogram) to see the steps; `stress.py` with it on |
 | the kit's arpeggiator / sequencer | + renders with it Off against the previous build, byte for byte; `stress.py` with Arp and with Sequencer on (pass extra params into the scenario; with Sequencer, Top Dampers All keys, or lanes above E6 ring on as they should) |
 | the Space reverb | + renders at Reverb 0 against the previous build, byte for byte; `tools/space.py` (re-trim `trimDb` if a level moved); `bench-web.cjs`; switch spaces and move Size while a tail rings, and listen for clicks |
