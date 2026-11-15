@@ -91,7 +91,9 @@ stays on the string for less time, and its spectrum reaches higher. One spectral
 rising with the hammer's speed, explains 70-86 % of how the recordings' partials change with
 velocity from A0 to C6 (`tools/analyze_hammer.py`). **Hardness** moves that corner (softer felt,
 duller and slower to swell in, down to a felt-piano mute; harder, brighter), and the partials and
-the strike change with it. **Strike Point** moves where the hammer meets the string, from each key's own
+the strike change with it. (A simulated hammer on a stiff string, `tools/hammer_sim.py`, fits the
+same data with a felt that stiffens as x^2.3-2.7, and says what other surfaces than felt would
+change: docs/MODEL.md, The hammer, simulated. Nothing in the engine uses it yet.) **Strike Point** moves where the hammer meets the string, from each key's own
 strike point (measured in the low bass: 11.6-12.3 % of the string, `tools/analyze_point.py`): the partials with a node under
 the hammer go quiet, the ones it leaves come back as far as the recordings show they were missing. **Strike Depth** takes that
 further than a real hammer goes: an ideal string's silent nodes, then every change multiplied, up to three
@@ -225,6 +227,7 @@ python3 -I tools/analyze_body.py ../salamander tools/salamander.json tools/salam
 python3 -I tools/analyze_mech.py ../salamander tools/salamander_mech.json         # key release and pedal noises
 python3 -I tools/analyze_hammer.py tools/salamander.json tools/salamander_hammer.json   # the hammer's spectrum (from the partials)
 python3 -I tools/analyze_point.py tools/salamander.json tools/salamander_point.json     # each key's strike point (from the partials)
+python3 -I tools/hammer_sim.py fit      # optional: the simulated hammer's felt per key → tools/salamander_hammer_sim.json (~10 min on two cores; `check` first)
 python3 -I tools/make_header.py tools/salamander.json src/PianoData.h
 # then build, and calibrate the band noise against the recordings (3 passes, make_header and a build between;
 # it skips keys with a recorded strike, so today it changes nothing):

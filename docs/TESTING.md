@@ -252,6 +252,14 @@ Also:
   Depth 0. `--depth D` sweeps Strike Depth, where standing clear is the point. Its size is judged
   by the perceptual distance from the realistic hammer (MODEL.md: 14-81 % at 100 % from C2 to C5;
   the first version, deeper notches only, was 1-7 % and the owner could hardly hear it).
+- `surfaces.py`: which properties of a hammer's surface could be heard, before any is built
+  (no recordings needed; about 4 minutes). `tools/hammer_sim.py` gives each change's effect on
+  the hammer's force; it is applied to a render's partials and strike and judged by the
+  perceptual distance, levels matched. At velocity 100 (layer 13), C2-C5: a rigid surface 16-31 %,
+  felt ten times stiffer 11-25 %, half the hammer's mass 9-17 %, a hard core under thin felt
+  14-26 %, the exponent alone 4-10 %, width and loss 0-1 %; the engine's Hardness +100 % is 1-3 %
+  there (MODEL.md, The hammer, simulated). `python3 -I tools/hammer_sim.py check` checks the
+  simulation itself (energy, a rigid hammer's analytic pulse, convergence).
 - `panel.cjs`: plays the page in Chromium. The velocity graph must fill in,
   the on-screen keyboard plays velocity 100, pressing the graph at its left, middle and right
   strikes velocity 19, 64 and 121 (as the engine reports them), and nothing reaches the console.

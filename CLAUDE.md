@@ -96,6 +96,22 @@ from CI at milestones.
   `tools/measure/strikepoint.py` sweeps it (no recordings needed). Presets *Hollow Strike*, *Glass
   Strike*; test `strike-depth`. Presets are embedded at build time: rebuild before `--check` after
   editing one.
+- **The hammer, simulated** (`tools/hammer_sim.py`, offline; docs/MODEL.md): stage 1 of other hammer
+  surfaces than felt. Nothing in the engine uses it yet. `check` (the scheme), `fit` (this piano's felt
+  per key → `salamander_hammer_sim.json`, ~10 min on two cores; rerun after `analyze.py`/`analyze_modes.py`/
+  `analyze_point.py`), `surfaces` + `report` (each property changed alone), then
+  `tools/measure/surfaces.py` (how audible each would be: renders filtered by the force's change).
+  Lessons: the felt's fit is good from A0 to D#5 and poor above, so judge surfaces from C2 to C5; a
+  contact's length isn't a usable measure of hardness (the string throws the hammer off and catches it
+  again), nor is the 12 dB corner on the hard side (the hammer's mass sets it: the felt at velocity 100
+  is already there), so variants are defined by K, p and mass directly; the explicit step can't follow
+  a contact stiffer than the rate allows (`simulate` reports `stable`; `rigid()` sets the stiffest it
+  can); the parameters trade against each other (only the force's spectrum is pinned). Found: harder
+  is the slope above the corner (felt 20-31 dB/octave, rigid 6), which Hardness can't reach (+100 %
+  is 1-3 % at velocity 100; a rigid surface 16-31 %); mass and a hard core under thin felt are
+  audible; the exponent alone is small; width and loss aren't worth a control. The planned controls
+  are separate parameters plus a Morph switch that, when on, drives them from one Material position
+  (the owner's choice).
 - **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md, The soft pedal): not measured (no recordings
   with it down), so its sizes are a judgment (`kUna…`). 0 % must stay bit-identical (`cmp`). Lesson:
   never scale a partial's modes one by one: they were fitted to add up, and unequal gains made C4 2 dB
