@@ -4,6 +4,66 @@ This explains what the engine does and where each number comes from. The
 README has the short version; `docs/TESTING.md` explains how the result is
 checked against the real piano.
 
+## Contents
+
+- [Overview: the signal path](#overview-the-signal-path)
+- [The approach](#the-approach)
+  - [The data pipeline](#the-data-pipeline)
+- [The recordings](#the-recordings)
+- [The measured piano](#the-measured-piano)
+  - [The partials](#the-partials)
+  - [The strike](#the-strike)
+  - [The body's ring](#the-bodys-ring)
+  - [Mechanical noises](#mechanical-noises)
+  - [Sympathetic resonance: the free strings](#sympathetic-resonance-the-free-strings)
+  - [Voices, dampers and the rest](#voices-dampers-and-the-rest)
+- [Controls on the measured piano](#controls-on-the-measured-piano)
+  - [Velocity](#velocity)
+  - [Brightness, range and cut](#brightness-range-and-cut)
+  - [The hammer's spectrum and Hardness](#the-hammers-spectrum-and-hardness)
+  - [Strike Point](#strike-point)
+  - [Strike Depth](#strike-depth)
+  - [The soft pedal](#the-soft-pedal)
+  - [The strings: Stiffness and Overtone Decay](#the-strings-stiffness-and-overtone-decay)
+  - [A key struck while it rings: Restrike](#a-key-struck-while-it-rings-restrike)
+- [Space](#space)
+- [Creative additions](#creative-additions)
+  - [Touch Point](#touch-point)
+  - [Listening Point](#listening-point)
+  - [The partial arpeggiator](#the-partial-arpeggiator)
+  - [The kit's arpeggiator and sequencer](#the-kits-arpeggiator-and-sequencer)
+  - [Modulation](#modulation)
+- [What isn't modelled (yet)](#what-isnt-modelled-yet)
+- [Parameters](#parameters)
+- [Appendix A: Glossary](#appendix-a-glossary)
+- [Appendix B: Design history](#appendix-b-design-history)
+  - [The body's ring: calibrating level and decay by resynthesis](#the-bodys-ring-calibrating-level-and-decay-by-resynthesis)
+  - [Overtone Decay: a physical loss law](#overtone-decay-a-physical-loss-law)
+  - [Space: the 1.6 s noise room it replaced](#space-the-16-s-noise-room-it-replaced)
+  - [Strike Depth: the first Strike Point (PR #11)](#strike-depth-the-first-strike-point-pr-11)
+
+## Overview: the signal path
+
+A note travels through these stages. Each has a section below.
+
+1. **Velocity** becomes a recorded *layer* (the tone) and a level (`Piano::velocityMap`; Velocity).
+2. **The partials** of the two measured keys nearest the note are blended into a set of decaying
+   sinusoids, with per-microphone levels and phases (The partials). The controls that reshape them at
+   the strike are Brightness, Hardness, Strike Point, Strike Depth, Stiffness, Soft Pedal and Restrike.
+3. **The strike** (the hammer, the action and the soundboard) is added: a recorded response from A2 up,
+   band noise below (The strike).
+4. **The body's ring** and the **mechanical noises** are band noise shared by all keys, in the synth
+   rather than the voice (The body's ring; Mechanical noises).
+5. **The free strings** are driven by the mix of everything above and ring in sympathy (Sympathetic
+   resonance).
+6. **Width and the reverb** come last (Space).
+
+Controls that go beyond the measured piano (Touch Point, Listening Point, the arpeggiators and the
+modulation matrix) are under Creative additions. Every control that departs from the measured piano
+defaults to the measured sound, bit for bit; each section says so for its own control. Terms such as
+*partial*, *mode*, *layer* and *perceptual distance* are in the Glossary at the end; the stages the
+analysis tools feed are in The data pipeline.
+
 ## The approach
 
 Each note is a **sum of decaying sine partials** (modal synthesis). What isn't a partial is
@@ -28,6 +88,31 @@ needed to reproduce it. Where a part couldn't be measured, this document says
 so. Every part was then checked by rendering the model and comparing it with
 the recordings (TESTING.md). Several measurements were later corrected by
 comparing renders with the recordings: *calibration by resynthesis*.
+
+### The data pipeline
+
+```
+recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salamander_onset.json
+           │                     │                                     │
+           │                     └──── analyze_modes.py (modes into salamander.json) ──┬─ analyze_noise.py ─ salamander_noise.json ─┐
+           │                                                                           └─ analyze_body.py ── salamander_body.json ──┤
+           └ analyze_mech.py ─────────────────────────────────────────────────────────────────────────────── salamander_mech.json ─┤
+                                                                                                                                    │
+                                                    make_header.py → src/PianoData.h → build ───────────────────────────────────────┘
+                                                    calibrate_noise.py (renders; adjusts salamander_noise.json; repeat ×3; keys below A2 only)
+                                                    analyze_strike.py (recordings + a build → salamander_strike.npz; then make_header, build)
+          salamander.json ─ analyze_hammer.py ─ salamander_hammer.json (the hammer's corner; into make_header)
+          salamander.json ─ analyze_point.py ── salamander_point.json (each key's strike point and comb; into make_header)
+                                                    choose_modes.py (renders; per key, modes or not; then make_header, build)
+```
+
+The commands are in the README. Everything downstream of `analyze.py` uses its
+partials, so rerun those steps after it; the noise analysis uses the modes' envelopes
+(`analyze.partial_env`), so it follows `analyze_modes.py`. The modal fit takes about 40 minutes
+on two cores and caches each key in `<tmp>/piano-modes/`. Clear the noise corrections before
+recalibrating if the noise analysis changed. `analyze.py` takes about 25
+minutes on one core; run halves of the key list in parallel and `--merge`
+them.
 
 ## The recordings
 
@@ -58,7 +143,12 @@ Things to know about these recordings:
   at its pitch, is as far (24.6 %). So the interpolation has nothing left to learn from the
   neighbours, and this is not listed as a gap (docs/TESTING.md).
 
-## A note: the partials
+## The measured piano
+
+What the recordings hold and how the engine plays it back: the partials, the strike, the body's
+ring, the mechanical noises, the sympathetic strings and the voices.
+
+### The partials
 
 Each key is a set of **components**. A component is a complex one-pole
 resonator `z ← z·r·e^{jω}`, with gains from its real and imaginary parts to
@@ -67,7 +157,7 @@ structure-of-arrays form in lanes of 8, so the inner loop vectorises (WASM
 SIMD in the browser). Its state starts at the measured amplitude and phase.
 Everything about a component comes from measurement.
 
-### Frequencies
+#### Frequencies
 
 - **Stiffness and tuning.** `analyze.py` fits each sampled key's f0 and
   inharmonicity B to its partial peaks, `f_n = n·f0·√(1 + B n²)`. The fit
@@ -102,7 +192,7 @@ Everything about a component comes from measurement.
   its peak in a 3 s spectrum (`refine_long`), so `dev` is set there too: nearly every partial of
   every key has a nonzero offset.
 
-### Modes: the partial fitted as the engine plays it
+#### Modes: the partial fitted as the engine plays it
 
 Most partials (1073 of the 1251, 86 %, and most of the sound below C6) are now played as their
 **modes**, fitted by `tools/analyze_modes.py`. The subsections after this one describe the
@@ -170,7 +260,7 @@ The engine plays a correction as one more mode per partial in the band, on its s
 mode's frequency, in phase (or in opposition), fading at 100 dB/s. The strike is now within
 about ±1 dB of the recordings on most keys (C1 +2-3, A1 −2).
 
-### Decay: prompt, aftersound and first burst
+#### Decay: prompt, aftersound and first burst
 
 A piano partial decays in two stages:
 
@@ -208,7 +298,7 @@ In the engine each part of a partial (prompt, burst, aftersound) is its own
 component. All share **one frequency**, so they don't beat against each other
 at the knee.
 
-### The swell at the strike
+#### The swell at the strike
 
 A partial doesn't start at full level: it swells in as **1 − e^{−t/τ}**, over
 the hammer's contact and the soundboard's response.
@@ -226,7 +316,7 @@ the hammer's contact and the soundboard's response.
   not to be heard. The control runs on to 600 % as an effect (τ no longer than 0.3 s): soft and
   medium notes swell in over tens to hundreds of ms (16-30 % at velocity 30-64, 2-10 % at 100).
 
-### Levels and phases per velocity and microphone
+#### Levels and phases per velocity and microphone
 
 For each partial, layer and mic, `analyze.py` reads the complex amplitude over
 a 40 ms window from 15 ms (later for low keys, whose analysis window is
@@ -239,7 +329,7 @@ the sum was a buzzy pulse train.
 Where a cluster's power is wider than the envelope window takes in, its levels
 are raised by the difference (0–3 dB in practice).
 
-### Unison beating
+#### Unison beating
 
 `beat_of` measures each partial's beating from the residual of its envelope
 after the decay line:
@@ -265,7 +355,7 @@ line up across partials. Partners start nearly in phase with their partial
 so the pair is centred on the measured frequency. **Unison** scales every
 offset: 0 % is strings in perfect tune.
 
-### Between the sampled keys
+#### Between the sampled keys
 
 A key between two sampled keys takes from both: weights by position, B and
 onset τ interpolated in log, cents linearly. A modal partial takes its modes from the nearer
@@ -275,41 +365,7 @@ which in the bass could be a few Hz off the partial and up to 30 dB low). A part
 side fades out towards the other (−24 dB at the far end). Phases and clusters
 come from the nearer key, since phases can't be averaged meaningfully.
 
-### Brightness, range and cut
-
-- **Brightness** tilts the partials by dB per octave of partial number, and
-  compensates the overall level so loudness stays put.
-- Partials more than **70 dB** under the note's loudest at that velocity
-  aren't started (`kRangeDb`). Components under **−105 dBFS** are dropped
-  (`kFloorDb`).
-
-## Velocity
-
-`Piano::velocityMap` is the one place velocity becomes **tone** (which
-recorded layer) and **level**:
-
-- Velocity first goes through **Touch**: v' = 1 + 126·u^(2^touch).
-- With the **Smooth** map, it's placed on each key's measured loudness range,
-  from 6 dB below its softest recording up to its loudest, along
-  top − range·(1 − u)^1.5. Half velocity is about a third of the way down.
-- The tone is the recorded layer with that loudness, so tone follows loudness
-  whatever the library's uneven layer spacing.
-- **Tone Range** moves the tone layer towards the loudest (below 100 %) or
-  further down (above). **Dynamics** scales the loudness range alone.
-- **As Recorded** uses the sample library's own velocity ranges instead. The
-  comparisons with the recordings use it, so a layer's middle velocity plays
-  that layer.
-
-The page's graph (`ui/custom.js`, messages `vel.query`, `vel.point`,
-`vel.note`) is drawn from the same function. **It can be played**: pressing it strikes the key
-it shows at the velocity under the pointer, soft at the left and hard at the right, until
-released. The on-screen keyboard and the computer keys always play velocity 100 (the kit's
-keyboard has no velocity), and these settings shape soft and medium notes: at 100 the ends of
-Touch, Dynamics, Tone Range and the map are 0-15 % from the default by the perceptual distance,
-at 30-64 they are 12-100 % (`tools/measure/settings.py`). Without the graph or a MIDI keyboard
-the panel can hardly be heard, which is how the owner found it.
-
-## The strike
+### The strike
 
 What the recordings hold **between the partials** in the first 0.3 s: the hammer's knock, the
 key and action, the soundboard's response. It used to be played as octave bands of random
@@ -322,7 +378,7 @@ noise on every key. But it isn't noise: it is the same response every time the k
   heard in the attack of C5, D#5, D#6 and A7 (in the A/B of the recorded strike against the
   band noise, the noise was 8-17 dB too strong in some band on each of them).
 
-### From A2 up: the recorded strike (`tools/analyze_strike.py`)
+#### From A2 up: the recorded strike (`tools/analyze_strike.py`)
 
 - **One response per measured key and mic**: its velocity-100 recording (layer 13, what the
   page's on-screen keyboard plays) with every partial notched out, 0.3 s, faded out from
@@ -362,7 +418,7 @@ noise on every key. But it isn't noise: it is the same response every time the k
   difference to the perceptual distance there (8.5 against 8.6 % in the bass) or was a little
   worse (C1 at layer 12, 9.5 → 11.2 %). Those keys keep the band noise below.
 
-### Below A2: band noise (`tools/analyze_noise.py`)
+#### Below A2: band noise (`tools/analyze_noise.py`)
 
 - **Bands.** Ten octave bands from 31.25 Hz to 16 kHz. Each is two RBJ
   band-pass stages (Q 1.2) followed by a 4th-order Butterworth low-pass at 1.7×
@@ -428,14 +484,180 @@ lowest key move:
   for 3–4 passes with a rebuild between. The corrections (`adjust1`,
   `adjust2`) live in `salamander_noise.json`, and `make_header` applies them.
 
-**Tried and dropped:** calibrating the body ring's level and decay over its
-first second the same way. One line can't follow it, and the long tail high
-notes need came out 17–27 dB too weak at 2–3 s.
+Calibrating the ring's level and decay over its first second was tried and dropped (Design history).
 
-## The hammer: Hardness and Strike Point
+### The body's ring
 
-Two controls change the hammer itself, around what was measured. At their defaults (0 % and 12 %)
-the output is exactly that of the measured piano (bit for bit).
+After each strike the soundboard, case and room ring on. This is diffuse
+sound between the partials, a couple of dozen dB under the note, fading over
+seconds. It gives high notes their **echo-like tail**; without it they're a few
+pure partials and sound like a bell.
+
+- **Measured** (`analyze_body.py`): energy between the partials in octave
+  bands, over windows from 0.1 to 3 s.
+  - Each partial (and cluster component) is left out ±max(4 bins, 4 % of f0,
+    6 Hz), and the result is scaled back up for the bins removed.
+  - Mains hum is left out, and the recordings' own floor is subtracted (the
+    last 0.4 s of the quietest C8 and A7 takes).
+  - Values must be at least 6 dB above that floor.
+  - Each band gets one decay (a common slope over the louder layers and both
+    mics) and a level at the strike per layer and mic.
+  - Below C3 the partials are too dense to separate the ring, so those keys
+    use C3's.
+- **Played** by one bank of band noise shared by all keys, in the synth rather
+  than the voice. Each key adds its band powers, which add as independent
+  noises do, with a 30 ms rise. The ring therefore outlives a short note's
+  voice.
+- **Damped** with the key: the synth follows keys and the pedal in
+  `processEvents`. A key's ring ends under −95 dB. **Body** scales it.
+
+The noise generators draw a fresh sample every time, sounding or not, so the
+output doesn't depend on the host's block size.
+
+#### What the ring is (measured for a string-based model, not adopted)
+
+Between the partials, 0.5-2.5 s after the strike, the recordings hold mostly **tones** (30-93 % of
+the energy in narrow peaks, by band) fading at **5-20 dB/s**, far slower than a soundboard's or a
+room's: strings ringing along. Part of it is the free strings above E6 (on C6 at velocity 100,
+half the tonal power lies on their partials, against 1 % by chance); the rest is likely the damped
+strings' imperfect stop and their back lengths. The model's own free strings (the sympathetic
+bank) give 20-60 dB less than that ring, and the band noise is 5-9 dB strong at 0.3-1 s, 7-19 dB
+weak at 2-3 s and almost all noise. But with the recording's own ring in its place
+(`tools/listen/ab_ring.py`) the owner heard no difference from today's, so it was left as it is.
+A string-based ring would make the coupling (`kCoupling`) measurable from the free strings' ring.
+
+### Mechanical noises
+
+From the release and pedal recordings (`analyze_mech.py`): each recording
+becomes an **envelope** in 10 ms frames (its total power, under its peak),
+plus **band gains per mic**. The band gains come from one long spectrum of the
+whole recording, so the lowest band is resolved, with the hum left out.
+
+| Noise | When | Level |
+|---|---|---|
+| Key release (rel1–88) | each key's note-off | sfz −37 dB, following the strike's velocity (82 % of 40·log10 v, with v from 0 to 1: full velocity is 0 dB, half about −10 dB), since the kit has no release velocity |
+| Pedal down (pedalD) | CC64 rising past half, takes alternating | the thump only (the recording less its string ring), sfz −20 dB |
+| Pedal up (pedalU) | CC64 falling past half | sfz −19 dB |
+
+They play through the body's noise bank, so they cost almost nothing, and
+start at their event's sample. **Key & Pedal** scales them.
+
+### Sympathetic resonance: the free strings
+
+Every string's lower partials (up to the 16th, below 4 kHz) form a bank of
+about 850 resonators. Each is at the frequency the voices play (B, stretch,
+`dev`, and concert pitch, read from the voices), with the string's measured
+aftersound decay for a medium strike.
+
+- **Free and driven.** A string is free when its damper is up: the pedal is
+  down, its key is held, or it's above the top damper. A free string that
+  isn't sounding as a voice of its own is **driven by everything the piano
+  plays**: the mono mix of the voices, body and mechanical noise, before the
+  room. So it picks up the partials near its own. The octave below a note sets
+  the upper string going, a fifth sets its twelfth, and so on. A voice driving
+  its own string would double it, so voices report `sounding[note]` each
+  block.
+- **Coupling.** The drive is z += K·x/fs, with K = 0.06/s (`kCoupling`)
+  scaled by **Resonance** (−40…+24 dB). It is a judgment: the recordings were made note by
+  note, so no two notes sound together in them. K was 0.015/s, and Resonance (then to +12 dB)
+  could not be heard: on a short arpeggio with the pedal held the sympathetic strings were
+  43 dB under all the sound while it played and 22 dB under it in the tail. Now
+  (`tools/measure/settings.py`):
+
+  | Resonance | under all the sound, 0.5-1.5 s | in the tail, 4-5 s | the tail is louder by |
+  |---|---|---|---|
+  | −12 dB (what the old K gave at 0 dB) | 43 dB | 22 dB | 0.1 dB |
+  | 0 dB | 31 dB | 10 dB | 0.6 dB |
+  | +12 dB | 19 dB | 2 dB | 4.8 dB |
+  | +24 dB | 9 dB | 0.3 dB | 14.9 dB |
+
+  The default is a halo just to be heard after the notes; the top of the range is a wash as
+  loud as the notes' own tails. Without the pedal nothing changes that can be heard (a chord
+  differs from before 78 dB under its sound), and the distances from the recordings are the same.
+  One measurement points the same way, further than this goes: the free strings above E6 that
+  aren't at one of the note's partials ring 34-45 dB louder in the single-note recordings than
+  the bank makes them (C3-C6, 71 strings standing 10 dB clear of their surroundings). That is
+  the strike shaking them through the bridge, which this drive (the sound at the string's own
+  frequency) doesn't model, so it isn't a value for K.
+- **The pedal's lift.** When the pedal goes down, the strings whose dampers
+  lift get a random-phase kick per partial. Its size per band is set so the
+  free strings together ring as `pedalD` does over 0.3–1.0 s. The model
+  matches the recording within about 1 dB per band over its 6 s, decay
+  included.
+- **Damped** strings fade at their damper's rate. The bank runs at **half the
+  sample rate** (input averaged over pairs, output interpolated back, two
+  samples late), in lanes of 4. A string is skipped when it has nothing
+  driving it and nothing left ringing above −100 dBFS.
+- **Timing.** Key and pedal changes reach the bank at their own sample,
+  through a queue. `processEvents` sees the whole host block at once, while
+  `processGlobal` runs per 32-sample control block.
+
+### Voices, dampers and the rest
+
+- **One voice per key** (`allocateVoice`).
+  - Striking a key that's still sounding **hands the old vibration over**: the
+    old components fade three times as fast as the new strike swells, so fast
+    repeats can't cancel. **Restrike** adds the new strike to the old vibration
+    instead (Restrike, below).
+  - A voice holds up to 2048 components.
+  - It ends when its total level is under −84 dBFS.
+- **Dampers** take 70 dB/s at A0 rising to 300 dB/s at E6, 3 % faster per
+  partial number. **Dampers** scales them.
+  - Above E6 a grand has no dampers: those notes ring on after release, fading
+    as when held. **Top Dampers → All keys** damps every key instead, as many
+    digital pianos do.
+- **Load guard.** When more than 4000 components sound across all voices, the
+  floor below which components are dropped rises (by up to 40 dB).
+- **Space.** **Width** is mid/side width. **Reverb** (`space.room`) is how much of the space is
+  heard; the measurements are close-miked, so 0 is the dry piano, and then bit-identical to the
+  piano before the reverb existed. The space is in **Space, below**.
+- **Headroom.** Output is the recordings' level −10 dB (`kTrimDb`); one loud
+  recorded note peaks near 0 dBFS.
+
+## Controls on the measured piano
+
+Controls that change the sound around what was measured. At their defaults the output is the
+measured piano's.
+
+### Velocity
+
+`Piano::velocityMap` is the one place velocity becomes **tone** (which
+recorded layer) and **level**:
+
+- Velocity first goes through **Touch**: v' = 1 + 126·u^(2^touch).
+- With the **Smooth** map, it's placed on each key's measured loudness range,
+  from 6 dB below its softest recording up to its loudest, along
+  top − range·(1 − u)^1.5. Half velocity is about a third of the way down.
+- The tone is the recorded layer with that loudness, so tone follows loudness
+  whatever the library's uneven layer spacing.
+- **Tone Range** moves the tone layer towards the loudest (below 100 %) or
+  further down (above). **Dynamics** scales the loudness range alone.
+- **As Recorded** uses the sample library's own velocity ranges instead. The
+  comparisons with the recordings use it, so a layer's middle velocity plays
+  that layer.
+
+The page's graph (`ui/custom.js`, messages `vel.query`, `vel.point`,
+`vel.note`) is drawn from the same function. **It can be played**: pressing it strikes the key
+it shows at the velocity under the pointer, soft at the left and hard at the right, until
+released. The on-screen keyboard and the computer keys always play velocity 100 (the kit's
+keyboard has no velocity), and these settings shape soft and medium notes: at 100 the ends of
+Touch, Dynamics, Tone Range and the map are 0-15 % from the default by the perceptual distance,
+at 30-64 they are 12-100 % (`tools/measure/settings.py`). Without the graph or a MIDI keyboard
+the panel can hardly be heard, which is how the owner found it.
+
+### Brightness, range and cut
+
+- **Brightness** tilts the partials by dB per octave of partial number, and
+  compensates the overall level so loudness stays put.
+- Partials more than **70 dB** under the note's loudest at that velocity
+  aren't started (`kRangeDb`). Components under **−105 dBFS** are dropped
+  (`kFloorDb`).
+
+### The hammer's spectrum and Hardness
+
+Two controls change the hammer itself, around what was measured: **Hardness** (here) and **Strike Point**
+(the next section). **Strike Depth**, after that, is Strike Point's unrealistic extreme. At their defaults
+(0 % and 12 %) the output is exactly that of the measured piano (bit for bit).
 
 **The hammer's spectrum** (`tools/analyze_hammer.py`). A felt hammer's force on the string is a
 pulse lasting a millisecond or a few. Its spectrum is flat up to a corner near the inverse of the
@@ -471,6 +693,8 @@ saturates: +100 % adds 4-6 dB above 2 kHz, since the measured hammer is already 
 corner at medium velocity, and a spectrum can't brighten past flat. A harder surface than felt (a
 hammer that rings, or partials above the recordings' floor) would need more than this model.
 The strike below A2 (band noise) isn't changed by it.
+
+### Strike Point
 
 **Strike Point** (`tone.strikepoint`, 2-50 %; 12 % is every key as recorded) moves where the
 hammer meets the string. A hammer at the fraction x of the string excites partial n as sin(nπx):
@@ -528,6 +752,12 @@ gone in milliseconds count as loudness, and notes came out up to 12 dB loud.
 *Range.* 2-50 % (4-25 % before), on a log scale. At 50 % the hammer is at the middle of the
 string and the even partials have their nodes there: hollow, towards a clarinet.
 
+What it doesn't do: the hammer's force itself changes with where it strikes (reflections from the
+near end come back sooner and throw it off earlier), and the recorded strike (the knock) isn't
+moved. A hammer-string simulation would give both.
+
+### Strike Depth
+
 **Strike Depth** (`tone.strikedepth`, 0-100 %, default 0) leaves that realism on purpose. The
 owner liked how far the first Strike Point went: more extreme, a different instrument. It does
 two things at once, and nothing while Strike Point is at 12 %:
@@ -551,16 +781,9 @@ dB up before the loudness correction: only the odd partials are left. The *Hollo
 is that; *Glass Strike* (3 %, Depth 70 %) is the other end. `tests/strike-depth.json` plays the
 first.
 
-*Before this* (PR #11) every key was taken to strike at 12 %, with notches 30 dB deep, and a
-partial could rise 12 dB. Its comb missed the bass strings' own above about the 12th partial,
-and from A2 up it undid notches that aren't there: partials 8, 16, 17 and 25 came up as single
-ringing overtones (up to 29 dB clear of their neighbours on F#4, 10-17 dB from A2 to C4), like a comb filter.
+What the first version of this control did, and why it was replaced: Design history.
 
-What it doesn't do: the hammer's force itself changes with where it strikes (reflections from the
-near end come back sooner and throw it off earlier), and the recorded strike (the knock) isn't
-moved. A hammer-string simulation would give both.
-
-## The soft pedal
+### The soft pedal
 
 **Soft Pedal** (`play.softpedal`, 0-100 %, MIDI controller 67) is a grand's una corda: the action
 shifts sideways, so the hammers meet the strings on softer, less-packed felt, and from about half
@@ -570,7 +793,7 @@ down, so this is the physics applied to what was measured, with sizes that are a
 
 - **The felt** (the whole pedal travel, every key): Hardness comes down by up to 60 %, the
   hammer's corner 1.8 octaves lower, and with it the partials, the recorded strike and the swell
-  (The hammer, above). Half as much by C7: Hardness takes far more of a top note's level. And
+  (Hardness, above). Half as much by C7: Hardness takes far more of a top note's level. And
   no lower than costs the fundamental 3 dB: a soft strike's corner is already near its
   fundamental, and a soft note with the pedal came out 16 dB quieter (now 4-6 dB at velocity 30).
 - **The unison** (from half pedal to full, on the keys with three strings: fading in from F#2
@@ -595,7 +818,7 @@ version's felt (25 %) was 0.3-3 % at half pedal, not to be heard.
 Not modelled: the two-string keys (the hammer still meets both), the sympathetic ring of the
 string left out as a tone of its own, and the pedal's own noise.
 
-## The strings: Stiffness and Overtone Decay
+### The strings: Stiffness and Overtone Decay
 
 Two controls change the strings around what was measured; at their defaults (100 % and 0 %) the
 output is exactly the measured piano's (bit for bit). Both reach the voices and the sympathetic
@@ -621,140 +844,9 @@ Below 0 the upper partials ring on (bright, steely: on C3 at −100 % the 6th pa
 at 27 dB/s, measured 16). Even at Sustain 400 % and −100 %, the undamped top keys are silent
 within 20 s.
 
-A physical loss law was tried first: string losses as b1 + b3 f² (air and internal friction),
-fitted per key to the partials' decays. It doesn't hold on these recordings (each partial's decay
-mixes a fast and a slow mode of the unison; the fit's error is 50-90 %, and b3's sign changes from
-key to key), so Overtone Decay scales the measured decays instead of moving a fitted law.
+Overtone Decay scales the measured decays rather than moving a fitted loss law (why: Design history).
 
-## The body's ring
-
-After each strike the soundboard, case and room ring on. This is diffuse
-sound between the partials, a couple of dozen dB under the note, fading over
-seconds. It gives high notes their **echo-like tail**; without it they're a few
-pure partials and sound like a bell.
-
-- **Measured** (`analyze_body.py`): energy between the partials in octave
-  bands, over windows from 0.1 to 3 s.
-  - Each partial (and cluster component) is left out ±max(4 bins, 4 % of f0,
-    6 Hz), and the result is scaled back up for the bins removed.
-  - Mains hum is left out, and the recordings' own floor is subtracted (the
-    last 0.4 s of the quietest C8 and A7 takes).
-  - Values must be at least 6 dB above that floor.
-  - Each band gets one decay (a common slope over the louder layers and both
-    mics) and a level at the strike per layer and mic.
-  - Below C3 the partials are too dense to separate the ring, so those keys
-    use C3's.
-- **Played** by one bank of band noise shared by all keys, in the synth rather
-  than the voice. Each key adds its band powers, which add as independent
-  noises do, with a 30 ms rise. The ring therefore outlives a short note's
-  voice.
-- **Damped** with the key: the synth follows keys and the pedal in
-  `processEvents`. A key's ring ends under −95 dB. **Body** scales it.
-
-The noise generators draw a fresh sample every time, sounding or not, so the
-output doesn't depend on the host's block size.
-
-### What the ring is (measured for a string-based model, not adopted)
-
-Between the partials, 0.5-2.5 s after the strike, the recordings hold mostly **tones** (30-93 % of
-the energy in narrow peaks, by band) fading at **5-20 dB/s**, far slower than a soundboard's or a
-room's: strings ringing along. Part of it is the free strings above E6 (on C6 at velocity 100,
-half the tonal power lies on their partials, against 1 % by chance); the rest is likely the damped
-strings' imperfect stop and their back lengths. The model's own free strings (the sympathetic
-bank) give 20-60 dB less than that ring, and the band noise is 5-9 dB strong at 0.3-1 s, 7-19 dB
-weak at 2-3 s and almost all noise. But with the recording's own ring in its place
-(`tools/listen/ab_ring.py`) the owner heard no difference from today's, so it was left as it is.
-A string-based ring would make the coupling (`kCoupling`) measurable from the free strings' ring.
-
-## Mechanical noises
-
-From the release and pedal recordings (`analyze_mech.py`): each recording
-becomes an **envelope** in 10 ms frames (its total power, under its peak),
-plus **band gains per mic**. The band gains come from one long spectrum of the
-whole recording, so the lowest band is resolved, with the hum left out.
-
-| Noise | When | Level |
-|---|---|---|
-| Key release (rel1–88) | each key's note-off | sfz −37 dB, following the strike's velocity (82 % of 40·log10 v, with v from 0 to 1: full velocity is 0 dB, half about −10 dB), since the kit has no release velocity |
-| Pedal down (pedalD) | CC64 rising past half, takes alternating | the thump only (the recording less its string ring), sfz −20 dB |
-| Pedal up (pedalU) | CC64 falling past half | sfz −19 dB |
-
-They play through the body's noise bank, so they cost almost nothing, and
-start at their event's sample. **Key & Pedal** scales them.
-
-## Sympathetic resonance: the free strings
-
-Every string's lower partials (up to the 16th, below 4 kHz) form a bank of
-about 850 resonators. Each is at the frequency the voices play (B, stretch,
-`dev`, and concert pitch, read from the voices), with the string's measured
-aftersound decay for a medium strike.
-
-- **Free and driven.** A string is free when its damper is up: the pedal is
-  down, its key is held, or it's above the top damper. A free string that
-  isn't sounding as a voice of its own is **driven by everything the piano
-  plays**: the mono mix of the voices, body and mechanical noise, before the
-  room. So it picks up the partials near its own. The octave below a note sets
-  the upper string going, a fifth sets its twelfth, and so on. A voice driving
-  its own string would double it, so voices report `sounding[note]` each
-  block.
-- **Coupling.** The drive is z += K·x/fs, with K = 0.06/s (`kCoupling`)
-  scaled by **Resonance** (−40…+24 dB). It is a judgment: the recordings were made note by
-  note, so no two notes sound together in them. K was 0.015/s, and Resonance (then to +12 dB)
-  could not be heard: on a short arpeggio with the pedal held the sympathetic strings were
-  43 dB under all the sound while it played and 22 dB under it in the tail. Now
-  (`tools/measure/settings.py`):
-
-  | Resonance | under all the sound, 0.5-1.5 s | in the tail, 4-5 s | the tail is louder by |
-  |---|---|---|---|
-  | −12 dB (what the old K gave at 0 dB) | 43 dB | 22 dB | 0.1 dB |
-  | 0 dB | 31 dB | 10 dB | 0.6 dB |
-  | +12 dB | 19 dB | 2 dB | 4.8 dB |
-  | +24 dB | 9 dB | 0.3 dB | 14.9 dB |
-
-  The default is a halo just to be heard after the notes; the top of the range is a wash as
-  loud as the notes' own tails. Without the pedal nothing changes that can be heard (a chord
-  differs from before 78 dB under its sound), and the distances from the recordings are the same.
-  One measurement points the same way, further than this goes: the free strings above E6 that
-  aren't at one of the note's partials ring 34-45 dB louder in the single-note recordings than
-  the bank makes them (C3-C6, 71 strings standing 10 dB clear of their surroundings). That is
-  the strike shaking them through the bridge, which this drive (the sound at the string's own
-  frequency) doesn't model, so it isn't a value for K.
-- **The pedal's lift.** When the pedal goes down, the strings whose dampers
-  lift get a random-phase kick per partial. Its size per band is set so the
-  free strings together ring as `pedalD` does over 0.3–1.0 s. The model
-  matches the recording within about 1 dB per band over its 6 s, decay
-  included.
-- **Damped** strings fade at their damper's rate. The bank runs at **half the
-  sample rate** (input averaged over pairs, output interpolated back, two
-  samples late), in lanes of 4. A string is skipped when it has nothing
-  driving it and nothing left ringing above −100 dBFS.
-- **Timing.** Key and pedal changes reach the bank at their own sample,
-  through a queue. `processEvents` sees the whole host block at once, while
-  `processGlobal` runs per 32-sample control block.
-
-## Voices, dampers and the rest
-
-- **One voice per key** (`allocateVoice`).
-  - Striking a key that's still sounding **hands the old vibration over**: the
-    old components fade three times as fast as the new strike swells, so fast
-    repeats can't cancel. **Restrike** adds the new strike to the old vibration
-    instead (the next section).
-  - A voice holds up to 2048 components.
-  - It ends when its total level is under −84 dBFS.
-- **Dampers** take 70 dB/s at A0 rising to 300 dB/s at E6, 3 % faster per
-  partial number. **Dampers** scales them.
-  - Above E6 a grand has no dampers: those notes ring on after release, fading
-    as when held. **Top Dampers → All keys** damps every key instead, as many
-    digital pianos do.
-- **Load guard.** When more than 4000 components sound across all voices, the
-  floor below which components are dropped rises (by up to 40 dB).
-- **Space.** **Width** is mid/side width. **Reverb** (`space.room`) is how much of the space is
-  heard; the measurements are close-miked, so 0 is the dry piano, and then bit-identical to the
-  piano before the reverb existed. The space is in **Space, below**.
-- **Headroom.** Output is the recordings' level −10 dB (`kTrimDb`); one loud
-  recorded note peaks near 0 dBFS.
-
-## A key struck while it rings: Restrike
+### A key struck while it rings: Restrike
 
 Not measured: no recording here holds a key struck while it still sounds. With **Restrike**
 (`string.restrike`) at 0 %, the default, the handover above is all there is and the output is
@@ -819,36 +911,6 @@ Cost: nothing at 0 %. At 100 %, 36 pedalled keys struck three times rendered in 
 Preset *Struck Again* (with Dampers at 400 %, so it can be heard without a pedal: press the
 velocity graph at its right, then at its left). Test: `restrike-keep`.
 
-## Parameters
-
-| Parameter | ID | What it changes |
-|---|---|---|
-| Velocity Map | `play.velmap` | Smooth / As Recorded (Velocity, above) |
-| Touch, Dynamics, Tone Range, Soft Attack | `play.touch`, `play.dynamics`, `play.tone`, `play.softattack` | velocity → level, tone, swell |
-| Soft Pedal | `play.softpedal` | una corda (CC 67): softer felt, then one string of three left out (The soft pedal, above) |
-| Brightness | `tone.bright` | partial tilt, dB per octave of partial number |
-| Attack | `tone.attack` | swell time τ |
-| Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
-| Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (The hammer, above) |
-| Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
-| Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support; higher, an ideal string's comb and every change multiplied (3× at 100 %) |
-| Body | `tone.body` | body ring level |
-| Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
-| Unison | `string.unison` | beat offsets and cluster spreads |
-| Stretch | `string.stretch` | stretch tuning, 0 = equal temperament |
-| Stiffness | `string.stiffness` | the strings' inharmonicity, % of measured (0: harmonic) |
-| Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
-| Sustain | `string.sustain` | all string decays (voices and bank) |
-| Dampers | `string.damper` | damper speed |
-| Restrike | `string.restrike` | a key struck while it rings: 0 % hands the old vibration over (the default), 100 % adds the new strike to it, less what the felt takes |
-| Top Dampers | `string.topdampers` | None above E6 / All keys |
-| Resonance | `string.resonance` | sympathetic drive |
-| Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, below) |
-| Touch Point | `touch.*` | a finger on the strings: harmonics and mutes (Creative: Touch Point, below); Press 0 by default |
-| Listening Point | `listen.*` | where along the string the sound is taken (Creative: Listening Point, below); Depth 0 by default |
-| Partial Arp | `parp.*` | the partial arpeggiator (Creative: the partial arpeggiator, below); Off by default. `arp.*` until patchVersion 2 |
-| Arpeggiator / Sequencer | `arp.*` | synthkit's (API.md §4b); Off by default (Creative: the kit's arpeggiator and sequencer, below) |
-
 ## Space
 
 A hybrid reverb (`src/Reverb.h`), generated, with no recorded impulses: each space's **early
@@ -894,10 +956,14 @@ convolver's impulse is fixed once audio runs).
   to 0.72 s; Size 50-200 % leaves the RT60 within 3 %.
 - **Cost.** About 2.6 % of a core for one space (native), against 2.8 % for the old room's 1.6 s
   convolver; two while one rings out after a change.
-- It replaced a 1.6 s generated noise room (one convolver, a 0.32 s amplitude decay, so an
-  RT60 of 2.2 s, low-passed towards 600 Hz as it faded).
 
-## Creative: Touch Point
+## Creative additions
+
+Not part of the measured piano. Each is off by default, and off leaves the output bit-identical to the
+piano without it. Touch Point, Listening Point and the partial arpeggiator are per-note effects on the
+partials; the kit's arpeggiator and sequencer and the modulation matrix come from synthkit.
+
+### Touch Point
 
 Not part of the measured piano: with **Press** at 0 (the default) the output is bit-identical to
 the piano without it. A finger resting on the strings, as a player reaches into a grand to sound
@@ -970,7 +1036,7 @@ What it doesn't do:
 Presets: *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*. Tests:
 `touch-point`, `mod-touch`.
 
-## Creative: Listening Point
+### Listening Point
 
 Not part of the measured piano: with **Depth** at 0 (the default) the output is bit-identical to
 the piano without it. Where along the string the sound is taken, as a pickup on an electric
@@ -1029,7 +1095,7 @@ What it doesn't do:
 
 Presets: *Wandering Ear*, *Opening Ear*, *Bridge Pickup*. Tests: `listening-point`, `mod-listen`.
 
-## Creative: the partial arpeggiator
+### The partial arpeggiator
 
 Not part of the measured piano: with **Arp Pattern** Off (the default) the output is
 bit-identical to the piano without it. Turned on, each note's partials take their turn, a
@@ -1064,7 +1130,7 @@ forward with a positive Boost.
   level. Each voice has its own random stream for Random, so the beats and noise don't change.
   It costs about 7 % more CPU when on, nothing when off.
 
-## Creative: the kit's arpeggiator and sequencer
+### The kit's arpeggiator and sequencer
 
 synthkit's arpeggiator and step sequencer (`features.arp`, API.md §4b), off by default
 (`arp.on`), so the piano is unchanged until it's turned on. They run after the synth's
@@ -1090,7 +1156,7 @@ actually played; the piano handles the arpeggiator's own notes in three places:
 `arp.*` were the Partial Arp's IDs until patchVersion 2; `migratePatch` renames them to
 `parp.*`, and `tests/migrate-v1.json` checks that an old patch renders as it did.
 
-## Creative: modulation
+### Modulation
 
 synthkit's mod matrix (`features.modSlots`: 16 routes), four standard LFOs
 (`features.standardLfos`) and four Shapes (`features.shapes`: drawn, tempo-locked curves, API.md
@@ -1132,31 +1198,6 @@ The page puts all of this, the Partial Arp and the kit's arpeggiator in a **Synt
 one wide accordion (`ui/layout.json`), every panel folded but the matrix. The pattern panel's
 fold toggle needed a kit fix (synthkit #26: it rewrote its own title).
 
-## The data pipeline
-
-```
-recordings ─ analyze.py ── salamander.json ─ analyze_onset.py ─ salamander_onset.json
-           │                     │                                     │
-           │                     └──── analyze_modes.py (modes into salamander.json) ──┬─ analyze_noise.py ─ salamander_noise.json ─┐
-           │                                                                           └─ analyze_body.py ── salamander_body.json ──┤
-           └ analyze_mech.py ─────────────────────────────────────────────────────────────────────────────── salamander_mech.json ─┤
-                                                                                                                                    │
-                                                    make_header.py → src/PianoData.h → build ───────────────────────────────────────┘
-                                                    calibrate_noise.py (renders; adjusts salamander_noise.json; repeat ×3; keys below A2 only)
-                                                    analyze_strike.py (recordings + a build → salamander_strike.npz; then make_header, build)
-          salamander.json ─ analyze_hammer.py ─ salamander_hammer.json (the hammer's corner; into make_header)
-          salamander.json ─ analyze_point.py ── salamander_point.json (each key's strike point and comb; into make_header)
-                                                    choose_modes.py (renders; per key, modes or not; then make_header, build)
-```
-
-The commands are in the README. Everything downstream of `analyze.py` uses its
-partials, so rerun those steps after it; the noise analysis uses the modes' envelopes
-(`analyze.partial_env`), so it follows `analyze_modes.py`. The modal fit takes about 40 minutes
-on two cores and caches each key in `<tmp>/piano-modes/`. Clear the noise corrections before
-recalibrating if the noise analysis changed. `analyze.py` takes about 25
-minutes on one core; run halves of the key list in parallel and `--merge`
-them.
-
 ## What isn't modelled (yet)
 
 - **The dampers' imperfect stop.** On a real piano a residual ring continues
@@ -1178,3 +1219,87 @@ them.
   and a feedback network), not measured from a hall.
 - **The treble's partials** mostly keep the older description: above C6 the modal fit seldom
   beats it on these noisy envelopes.
+
+## Parameters
+
+Every parameter, by the ID a patch stores, with the section that explains it.
+
+| Parameter | ID | What it changes |
+|---|---|---|
+| Velocity Map | `play.velmap` | Smooth / As Recorded (Velocity, above) |
+| Touch, Dynamics, Tone Range, Soft Attack | `play.touch`, `play.dynamics`, `play.tone`, `play.softattack` | velocity → level, tone, swell |
+| Soft Pedal | `play.softpedal` | una corda (CC 67): softer felt, then one string of three left out (The soft pedal, above) |
+| Brightness | `tone.bright` | partial tilt, dB per octave of partial number |
+| Attack | `tone.attack` | swell time τ |
+| Hammer | `tone.hammer` | the strike's level (recorded from A2 up, band noise below) |
+| Hardness | `tone.hardness` | the hammer's felt: its spectral corner, ±3 octaves (Hardness, above) |
+| Strike Point | `tone.strikepoint` | where the hammer meets the string: each key's own strike point × setting / 12 % (12 %: as recorded) |
+| Strike Depth | `tone.strikedepth` | how far Strike Point goes: 0 % what the recordings support; higher, an ideal string's comb and every change multiplied (3× at 100 %) |
+| Body | `tone.body` | body ring level |
+| Key & Pedal | `tone.mech` | mechanical noises, and the pedal's lift ring |
+| Unison | `string.unison` | beat offsets and cluster spreads |
+| Stretch | `string.stretch` | stretch tuning, 0 = equal temperament |
+| Stiffness | `string.stiffness` | the strings' inharmonicity, % of measured (0: harmonic) |
+| Overtone Decay | `string.overtonedecay` | upper partials' decay against the fundamental's (The strings, above) |
+| Sustain | `string.sustain` | all string decays (voices and bank) |
+| Dampers | `string.damper` | damper speed |
+| Restrike | `string.restrike` | a key struck while it rings: 0 % hands the old vibration over (the default), 100 % adds the new strike to it, less what the felt takes |
+| Top Dampers | `string.topdampers` | None above E6 / All keys |
+| Resonance | `string.resonance` | sympathetic drive |
+| Width, Reverb, Space… | `space.*` | stereo width; the reverb (Space, above) |
+| Touch Point | `touch.*` | a finger on the strings: harmonics and mutes (Touch Point, above); Press 0 by default |
+| Listening Point | `listen.*` | where along the string the sound is taken (Listening Point, above); Depth 0 by default |
+| Partial Arp | `parp.*` | the partial arpeggiator (The partial arpeggiator, above); Off by default. `arp.*` until patchVersion 2 |
+| Arpeggiator / Sequencer | `arp.*` | synthkit's (API.md §4b); Off by default (The kit's arpeggiator and sequencer, above) |
+
+## Appendix A: Glossary
+
+- **Partial.** One frequency component of a string's sound, numbered n from the fundamental. Its
+  frequency is near n·f0 but stretched by stiffness (inharmonicity B).
+- **Mode.** A decaying sinusoid with its own frequency offset and decay rate. A partial is a few modes:
+  the unison's strings and their polarisations (The partials, Modes).
+- **Component.** One complex one-pole resonator that a voice runs. A mode is one component; so are a
+  partial's older-description parts (prompt, burst, aftersound), its beating partners, its swell twin and
+  the soft pedal's copies.
+- **Layer (velocity layer).** One of the 16 velocities recorded per key. Layers are counted from 1 in
+  prose (layer 13 is the one the on-screen keyboard's velocity 100 plays) and from 0 in the code.
+- **AB pair.** The recordings' two microphones. Every level, phase and noise band is kept per mic.
+- **Envelope, heterodyne.** A partial's level over time, read by shifting it down to 0 Hz and averaging
+  with a triangular window.
+- **Prompt sound, aftersound.** A partial's fast first decay while the unison's strings move together,
+  then its slower decay as they drift apart.
+- **Unison.** The two or three strings a key's hammer strikes together.
+- **Cluster.** In the treble, a partial that is several components tens of Hz apart.
+- **Swell (τ).** How a partial rises at the strike, as 1 − e^{−t/τ}.
+- **Strike.** What the recordings hold between the partials in the first 0.3 s: the hammer's knock, the
+  action and the soundboard's response.
+- **Body ring.** The diffuse sound of the soundboard, case and room after a strike.
+- **Free strings, sympathetic bank.** The strings whose dampers are up ring in sympathy with what is
+  playing; the bank is the engine's model of them.
+- **Perceptual distance.** The project's measure, in %, of how far a render is from its recording
+  (`tools/measure/perceptual.py`, docs/TESTING.md). Lower is closer.
+- **Calibration by resynthesis.** Rendering the model, comparing with the recordings and correcting the
+  stored measurement.
+- **Bit-identical (`cmp`).** A control at its default produces exactly the same samples as the build
+  without it, checked by comparing renders.
+
+## Appendix B: Design history
+
+Earlier versions and ideas that were tried and dropped, moved out of the sections above so those
+describe only what the engine does now.
+
+### The body's ring: calibrating level and decay by resynthesis
+
+Tried and dropped: calibrating the body ring's level and decay over its first second the same way. One line can't follow it, and the long tail high notes need came out 17–27 dB too weak at 2–3 s.
+
+### Overtone Decay: a physical loss law
+
+A physical loss law was tried first: string losses as b1 + b3 f² (air and internal friction), fitted per key to the partials' decays. It doesn't hold on these recordings (each partial's decay mixes a fast and a slow mode of the unison; the fit's error is 50-90 %, and b3's sign changes from key to key), so Overtone Decay scales the measured decays instead of moving a fitted law.
+
+### Space: the 1.6 s noise room it replaced
+
+The Space reverb replaced a 1.6 s generated noise room (one convolver, a 0.32 s amplitude decay, so an RT60 of 2.2 s, low-passed towards 600 Hz as it faded).
+
+### Strike Depth: the first Strike Point (PR #11)
+
+*Before this* (PR #11) every key was taken to strike at 12 %, with notches 30 dB deep, and a partial could rise 12 dB. Its comb missed the bass strings' own above about the 12th partial, and from A2 up it undid notches that aren't there: partials 8, 16, 17 and 25 came up as single ringing overtones (up to 29 dB clear of their neighbours on F#4, 10-17 dB from A2 to C4), like a comb filter.

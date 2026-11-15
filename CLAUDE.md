@@ -82,53 +82,32 @@ from CI at milestones.
   `tools/listen/ab_strike.py` makes the A/B (current, strike off, recorded strike, recording).
   Never notch the mains hum out of a signal that is kept (only out of measurements): a 5 Hz-wide
   notch smears the attack into faint 50 Hz-harmonic tones for hundreds of ms.
-- **Hardness and Strike Point** (`tone.hardness`, `tone.strikepoint`): the hammer's force
-  spectrum 1/(1+(f/fc)²), its corner per key and layer (`hammerFc`, `tools/analyze_hammer.py`,
-  fitted to how the partials brighten across the 16 layers: 70-86 % of that change from A0 to C6).
-  Hardness moves the corner ±3 octaves; partials, the recorded strike (two first-order sections)
-  and the swell (τ × (fc/fc')^½) change by the ratio of spectra. Defaults are bit-identical to the measured piano: keep them so (check with `cmp` on
-  renders against the previous build). Harder saturates (+4-6 dB above 2 kHz): the measured
-  hammer is already flat to its corner. Rerun `analyze_hammer.py` after `analyze.py`.
-- **Strike Point is per key** (`tools/analyze_point.py` → `salamander_point.json` → `strikeX`,
-  `strikeEps`, `strikeLift`): the comb sin(nπx) fitted to each key's partial levels. Only the
-  low bass (A0-F#2) shows it (x 11.65-12.30 %, 16-59 % of the partial-to-partial variation;
-  notches 7-23 dB); from A2 up it is weak (ε ≥ 0.55) and those keys take the bass's median x and
-  ε 0.55, a judgment. The control scales each key's x by setting / 12 %; partials change by the
-  ratio of combs, rise by no more than their measured dip below their neighbours (`strikeLift`,
-  or 6 dB), and turn by π when the hammer crosses their node. Lessons: one x for every key puts
-  the comb a quarter period off by the 25th partial; undoing notches deeper than the recordings'
-  raises single partials clear of their neighbours (a comb-filter ring: PR #11's did, up to 29 dB
-  on F#4); a floor added under sin² everywhere flattens the low partials' tilt, so it starts
-  past the first antinode. `tools/measure/strikepoint.py` sweeps it (no recordings needed).
-  Rerun `analyze_point.py` after `analyze.py`/`analyze_modes.py`.
-- **Strike Depth** (`tone.strikedepth`, default 0 %): the unrealistic end of Strike Point, kept
-  because the owner liked the first version's extreme, transformational sound. It lowers the
-  comb's floor to 0.03, raises the cap on a partial's rise from 6 to 12 dB, and multiplies every
-  partial's change in dB by 1 + 2 × depth. Lesson: deeper notches alone are barely audible (1-7 %
-  by the distance; the owner couldn't hear the first version, and PR #11's control was no further
-  from the realistic one): a notch takes one partial per node, so an audible Depth has to widen
-  them. Check a new control's size with the distance before calling it strong.
-- **Strike Point's loudness** is kept (`pointComp`): the note's energy over its first half second
-  (modes' power × how long each lasts) stays at the measured piano's, for both controls. Power at
-  the strike alone overcounts fast modes (notes came out up to 12 dB loud). Range 2-50 % (log);
-  12 % is bit-identical at any Depth. Presets *Hollow Strike*, *Glass Strike*; test
-  `strike-depth`. Presets are embedded at build time: rebuild before `--check` after editing one.
-- **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md): not measured (no recordings with it
-  down), so its sizes are a judgment. Felt: Hardness −60 % at full (half by C7; no lower than costs the fundamental 3 dB, or soft
-  notes lose 16 dB). Unison, from half
-  pedal, keys from F#2-C3 up: each partial starts 3.5 dB lower and comes back to +2 dB as fast as
-  its prompt sound fades, as a gain over time on the whole partial (a second, faster-fading copy
-  of each component in `PianoVoice::add`; `unaEarly`/`unaLate`/`unaExtra` are set only while a
-  strike adds partials). Lesson: never scale a partial's modes one by one: they were fitted to add
-  up, and unequal gains made C4 2 dB louder at the strike. 0 % must stay bit-identical (`cmp`).
-  `tools/measure/softpedal.py`: 11-22 % from no pedal at full, 3-8 % at half. Test `soft-pedal`.
-- **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`): `partialRatio`
-  scales B and the `dev` offsets together (voices at the strike, the bank when it changes);
-  `overtoneDecayDb` scales each component's decay by (f/f0)^γ within ¼…4, in `updatePoles` and
-  `bankPoles`. Defaults bit-identical (`cmp`). A b1 + b3 f² loss law doesn't fit these decays
-  (50-90 % error; b3's sign varies), hence the scaling. The body's ring is mostly strings (tones
-  fading 5-20 dB/s; partly the free strings above E6), but the recorded ring sounded no different
-  to the owner from today's, so it stays band noise (MODEL.md).
+- **Hammer controls: Hardness, Strike Point, Strike Depth** (`tone.hardness`, `tone.strikepoint`,
+  `tone.strikedepth`; the physics, measurements and numbers are in docs/MODEL.md, Controls). Defaults
+  are bit-identical to the measured piano: keep them so (check with `cmp` on renders against the
+  previous build); Strike Point 12 % is bit-identical at any Depth. Rerun `analyze_hammer.py` and
+  `analyze_point.py` after `analyze.py`/`analyze_modes.py`. Lessons: one x for every key puts the comb
+  a quarter period off by the 25th partial; undoing notches deeper than the recordings' raises single
+  partials clear of their neighbours (a comb-filter ring: PR #11's did); a floor added under sin²
+  everywhere flattens the low partials' tilt, so it starts past the first antinode; deeper notches
+  alone are barely audible (1-7 % by the distance), so an audible Depth has to widen them: check a new
+  control's size with the distance before calling it strong; the loudness is kept by `pointComp` from
+  the first half second's energy, since power at the strike alone overcounts fast modes.
+  `tools/measure/strikepoint.py` sweeps it (no recordings needed). Presets *Hollow Strike*, *Glass
+  Strike*; test `strike-depth`. Presets are embedded at build time: rebuild before `--check` after
+  editing one.
+- **Soft Pedal** (`play.softpedal`, CC 67; docs/MODEL.md, The soft pedal): not measured (no recordings
+  with it down), so its sizes are a judgment (`kUna…`). 0 % must stay bit-identical (`cmp`). Lesson:
+  never scale a partial's modes one by one: they were fitted to add up, and unequal gains made C4 2 dB
+  louder at the strike; the gain over time is a second, faster-fading copy of each component in
+  `PianoVoice::add` (`unaEarly`/`unaLate`/`unaExtra` are set only while a strike adds partials).
+  `tools/measure/softpedal.py`; test `soft-pedal`.
+- **Stiffness and Overtone Decay** (`string.stiffness`, `string.overtonedecay`; docs/MODEL.md, The
+  strings): `partialRatio` scales B and the `dev` offsets together (voices at the strike, the bank
+  when it changes); `overtoneDecayDb` is applied in `updatePoles` and `bankPoles`. Defaults
+  bit-identical (`cmp`). Don't fit a b1 + b3 f² loss law (it doesn't fit these decays). The body's
+  ring is mostly strings, but the recorded ring sounded no different to the owner, so it stays band
+  noise (MODEL.md, The body's ring).
 - The partial fits feed the noise, onset and body fits: after `analyze.py`,
   rerun `analyze_noise.py`, `analyze_onset.py` and `analyze_body.py` too
   (`analyze_mech.py` is independent of them), then `make_header.py`, build,
@@ -207,14 +186,13 @@ from CI at milestones.
   (it fades three times as fast as the new strike swells), so fast repeats
   can't cancel. **Restrike** (`string.restrike`, default 0 = that handover, bit-identical;
   docs/MODEL.md) adds the new strike to the old vibration instead: each old partial keeps
-  r × 10^(−6 dB·sin²(nπx)/20) (the felt, a judgment: `kRestrikeFeltDb`). Modal components carry a
+  a share (the felt's take, a judgment: `kRestrikeFeltDb`; the formula is in MODEL.md, Restrike). Modal components carry a
   tag (`mid`, the mode's index + 1; move it wherever components move, as `cull` does) and the
   kept part is folded into the new strike's component for the same mode (`foldOld`: one pole,
   one component, mic gains recomputed), so repeats don't add components; the rest (no modes,
-  twins) is kept as components of its own and can pile up (C4: 683 in a trill). It only works
+  twins) is kept as components of its own and can pile up (MODEL.md has the numbers). It only works
   because a mode's frequency and decay don't depend on the layer: keep that so, or folds stop
-  matching (they check, and fall back). Heard where old vibration is strong (loud then soft
-  29-151 %, fast uneven repeats); even repeats at 4/s and unpedalled playing change ~0 %: say
+  matching (they check, and fall back). Heard where old vibration is strong (loud then soft, fast uneven repeats); even repeats at 4/s and unpedalled playing change ~0 %: say
   so. `tools/measure/restrike.py` (`--felt0` with a `-DRESTRIKE_FELT_DB=0.f` build checks the sum);
   stress with `string.restrike=100`. Preset *Struck Again*; test `restrike-keep`. A voice ends when its total level is under −84 dBFS. The
   body ring lives in the synth, per key, and is damped from note and pedal
@@ -237,28 +215,25 @@ from CI at milestones.
   alone sounds resonant and artificial to the owner; negative Boost (a notch, the default:
   −20 dB) or Octaves + Width sound more natural. `tests/partial-arp.json` and the *Harmonic Arp* / *Partial Notch* presets
   exercise it.
-- **Touch Point** (`touch.*`; `PianoVoice::touchBlock`, `touchShare`; docs/MODEL.md): a creative feature, a finger on
-  the strings. Each partial fades faster by Press × ½(1 − cos(2πny)·sinc(nw)) dB/s, one term in
-  `updatePoles` looked up by `pnum`, the same for all of a partial's components (never its modes
-  one by one). Press 0 must stay bit-identical (`cmp`). Press, Point and Width are per-voice,
-  per-block destinations. It is destructive, as on a string: what the finger takes doesn't come
-  back, so a moving Point leaves less and less (say so; the Partial Arp is the non-destructive
-  one). The body's ring, the strike and the sympathetic bank aren't touched: a mute's tail is the
-  body's ring (35-43 dB under the strike a second in), unless Dry is up. Its display names
-  are Press / Point / Width / Snap: `play.touch` (Touch, the velocity curve) is another thing.
-  `tools/measure/touch.py` (no recordings): node partials within ~1 dB, the others ≥ 20 dB down.
-  Presets *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*; tests `touch-point`,
-  `mod-touch`. **Dry** (`touch.dry`, default 0) lets the finger stop the key's body ring too
-  (`Piano::touchBody`): the owner asked for it as an option, not physics; *Felt Mute* uses it.
-- **Listening Point** (`listen.*`; `PianoVoice::listenBlock`; docs/MODEL.md): a creative feature, where along the
-  string the sound is taken. Each partial's gain is c·((1 − Depth) + Depth·sin(nπy)·sinc(nw)),
-  signed, multiplied into the Partial Arp's `pnGain` (output gain, never state), so it is the
-  non-destructive one and can move while notes ring. c keeps the first half second's energy
-  (`listenPow`, summed in `add`; at most 12 dB). Depth 0 must stay bit-identical, and so must the
-  Partial Arp's tests (`cmp`). A strike's new components take their gains at once (`struckFrom`)
-  only while it is on. A still point is subtle (5-20 % at Point 12-25 %); the movement is the
-  sound (*Wandering Ear* 27 % and more): don't call a still setting strong. `tools/measure/listen.py`.
-  Presets *Wandering Ear*, *Opening Ear*, *Bridge Pickup*; tests `listening-point`, `mod-listen`.
+- **Touch Point** (`touch.*`; `PianoVoice::touchBlock`, `touchShare`; docs/MODEL.md, Touch Point): a
+  creative feature, a finger on the strings. One term in `updatePoles` looked up by `pnum`, the same
+  for all of a partial's components (never its modes one by one). Press 0 must stay bit-identical
+  (`cmp`). Press, Point and Width are per-voice, per-block destinations. It is destructive, as on a
+  string: what the finger takes doesn't come back, so a moving Point leaves less and less (say so;
+  the Partial Arp is the non-destructive one). The body's ring, the strike and the sympathetic bank
+  aren't touched unless Dry is up (`touch.dry`, `Piano::touchBody`: the owner asked for it as an
+  option, not physics; *Felt Mute* uses it). Its display names are Press / Point / Width / Snap:
+  `play.touch` (Touch, the velocity curve) is another thing. `tools/measure/touch.py` (no
+  recordings). Presets *Octave Harmonics*, *Felt Mute*, *Late Touch*, *Chance Harmonics*; tests
+  `touch-point`, `mod-touch`.
+- **Listening Point** (`listen.*`; `PianoVoice::listenBlock`; docs/MODEL.md, Listening Point): a
+  creative feature, where along the string the sound is taken. Its gain is multiplied into the
+  Partial Arp's `pnGain` (output gain, never state), so it is the non-destructive one and can move
+  while notes ring. c keeps the first half second's energy (`listenPow`, summed in `add`). Depth 0
+  must stay bit-identical, and so must the Partial Arp's tests (`cmp`). A strike's new components
+  take their gains at once (`struckFrom`) only while it is on. A still point is subtle; the movement
+  is the sound: don't call a still setting strong. `tools/measure/listen.py`. Presets *Wandering
+  Ear*, *Opening Ear*, *Bridge Pickup*; tests `listening-point`, `mod-listen`.
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
