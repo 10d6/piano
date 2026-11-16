@@ -246,7 +246,13 @@ Guards:
 **In the engine.** Each mode is one component and its swell twin. The partial's frequency is
 the modes' energy-weighted mean (so `dev` is set for every modal partial), and the modes'
 offsets from it are the unison's spread, which **Unison** scales (0 % puts them on one
-frequency). The engine's t = 0 is the swell's start, `delay` into the recording, so each mode's
+frequency). It scales them about where the partial *rings*: the modes' mean weighted by the
+energy each has left from 0.2 s on (`kUnisonCentreS`), not their mean at the strike. A loud mode
+gone in a tenth of a second can sit far from the modes that ring on: D#4's fundamental has one
+at −11 Hz, which puts its ringing modes at +4.8 Hz. Scaled about the strike's mean, Unison moved
+the ringing modes together, so at 300 % the fundamental of D4-E4 rang about 60 cents sharp of its
+2nd partial (bell-like). The same was true, less strongly, of C2-D#2, A3 and D#6. 100 % is
+unchanged; 0 % now puts every mode on the pitch the note rings at. The engine's t = 0 is the swell's start, `delay` into the recording, so each mode's
 phase is advanced to it and its level lowered along its decay. Layers where the partial was too
 weak to fit take the nearest fitted layer's modes, moved by the difference in the partial's
 measured level. Between measured keys, the modes come from the nearer key, their levels move to

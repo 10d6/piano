@@ -65,6 +65,7 @@ constexpr int kBankMaxPartial = 16;       // the string bank: each string's part
 constexpr float kBankMaxHz = 4000.f;      // …and 4 kHz
 constexpr float kStrikePointRef = 0.12f;  // Strike Point's default: every key's own measured strike point (pd::strikeX, about 12 %)
 constexpr float kCoupling = 0.06f;        // how strongly sound at a free string's partial drives it (1/s)
+constexpr float kUnisonCentreS = 0.2f;    // Unison spreads a partial's modes about their energy-weighted mean from this time (s) on
 
 inline float dbToGain(float db) { return std::pow(10.f, db * 0.05f); }
 
@@ -229,6 +230,7 @@ struct PianoVoice : Voice {
   alignas(32) float wl[kCapacity], wrr[kCapacity], wri[kCapacity];  // to left / right
   float ratio[kCapacity];     // frequency / the key's pitch
   float offset[kCapacity];    // beat offset (Hz), scaled by the unison setting
+  float centre[kCapacity];    // where Unison spreads the offset from (Hz): its partial's sustained frequency
   float decay[kCapacity];     // natural decay (dB/s, negative), scaled by Sustain
   float extra[kCapacity];     // extra decay not scaled by Sustain (dB/s, positive): the onset twins
   float damp[kCapacity];      // extra decay with the damper down (dB/s, positive)
@@ -267,6 +269,7 @@ struct PianoVoice : Voice {
   // the soft pedal's copies, partials without modes), −1 for what a strike has left to fade
   short mid[kCapacity] = {};
   short tagNext = 0;
+  float centreNext = 0;   // the centre the next components take (addOne)
   float feltKeep[kMaxPartials + 1] = {};
   void foldOld(int j, int at, int old, float fade);
 
@@ -1169,6 +1172,7 @@ void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float 
   wri[i] = -gr * std::sin(stereoPhase);
   ratio[i] = rat;
   offset[i] = offHz;
+  centre[i] = centreNext;
   decay[i] = decayDb;
   extra[i] = extraDb;
   damp[i] = dmp;
@@ -1188,7 +1192,7 @@ void PianoVoice::addOne(float amp, float decayDb, float rat, float offHz, float 
 void PianoVoice::foldOld(int j, int at, int old, float fade) {
   int i = synth.modeSlot[j];
   if (i < 0 || i >= old || mid[i] != j + 1) return;
-  if (ratio[i] != ratio[at] || offset[i] != offset[at] || decay[i] != decay[at] || damp[i] != damp[at]) return;
+  if (ratio[i] != ratio[at] || offset[i] != offset[at] || centre[i] != centre[at] || decay[i] != decay[at] || damp[i] != damp[at]) return;
   float k = feltKeep[pnum[at]];
   const double kd = k, ar = re[at], ai = im[at];
   double kr = kd * re[i], ki = kd * im[i];
@@ -1710,6 +1714,29 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         }
         unaExtra = std::clamp(-topDec, kUnaMinRate, kUnaMaxRate);
       }
+      // Unison spreads the modes from where the partial rings, not from their mean at the strike:
+      // a loud mode gone in a tenth of a second (the strike's, its frequency loosely defined) can
+      // sit far from the modes that ring on, so the measured frequency, their energy-weighted mean,
+      // lies between. Scaled about that, Unison moved the ringing modes as a block (D#4's
+      // fundamental, which D4 and E4 share, by +4.8 Hz × (Unison − 1): 60 cents sharp of its
+      // partials at 300 %, as a bell's is). The centre is the modes' mean weighted by the energy
+      // each has left from kUnisonCentreS on, so 100 % is unchanged, 0 % puts every mode on the
+      // pitch the note rings at, and above 100 % the strings spread around it.
+      {
+        float wSum = 0, wOff = 0;
+        for (int j = P.fm; j < P.fm + P.nm; ++j) {
+          const auto& ML = pd::modeLevels[j];
+          float ml = 0.01f * (ML[l0][0] + (ML[l0 + 1][0] - ML[l0][0]) * lf);
+          float mr = 0.01f * (ML[l0][1] + (ML[l0 + 1][1] - ML[l0][1]) * lf);
+          float dec = std::min(pd::modes[j].decay * decScale, -0.3f);   // dB/s, negative
+          // power from kUnisonCentreS on: 10^((level + decay·t)/10) / (|decay| · ln10/10)
+          float w = (dbToGain(ml + dec * kUnisonCentreS) * dbToGain(ml + dec * kUnisonCentreS) +
+                     dbToGain(mr + dec * kUnisonCentreS) * dbToGain(mr + dec * kUnisonCentreS)) / (-dec);
+          wSum += w;
+          wOff += w * pd::modes[j].off;
+        }
+        centreNext = wSum > 1e-30f ? wOff / wSum : 0.f;
+      }
       for (int j = P.fm; j < P.fm + P.nm; ++j) {
         const auto& ML = pd::modeLevels[j];
         float ml = 0.01f * (ML[l0][0] + (ML[l0 + 1][0] - ML[l0][0]) * lf) + shiftL;
@@ -1726,6 +1753,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
         tagNext = 0;
         if (keep > 0 && count > at) foldOld(j, at, old, fade);
       }
+      centreNext = 0;
       continue;
     }
     float clHz[4], clPh[4];
@@ -1762,7 +1790,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
           int c = count++;
           re[c] = re[i] * k; im[c] = im[i] * k; pr[c] = pr[i]; pi[c] = pi[i];
           wl[c] = wl[i]; wrr[c] = wrr[i]; wri[c] = wri[i];
-          ratio[c] = ratio[i]; offset[c] = offset[i]; decay[c] = decay[i]; damp[c] = damp[i]; extra[c] = extra[i];
+          ratio[c] = ratio[i]; offset[c] = offset[i]; centre[c] = centre[i]; decay[c] = decay[i]; damp[c] = damp[i]; extra[c] = extra[i];
           pnum[c] = pnum[i]; gPrev[c] = gPrev[i]; mid[c] = mid[i];
           re[i] *= 1 - k;
           im[i] *= 1 - k;
@@ -2069,7 +2097,7 @@ void PianoVoice::release() {
 void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma) {
   float nyq = 0.47f * sr;
   for (int i = 0; i < count; ++i) {
-    float f = pitchHz * ratio[i] + offset[i] * unisonScale;
+    float f = pitchHz * ratio[i] + centre[i] + (offset[i] - centre[i]) * unisonScale;
     float db = overtoneDecayDb(decay[i], ratio[i], gamma) / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f) -
                touchDb[pnum[i]];
     float rad = f < nyq ? std::pow(10.f, db * 0.05f / sr) : 0.f;
@@ -2157,7 +2185,7 @@ void PianoVoice::cull() {
       int j = --count;
       re[i] = re[j]; im[i] = im[j]; pr[i] = pr[j]; pi[i] = pi[j];
       wl[i] = wl[j]; wrr[i] = wrr[j]; wri[i] = wri[j];
-      ratio[i] = ratio[j]; offset[i] = offset[j]; decay[i] = decay[j]; damp[i] = damp[j]; extra[i] = extra[j];
+      ratio[i] = ratio[j]; offset[i] = offset[j]; centre[i] = centre[j]; decay[i] = decay[j]; damp[i] = damp[j]; extra[i] = extra[j];
       pnum[i] = pnum[j]; gPrev[i] = gPrev[j]; mid[i] = mid[j];
       re[j] = im[j] = pr[j] = pi[j] = wl[j] = wrr[j] = wri[j] = 0;
       gPrev[j] = 1;
