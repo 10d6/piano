@@ -150,6 +150,10 @@ button, input, select { font: inherit; color: inherit; }
 .level.is-hot .level-fill { background: var(--error); }
 .voice-count { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .top-actions { display: flex; gap: 4px; }
+.undo { display: flex; gap: 2px; }
+.undo .btn-icon { display: inline-flex; align-items: center; justify-content: center; padding: 5px 7px; }
+.undo .btn:disabled { opacity: 0.35; }
+.undo-icon.is-redo { transform: scaleX(-1); }
 .theme-btn { display: inline-flex; align-items: center; justify-content: center; }
 
 .start-banner {
@@ -184,6 +188,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 .panel.is-wide { flex-basis: 100%; }
 .panel-title {
+  display: flex; align-items: center; min-height: 22px;
   margin: 0 0 10px; font-size: 13px; font-weight: 650; color: var(--ink);
   font-variation-settings: "wdth" 80;
 }
@@ -238,6 +243,17 @@ button, input, select { font: inherit; color: inherit; }
 .info-dot { fill: currentColor; }
 .info-btn:hover, .info-btn[aria-expanded="true"] { color: var(--accent); }
 .panel-title .info-btn { margin-left: 2px; }
+
+/* A panel's reset button (reset.js), at the right of its title. */
+.reset-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 24px; height: 24px; padding: 4px; margin: -4px -6px -4px auto;
+  border: 0; border-radius: 6px; background: none; cursor: pointer; color: var(--ink-soft);
+}
+.reset-btn svg { width: 14px; height: 14px; display: block; }
+.reset-arc { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.reset-btn:hover:not(.is-idle) { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.reset-btn.is-idle { opacity: 0.3; cursor: default; }
 .info-pop {
   position: fixed; z-index: 25; max-width: min(280px, calc(100vw - 16px)); padding: 8px 11px;
   border-radius: 8px; background: var(--cap); color: #f1f3ef; font-size: 12px; line-height: 1.4;
@@ -1034,10 +1050,12 @@ class SkWasm {
 // and saves/loads patches. Changes are forwarded to the audio thread.
 
 class Model {
-  static async create(bytes) {
+  // quiet: a second copy for reading other states (the panels' reset
+  // buttons), whose messages would only repeat the main one's.
+  static async create(bytes, { quiet = false } = {}) {
     let memory = null;
     const logs = [];
-    const { instance } = await WebAssembly.instantiate(bytes, skImports(() => memory, (m) => { logs.push(m); console.error("[synth]", m); }));
+    const { instance } = await WebAssembly.instantiate(bytes, skImports(() => memory, (m) => { if (quiet) return; logs.push(m); console.error("[synth]", m); }));
     memory = instance.exports.memory;
     return new Model(new SkWasm(instance), logs);
   }
@@ -1059,6 +1077,7 @@ class Model {
     this.shapeListeners = new Set();
     this.dirty = false;
     this.patchListeners = new Set();   // after any patch load
+    this.history = null;               // SkHistory (history.js), set by the app
   }
 
   param(id) { return typeof id === "number" ? this.params[id] : this.byId.get(id); }
@@ -1080,6 +1099,7 @@ class Model {
     this.x.sk_set_param(p.index, v);
     const now = this.get(p.index);
     if (now === before) return;
+    if (this.history) this.history.record("p", before, now, { i: p.index });
     this.dirty = true;
     if (this.sink) this.sink.param(p.index, now);
     this.emit(p.index, now, source);
@@ -1096,7 +1116,12 @@ class Model {
     if (now !== before) { this.dirty = true; this.emit(p.index, now, "host"); }
   }
   // Start/end of a drag, so a DAW records the change as one gesture.
-  gesture(id, on) { const p = this.param(id); if (p && this.sink && this.sink.gesture) this.sink.gesture(p.index, on); }
+  gesture(id, on) {
+    const p = this.param(id);
+    if (!p) return;
+    if (this.history) { if (on) this.history.begin("p:" + p.index); else this.history.end("p:" + p.index); }
+    if (this.sink && this.sink.gesture) this.sink.gesture(p.index, on);
+  }
   reset(id) { const p = this.param(id); this.set(p.index, p.def); }
 
   on(id, fn) {
@@ -1121,9 +1146,11 @@ class Model {
   // fromHost: the plugin already has this patch, so don't send it back.
   loadPatch(patch, { fromHost = false } = {}) {
     const text = typeof patch === "string" ? patch : JSON.stringify(patch);
+    const prev = this.history && !fromHost ? this.savePatch() : null;
     const res = this.w.json(this.w.withStrings([text], (p) => this.x.sk_load_patch(p)));
     if (!res.ok) return res;
     const saved = JSON.stringify(this.savePatch());
+    if (prev) this.history.record("patch", prev, JSON.parse(saved), { label: `loading \u201c${JSON.parse(saved).name || "patch"}\u201d` });
     if (this.sink && !fromHost) this.sink.patch(saved);
     this.dirty = false;
     this.emitAll();
@@ -1141,6 +1168,7 @@ class Model {
     const t = this.patchTempo();
     if (t && t.bpm === bpm && t.num === num && t.den === den) return;
     this.x.sk_set_patch_tempo(bpm, num, den);
+    if (this.history) this.history.record("tempo", t, { bpm, num, den });
     this.dirty = true;
     for (const fn of this.anyListeners) fn(-1, 0, "tempo");
   }
@@ -1148,7 +1176,9 @@ class Model {
   // Modulation -------------------------------------------------------------
   routes() { return this.mod.slots ? this.w.json(this.x.sk_get_mod()) : []; }
   setRoutes(routes) {
+    const before = this.history ? this.routes() : null;
     const warnings = this.w.json(this.w.withStrings([JSON.stringify(routes)], (p) => this.x.sk_set_mod(p)));
+    if (before) { const after = this.routes(); if (JSON.stringify(after) !== JSON.stringify(before)) this.history.record("mod", before, after); }
     this.dirty = true;
     if (this.sink) this.sink.mod(JSON.stringify(this.routes()));
     this.emitMod();
@@ -1161,7 +1191,9 @@ class Model {
 
   shapes() { return this.mod.shapes ? this.w.json(this.x.sk_get_shapes()) : []; }
   setShapes(shapes, quiet) {
+    const before = this.history ? this.shapes() : null;
     this.w.withStrings([JSON.stringify(shapes)], (p) => this.x.sk_set_shapes(p));
+    if (before) { const after = this.shapes(); if (JSON.stringify(after) !== JSON.stringify(before)) this.history.record("shapes", before, after); }
     this.dirty = true;
     if (this.sink) this.sink.shapes(JSON.stringify(shapes));
     if (!quiet) this.emitShapes();
@@ -1177,8 +1209,10 @@ class Model {
   custom(id) { return this.w.json(this.w.withStrings([id], (p) => this.x.sk_get_custom(p))); }
   setCustom(id, value) {
     const json = JSON.stringify(value);
+    const before = this.history ? this.custom(id) : null;
     const ok = this.w.withStrings([id, json], (a, b) => this.x.sk_set_custom(a, b));
     if (!ok) return false;
+    if (this.history) { const after = this.custom(id); if (JSON.stringify(after) !== JSON.stringify(before)) this.history.record("custom", before, after, { id }); }
     this.dirty = true;
     if (this.sink) this.sink.custom(id, JSON.stringify(this.custom(id)));
     this.emitCustom(id);
@@ -1195,6 +1229,228 @@ class Model {
     for (const id of this.info.custom) o[id] = JSON.stringify(this.custom(id));
     return o;
   }
+}
+
+// ---- history.js
+// Undo and redo for the sound: parameters, modulation routes, shapes, custom
+// state, the patch's tempo and whole patch loads (picking a preset can be
+// undone too). Changes from the plugin's host (automation, the DAW's own
+// controls) and mapped MIDI controllers aren't recorded.
+//
+// Changes are grouped into steps: a drag is one step (from model.gesture or
+// begin/end), batch(label, fn) makes one step of everything fn changes, and
+// quick repeats on the same thing (wheel ticks, arrow keys) merge into one.
+// Each step also keeps which preset was showing and whether the sound had
+// changed since it was loaded, so undoing back to a saved sound clears the
+// preset bar's "changed" dot again.
+
+const SK_MERGE_MS = 700;
+
+class SkHistory {
+  constructor(model, { limit = 200 } = {}) {
+    this.m = model;
+    this.limit = limit;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.gestures = new Set();    // open drags (tokens)
+    this.batchDepth = 0;
+    this.batchLabel = "";
+    this.openEntry = null;        // the step a drag or batch is filling
+    this.applying = false;        // undo/redo is changing the model
+    this.listeners = new Set();
+    this.uiState = null;          // () => ({ current, dirty }) (the preset bar)
+    this.onRestore = null;        // (ui) after an undo or redo
+    // A drag whose end was missed (the pointer left the window, say) mustn't
+    // swallow every later change into one step.
+    const settle = () => setTimeout(() => { if (this.gestures.size) { this.gestures.clear(); this.closeOpen(); } }, 0);
+    window.addEventListener("pointerup", settle);
+    window.addEventListener("pointercancel", settle);
+    window.addEventListener("blur", settle);
+  }
+
+  get canUndo() { return this.undoStack.length > 0; }
+  get canRedo() { return this.redoStack.length > 0; }
+  get undoLabel() { const e = this.undoStack[this.undoStack.length - 1]; return e ? e.label : ""; }
+  get redoLabel() { const e = this.redoStack[this.redoStack.length - 1]; return e ? e.label : ""; }
+  state() { return { canUndo: this.canUndo, canRedo: this.canRedo, undoLabel: this.undoLabel, redoLabel: this.redoLabel }; }
+
+  onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  emit() { const s = this.state(); for (const fn of this.listeners) { try { fn(s); } catch (err) { console.error(err); } } }
+
+  clear() {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.openEntry = null;
+    this.emit();
+  }
+
+  // ---- grouping ---------------------------------------------------------------
+
+  begin(token) { if (!this.gestures.size && !this.batchDepth) this.closeOpen(); this.gestures.add(token); }
+  end(token) {
+    if (!this.gestures.delete(token)) return;
+    if (!this.gestures.size && !this.batchDepth) this.closeOpen();
+  }
+  // Everything fn changes becomes one step, called label ("Reset LFO 1").
+  batch(label, fn) {
+    if (!this.batchDepth && !this.gestures.size) { this.closeOpen(); this.batchLabel = label || ""; }
+    this.batchDepth++;
+    try { return fn(); }
+    finally { if (--this.batchDepth === 0 && !this.gestures.size) this.closeOpen(); }
+  }
+  closeOpen() {
+    if (this.openEntry) this.openEntry.merge = false;
+    this.openEntry = null;
+    if (!this.batchDepth) this.batchLabel = "";
+  }
+
+  // ---- recording (called by the model) -------------------------------------------
+
+  // kind: "p" (parameter i), "mod", "shapes", "custom" (id), "tempo", "patch".
+  record(kind, from, to, extra = {}) {
+    if (this.applying) return;
+    const key = kind === "p" ? "p:" + extra.i : kind === "custom" ? "custom:" + extra.id : kind;
+    const grouped = this.gestures.size > 0 || this.batchDepth > 0;
+    const now = performance.now();
+    const top = this.undoStack[this.undoStack.length - 1];
+    let e = null;
+    if (grouped && this.openEntry && this.openEntry === top) e = this.openEntry;
+    else if (!grouped && top && top.merge && top.key === key && now - top.time < SK_MERGE_MS && !this.redoStack.length) e = top;
+    if (!e) {
+      if (top) this.close(top);
+      e = { label: (grouped && this.batchLabel) || extra.label || this.describe(kind, extra), key, changes: [], time: now,
+            merge: !grouped && kind !== "patch", uiBefore: this.ui(), uiAfter: null };
+      this.undoStack.push(e);
+      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.redoStack = [];
+      if (grouped) this.openEntry = e;
+    }
+    e.time = now;
+    const c = e.changes.find((x) => x.key === key);
+    if (c) c.to = to;
+    else e.changes.push({ kind, key, from, to, ...extra });
+    if (e.changes.length > 1) e.key = "";   // a mixed step never merges
+    this.emit();
+  }
+
+  describe(kind, extra) {
+    if (kind === "p") { const p = this.m.param(extra.i); return p ? p.name : "change"; }
+    if (kind === "mod") return "modulation";
+    if (kind === "shapes") return "shape";
+    if (kind === "custom") return extra.id === "sk.arp" || extra.id === "sk.seq" ? "pattern" : extra.id;
+    if (kind === "tempo") return "tempo";
+    if (kind === "patch") return "preset change";
+    return kind;
+  }
+
+  ui() { return this.uiState ? this.uiState() : null; }
+  close(e) { if (!e.uiAfter) e.uiAfter = this.ui(); }
+
+  // ---- undo / redo ----------------------------------------------------------------
+
+  undo() {
+    if (this.gestures.size || this.batchDepth) return false;
+    const e = this.undoStack.pop();
+    if (!e) return false;
+    this.close(e);
+    e.merge = false;
+    this.openEntry = null;
+    this.apply(e, "from");
+    this.redoStack.push(e);
+    this.restore(e.uiBefore);
+    return true;
+  }
+  redo() {
+    if (this.gestures.size || this.batchDepth) return false;
+    const e = this.redoStack.pop();
+    if (!e) return false;
+    this.apply(e, "to");
+    this.undoStack.push(e);
+    this.restore(e.uiAfter);
+    return true;
+  }
+
+  apply(e, side) {
+    const list = side === "from" ? [...e.changes].reverse() : e.changes;
+    this.applying = true;
+    try {
+      for (const c of list) {
+        const v = c[side];
+        if (c.kind === "p") this.m.set(c.i, v, "history");
+        else if (c.kind === "mod") this.m.setRoutes(v);
+        else if (c.kind === "shapes") this.m.setShapes(v);
+        else if (c.kind === "custom") this.m.setCustom(c.id, v);
+        else if (c.kind === "tempo") { if (v) this.m.setPatchTempo(v.bpm, v.num, v.den); }
+        else if (c.kind === "patch") this.m.loadPatch(v);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      this.applying = false;
+    }
+  }
+
+  restore(ui) {
+    if (this.onRestore) { try { this.onRestore(ui); } catch (err) { console.error(err); } }
+    this.emit();
+  }
+
+  // ---- keeping the preset bar's state right --------------------------------------
+
+  // The current sound was just saved as ui.current: steps since the last
+  // preset change now lead to or from that saved sound.
+  saved(current) {
+    const cur = () => ({ ...current });
+    const hasPatch = (e) => e.changes.some((c) => c.kind === "patch");
+    const u = this.undoStack;
+    if (u.length) u[u.length - 1].merge = false;
+    for (let k = u.length - 1; k >= 0; k--) {
+      const e = u[k];
+      this.close(e);
+      e.uiAfter = { current: cur(), dirty: k !== u.length - 1 };
+      if (hasPatch(e)) break;
+      e.uiBefore = { current: cur(), dirty: true };
+    }
+    const r = this.redoStack;
+    for (let k = r.length - 1; k >= 0; k--) {
+      const e = r[k];
+      e.uiBefore = { current: cur(), dirty: k !== r.length - 1 };
+      if (hasPatch(e)) break;
+      e.uiAfter = { current: cur(), dirty: true };
+    }
+  }
+
+  // A preset was renamed (to = { kind, name }) or deleted (to = { kind: "session", \u2026 }).
+  renamed(from, to) {
+    const fix = (ui) => { if (ui && ui.current && ui.current.kind === from.kind && ui.current.name === from.name) ui.current = { ...to }; };
+    for (const e of [...this.undoStack, ...this.redoStack]) { fix(e.uiBefore); fix(e.uiAfter); }
+  }
+}
+
+// Undo/redo buttons (the header's, or mounted on a synth's own page as "undo").
+function skUndoButtons(app) {
+  const hist = app.model.history;
+  const icon = (flip) => {
+    const s = svg("svg", { viewBox: "0 0 16 16", width: 16, height: 16, "aria-hidden": "true", class: "undo-icon" + (flip ? " is-redo" : "") });
+    s.append(svg("path", { d: "M5.5 3.5 2.5 6.5 5.5 9.5", fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round" }),
+             svg("path", { d: "M3 6.5h6.25a3.75 3.75 0 0 1 0 7.5H7", fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round" }));
+    return s;
+  };
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const mod = mac ? "\u2318" : "Ctrl+";
+  const undo = h("button", { type: "button", class: "btn btn-quiet btn-icon undo-btn", onclick: () => hist.undo() }, icon(false));
+  const redo = h("button", { type: "button", class: "btn btn-quiet btn-icon redo-btn", onclick: () => hist.redo() }, icon(true));
+  const sync = (s) => {
+    undo.disabled = !s.canUndo;
+    redo.disabled = !s.canRedo;
+    const u = s.canUndo ? `Undo ${s.undoLabel}` : "Nothing to undo";
+    const r = s.canRedo ? `Redo ${s.redoLabel}` : "Nothing to redo";
+    undo.title = `${u} (${mod}Z)`; undo.setAttribute("aria-label", u);
+    redo.title = `${r} (${mac ? "\u21e7\u2318Z" : "Ctrl+Y"})`; redo.setAttribute("aria-label", r);
+  };
+  hist.onChange(sync);
+  sync(hist.state());
+  return h("div", { class: "undo", role: "group", "aria-label": "Undo and redo" }, undo, redo);
 }
 
 // ---- audio.js
@@ -1947,10 +2203,27 @@ class Panels {
       sec.skReveal = () => { if (body.hidden) sec.skOpen(true, true); };
       btn.addEventListener("click", () => sec.skOpen(body.hidden, true));
       // The whole title row folds it (the button is there for the keyboard).
-      title.addEventListener("click", (e) => { if (!e.target.closest(".panel-toggle, .info-btn")) sec.skOpen(body.hidden, true); });
+      title.addEventListener("click", (e) => { if (!e.target.closest(".panel-toggle, .info-btn, .reset-btn")) sec.skOpen(body.hidden, true); });
       sec.skOpen(typeof this.ui[key] === "boolean" ? this.ui[key] : spec.collapsed !== true, false);
     }
     if (spec.info) title.append(skInfoButton(spec.info, text));
+    // A button that puts the panel's controls back (reset.js); "reset": false leaves it out.
+    if (spec.reset !== false && this.app.resets) {
+      const g = this.groupOf(sec);
+      if (g.params.length || g.shapes || g.routes || g.custom) title.append(this.app.resets.button(text, g));
+    }
+  }
+
+  // What a panel's reset button covers: the parameters of its controls, and
+  // whatever else a kit panel says it holds (sec.skGroup).
+  groupOf(sec) {
+    const params = [];
+    for (const el of sec.querySelectorAll("[data-param], [data-params]")) {
+      if (el.dataset.param) params.push(el.dataset.param);
+      if (el.dataset.params) params.push(...el.dataset.params.split(" "));
+    }
+    const extra = sec.skGroup || {};
+    return { ...extra, params: [...new Set(params.concat(extra.params || []))].filter((id) => this.model.param(id)) };
   }
 
   // { "accordion": [ sections\u2026 ], "single": true }: panels stacked in one
@@ -2081,9 +2354,16 @@ class Panels {
       const [a, b] = (c.params || []).map((id) => this.model.param(id));
       if (!a || !b) { this.problems.push(`An xy control needs two known params (got ${JSON.stringify(c.params)}).`); return null; }
       this.placed.add(a.id); this.placed.add(b.id);
-      return new XYPad(this.app, a, b, c).root;
+      const pad = new XYPad(this.app, a, b, c).root;
+      pad.dataset.params = `${a.id} ${b.id}`;
+      return pad;
     }
-    if (c.type && this.app.widgets.has(c.type)) return this.app.customWidget(c);
+    if (c.type && this.app.widgets.has(c.type)) {
+      const el = this.app.customWidget(c);
+      const ids = [c.param, ...(Array.isArray(c.params) ? c.params : [])].filter((id) => typeof id === "string" && this.model.param(id));
+      if (el && ids.length && !el.dataset.param) el.dataset.params = ids.join(" ");
+      return el;
+    }
     const p = this.model.param(c.param);
     if (!p) {
       // Kit params only exist for some feature combinations; skip those quietly.
@@ -2095,6 +2375,174 @@ class Panels {
     if (!ctl) { this.problems.push(`Unknown control type "${c.type}" for ${c.param}.`); return null; }
     this.app.controls.push(ctl);
     return ctl.root;
+  }
+}
+
+// ---- reset.js
+// Reset buttons for groups of controls (a panel: an LFO, an envelope, the
+// filter\u2026). A group is a list of parameters plus, for some kit panels, a
+// shape's curve, the modulation routes or the arp/sequencer patterns.
+//
+// A click puts the group back to how it is in the preset that's loaded (or
+// was last saved). When the sound isn't one of the presets, a click resets
+// the group to its defaults. Right-click offers both.
+//
+// The saved and default states are read from a second, silent copy of the
+// synth (the same WebAssembly module), so they come out exactly as loading
+// would make them: migrations, missing values and all.
+
+class SkResets {
+  constructor(app) {
+    this.app = app;
+    this.m = app.model;
+    this.scratch = null;
+    this.defaults = null;
+    this.savedKey = undefined;
+    this.saved = null;
+    this.buttons = new Set();
+    this.queued = false;
+    Model.create(app.wasm, { quiet: true }).then((s) => {
+      this.scratch = s;
+      this.defaults = this.snap(s);
+      this.refresh();
+    }).catch((err) => console.error("[synthkit] reset buttons:", err));
+    const later = () => this.queue();
+    this.m.onAny(later);
+    this.m.onMod(later);
+    this.m.onShapes(later);
+    for (const id of this.m.info.custom) this.m.onCustom(id, later);
+  }
+
+  snap(model) {
+    const custom = {};
+    for (const id of model.info.custom) custom[id] = model.custom(id);
+    return { params: model.params.map((p) => model.get(p.index)), routes: model.routes(), shapes: model.shapes(), custom };
+  }
+
+  // The state of the preset that's loaded, or null.
+  savedState() {
+    const pr = this.app.presets;
+    const base = pr && pr.baseline();
+    const key = base ? JSON.stringify(base) : null;
+    if (key === this.savedKey) return this.saved;
+    this.savedKey = key;
+    this.saved = null;
+    if (!base || !this.scratch) return null;
+    const s = this.scratch, d = this.defaults;
+    // Start from the defaults, so nothing is left from the last preset read.
+    if (s.mod.slots) s.setRoutes(d.routes);
+    if (s.mod.shapes) s.setShapes(d.shapes, true);
+    for (const id of s.info.custom) s.setCustom(id, d.custom[id]);
+    const res = s.loadPatch(base);
+    if (res.ok) this.saved = this.snap(s);
+    return this.saved;
+  }
+
+  // group: { params: [ids], shapes: [n\u2026], routes: true, custom: [ids] }
+  differs(g, st) {
+    const m = this.m;
+    for (const id of g.params || []) {
+      const p = m.param(id);
+      if (!p) continue;
+      // (Values that went through a patch's text can be a hair off.)
+      const v = m.get(p.index), w = st.params[p.index];
+      if (Math.abs(v - w) > 1e-5 * Math.max(1, Math.abs(w))) return true;
+    }
+    if (g.routes && JSON.stringify(m.routes()) !== JSON.stringify(st.routes)) return true;
+    if (g.shapes && g.shapes.length) {
+      const cur = m.shapes();
+      for (const n of g.shapes) if (JSON.stringify(cur[n - 1]) !== JSON.stringify(st.shapes[n - 1])) return true;
+    }
+    for (const id of g.custom || []) if (JSON.stringify(m.custom(id)) !== JSON.stringify(st.custom[id])) return true;
+    return false;
+  }
+
+  // What a click does now: { kind: "saved" | "default", state } or null.
+  // With a preset loaded a click only ever goes back to it.
+  target(g) {
+    if (!this.defaults) return null;
+    const saved = this.savedState();
+    if (saved) return this.differs(g, saved) ? { kind: "saved", state: saved } : null;
+    return this.differs(g, this.defaults) ? { kind: "default", state: this.defaults } : null;
+  }
+
+  apply(g, st, label) {
+    const m = this.m;
+    const run = () => {
+      for (const id of g.params || []) { const p = m.param(id); if (p) m.set(p.index, st.params[p.index], "ui"); }
+      if (g.routes && JSON.stringify(m.routes()) !== JSON.stringify(st.routes)) m.setRoutes(st.routes);
+      if (g.shapes && g.shapes.length) {
+        const cur = m.shapes();
+        let changed = false;
+        for (const n of g.shapes) if (JSON.stringify(cur[n - 1]) !== JSON.stringify(st.shapes[n - 1])) { cur[n - 1] = st.shapes[n - 1]; changed = true; }
+        if (changed) m.setShapes(cur);
+      }
+      for (const id of g.custom || []) if (JSON.stringify(m.custom(id)) !== JSON.stringify(st.custom[id])) m.setCustom(id, st.custom[id]);
+    };
+    if (m.history) m.history.batch(label, run); else run();
+  }
+
+  presetName() { const c = this.app.presets && this.app.presets.current; return c ? c.name : ""; }
+
+  // The button for one group; title is the panel's name. group.custom may be
+  // a function (the arp pattern panel's bank depends on the mode).
+  button(title, group) {
+    const base = { params: [...new Set(group.params || [])], shapes: group.shapes || [], routes: !!group.routes };
+    const groupNow = () => ({ ...base, custom: (typeof group.custom === "function" ? group.custom() : group.custom) || [] });
+    const s = svg("svg", { viewBox: "0 0 16 16", "aria-hidden": "true" });
+    s.append(svg("path", { d: "M3.2 8a4.8 4.8 0 1 0 1.5-3.5", class: "reset-arc" }), svg("path", { d: "M4.4 1.9v2.9h2.9", class: "reset-arc" }));
+    const b = h("button", { type: "button", class: "reset-btn" }, s);
+    b.skGroup = groupNow;
+    b.skTitle = title || "these controls";
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const g = groupNow();
+      const t = this.target(g);
+      if (!t) return;
+      this.apply(g, t.state, t.kind === "saved" ? `revert ${b.skTitle}` : `reset ${b.skTitle}`);
+      this.app.toast(t.kind === "saved" ? `${b.skTitle}: back to \u201c${this.presetName()}\u201d` : `${b.skTitle}: back to defaults`);
+    });
+    b.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.defaults) return;
+      const g = groupNow();
+      const saved = this.savedState();
+      this.app.menu(e.clientX, e.clientY, [
+        { label: saved ? `Revert to \u201c${this.presetName()}\u201d` : "Revert to saved (no preset loaded)", disabled: !saved || !this.differs(g, saved),
+          run: () => this.apply(g, saved, `revert ${b.skTitle}`) },
+        { label: "Reset to defaults", disabled: !this.differs(g, this.defaults), run: () => this.apply(g, this.defaults, `reset ${b.skTitle}`) },
+      ]);
+    });
+    // Letters on the button aren't notes; Ctrl/\u2318 shortcuts (undo) still work.
+    b.addEventListener("keydown", (e) => { if (!e.ctrlKey && !e.metaKey) e.stopPropagation(); });
+    this.buttons.add(b);
+    this.update(b);
+    return b;
+  }
+
+  update(b) {
+    const t = this.target(b.skGroup());
+    b.setAttribute("aria-disabled", String(!t));
+    const what = !t ? (this.defaults ? `${b.skTitle} is as saved` : `Reset ${b.skTitle}`)
+      : t.kind === "saved" ? `Revert ${b.skTitle} to \u201c${this.presetName()}\u201d` : `Reset ${b.skTitle} to defaults`;
+    b.title = what + " (right-click to reset to defaults)";
+    b.setAttribute("aria-label", what);
+    // Disabled buttons get no right-click, and defaults may still be a step away.
+    b.classList.toggle("is-idle", !t);
+  }
+
+  queue() {
+    if (this.queued) return;
+    this.queued = true;
+    requestAnimationFrame(() => { this.queued = false; this.refresh(); });
+  }
+  refresh() {
+    for (const b of this.buttons) {
+      if (!b.isConnected && b.skMounted) { this.buttons.delete(b); continue; }
+      if (b.isConnected) b.skMounted = true;
+      this.update(b);
+    }
   }
 }
 
@@ -2785,6 +3233,7 @@ class ShapePanel {
   constructor(app, n, title) {
     const pre = `shape${n}.`, m = app.model;
     const { root, controls } = skSection(title || `Shape ${n}`, "shape-panel is-wide");
+    root.skGroup = { shapes: [n] };   // its reset button covers the curve too
     this.editor = new ShapeEditor(app, n);
     const body = h("div", { class: "shape-body" }, this.editor.root, controls);
     root.append(body);
@@ -2915,6 +3364,7 @@ class MatrixPanel {
   constructor(app) {
     this.app = app; this.m = app.model;
     const { root } = skSection("Modulation", "matrix-panel is-wide");
+    root.skGroup = { routes: true };
     this.list = h("div", { class: "matrix" });
     this.count = h("span", { class: "matrix-count" });
     this.add = h("button", { type: "button", class: "btn", onclick: () => this.addRoute() }, "Add route");
@@ -3009,6 +3459,8 @@ class ArpPatternPanel {
 
     const { root } = skSection(title || "Arp pattern", "arp-pattern-panel is-wide");
     this.root = root;
+    // Its reset button covers the patterns of the bank showing (arp or sequencer).
+    root.skGroup = { custom: () => [this.bankId()].filter((id) => this.m.info.custom.includes(id)) };
 
     // Pattern slots, bound to arp.pattern.
     this.slotSeg = h("div", { class: "seg seg-small", role: "radiogroup", "aria-label": "Pattern" });
@@ -3534,6 +3986,23 @@ class PresetBar {
     skStore.on(this.key("presets"), () => { this.user = skStore.get(this.key("presets"), {}); this.refresh(); });
     this.current = { kind: "factory", name: "Init" };
     this.listeners = new Set();   // a synth's own page following the presets
+    // Undo/redo (history.js) brings back which preset was showing, and
+    // whether the sound had changed since.
+    const hist = this.model.history;
+    if (hist) {
+      hist.uiState = () => ({ current: { ...this.current }, dirty: !!this.model.dirty });
+      hist.onRestore = (ui) => {
+        if (ui && ui.current) {
+          const c = ui.current;
+          const gone = (c.kind === "user" && !this.user[c.name]) || (c.kind === "factory" && !this.factory.some((p) => p.name === c.name));
+          this.current = gone ? { kind: "session", name: c.name } : { ...c };
+          this.model.dirty = gone || !!ui.dirty;
+        }
+        this.refresh();
+        this.saveSession();
+        if (this.app.applyPatchTempo) this.app.applyPatchTempo();
+      };
+    }
     this.build();
     this.model.onAny(() => this.changed());
   }
@@ -3579,6 +4048,14 @@ class PresetBar {
     this.notify();
   }
 
+  // The patch the current preset was loaded from (or last saved as), or null
+  // when the sound isn't one of the presets.
+  baseline() {
+    if (this.current.kind === "factory") { const f = this.factory.find((p) => p.name === this.current.name); return f ? f.patch : null; }
+    if (this.current.kind === "user") return this.user[this.current.name] || null;
+    return null;
+  }
+
   notify() {
     const state = { ...this.current, dirty: !!this.model.dirty };
     for (const fn of this.listeners) { try { fn(state); } catch (err) { console.error(err); } }
@@ -3608,6 +4085,8 @@ class PresetBar {
     const factory = this.factory.find((p) => p.name === name);
     this.current = ui.current || (factory ? { kind: "factory", name } : { kind: "session", name: name || "Untitled" });
     this.model.dirty = !!ui.dirty;
+    // A different sound from the DAW (a project opened): earlier steps don't apply.
+    if (this.model.history) this.model.history.clear();
     this.refresh();
     return true;
   }
@@ -3659,6 +4138,7 @@ class PresetBar {
     if (!skStore.set(this.key("presets"), this.user)) this.app.toast("This browser isn't letting the page store presets. Use Export to keep a file instead.", "error");
     this.model.dirty = false;
     this.current = { kind: "user", name };
+    if (this.model.history) this.model.history.saved(this.current);
     this.refresh();
     this.saveSession();
     this.app.toast(`Saved "${name}"`);
@@ -3686,9 +4166,11 @@ class PresetBar {
   renameTo(name) {
     if (this.current.kind !== "user" || !name) return false;
     const p = this.user[this.current.name];
+    const old = this.current;
     delete this.user[this.current.name];
     this.user[name] = { ...p, name };
     this.current = { kind: "user", name };
+    if (this.model.history) this.model.history.renamed(old, this.current);
     skStore.set(this.key("presets"), this.user);
     this.model.setName(name);
     this.refresh();
@@ -3702,6 +4184,7 @@ class PresetBar {
     delete this.user[name];
     skStore.set(this.key("presets"), this.user);
     this.current = { kind: "session", name };
+    if (this.model.history) this.model.history.renamed({ kind: "user", name }, this.current);
     this.model.dirty = true;
     this.refresh();
     this.app.toast(`Deleted "${name}". The sound stays loaded until you pick another preset.`);
@@ -4168,6 +4651,8 @@ class App {
     this.audio = skHost ? new HostAudio() : new Audio(wasmBytes);
     this.controls = [];
     this.widgets = new Map();
+    model.history = new SkHistory(model);   // undo / redo (history.js)
+    this.history = model.history;
     this.transport = skStore.get("synthkit:transport", { bpm: 120, playing: false, num: 4, den: 4 });
     this.transport.playing = false;
     this.transportSubs = new Set();
@@ -4196,6 +4681,9 @@ class App {
     this.spacePlays = true;           // Space starts the tempo clock (a page can turn it off)
 
     this.presets = new PresetBar(this);
+    this.resets = new SkResets(this);     // the panels' reset buttons (reset.js)
+    this.presets.listeners.add(() => this.resets.queue());
+    this.undoEl = skUndoButtons(this);
     this.midi = new MidiInput(this);
     this.keyboard = new Keyboard(this);
     this.buildParts();
@@ -4236,6 +4724,7 @@ class App {
     this.audio.onParams = (changes) => { for (const [i, v] of changes) this.model.applyHost(i, v); };
 
     this.presets.restoreSession();
+    this.history.clear();   // starting up isn't a step to undo
     if (this.host) {
       // The plugin makes the sound: changes go straight to it.
       this.model.sink = this.audio.sink();
@@ -4269,6 +4758,16 @@ class App {
     document.addEventListener("pointerdown", kick, { capture: true });
     document.addEventListener("keydown", kick, { capture: true });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") { this.midi.cancelLearn(); this.closeMenu(); } });
+    // Undo: Ctrl/\u2318+Z; redo: Ctrl/\u2318+Shift+Z or Ctrl+Y. Text fields keep their own.
+    document.addEventListener("keydown", (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const z = e.code === "KeyZ", y = e.code === "KeyY" && !e.shiftKey;
+      if (!z && !y) return;
+      e.preventDefault();
+      if (z && !e.shiftKey) this.history.undo(); else this.history.redo();
+    });
 
     if (this.clockSource === "midi" && !this.host) this.setClockSource("midi");
     this.audio.onMeter = (mtr) => this.meter(mtr);
@@ -4400,6 +4899,7 @@ class App {
         h("h1", { class: "synth-name", text: info.name }),
         h("span", { class: "synth-meta", text: [info.vendor, info.version && "v" + info.version].filter(Boolean).join(" ") })),
       this.presets.root,
+      this.undoEl,
       this.outputEl,
       h("div", { class: "top-actions" }, this.panicBtn, this.themeBtn));
   }
@@ -4641,6 +5141,12 @@ class App {
       parse: (id, text) => m.parse(id, text),
       reset: (id) => m.reset(id),
       gesture: (id, on) => m.gesture(id, on),
+
+      // undo / redo
+      undo: () => app.history.undo(),
+      redo: () => app.history.redo(),
+      batch: (label, fn) => app.history.batch(label, fn),
+      onHistory: (fn) => { const off = app.history.onChange(fn); fn(app.history.state()); return off; },
       onParam: (id, fn) => { const off = m.on(id, fn); fn(m.get(id)); return off; },
 
       // custom state (API.md \u00a75a)
@@ -4742,6 +5248,7 @@ class App {
         return el;
       case "output": part = this.outputEl; break;
       case "panic": part = this.panicBtn; break;
+      case "undo": part = this.undoEl; break;
       case "theme": part = this.themeBtn; break;
       case "panels": {
         const p = new Panels(this);
