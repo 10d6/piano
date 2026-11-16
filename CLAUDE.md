@@ -63,7 +63,7 @@ from CI at milestones.
 - After any change to the sound, run `tools/measure/run_all.py` (every
   measurement against the recordings, about 1.5 minutes; `tools/measure/README.md`
   says what each answers and what healthy looks like) and
-  `tools/bench-web.cjs` for browser speed, and report them. For one note in
+  `synthkit/web/test/bench-web.cjs` for browser speed, and report them. For one note in
   detail, `tools/measure/partials.py --key K --layer L` separates data
   problems from engine problems. Compare per mic and averaged over ~0.2 s:
   single mono snapshots are thrown off by beating and the mics' phase.
@@ -239,8 +239,9 @@ from CI at milestones.
   body ring lives in the synth, per key, and is damped from note and pedal
   events in `processEvents` (keys/pedal followed there), not by the voice.
 - After any change to voices, notes or pedal handling, run
-  `tools/stress.py build/piano_render 300` (and with `overlap`): random fast
-  passages must all go silent after release.
+  `python3 synthkit/tools/stress.py build/piano_render 300 --keys 21-88 space.room=0` (and with `--mode overlap`; the kit's tool,
+  API.md §10): random fast passages must all go silent after release.
+  `--keys 21-88` keeps to the damped keys, `space.room=0` keeps the reverb's tail out.
 - The top octave and a half (C6 up) is the weakest measured region (22 %; C8 42 %, D#7 32 %);
   C5 and nearby, long the weakest, is at 5.5 % since the recorded strike. Keys between the
   measured ones are ~25 % (holdout), which is what a real neighbouring key's recording, transposed, scores

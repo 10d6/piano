@@ -250,7 +250,8 @@ python3 -I tools/measure/perceptual.py --sal ../salamander                      
 python3 -I tools/compare.py ../salamander build/piano_render compare-out  # check against the recordings
 python3 -I tools/diagnose.py ../salamander build/piano_render diag-out    # attack, noise, brightness, pitch
 python3 -I tools/measure/run_all.py --sal ../salamander                   # every measurement (tools/measure/README.md)
-node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
+node synthkit/web/test/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json  # browser speed
+python3 synthkit/tools/stress.py build/piano_render 300 --keys 21-88 space.room=0  # every note stops
 python3 -I tools/space.py build/piano_render                                   # the reverb's levels and decay times
 ```
 

@@ -298,19 +298,21 @@ Also:
   between strikes 0 %. With `--felt0` (a build with the felt at 0 dB) the sum: a restrike is the
   two strikes added to 46-74 dB on modal keys (C3, C5).
 
-### Note handling: `tools/stress.py`
+### Note handling: `synthkit/tools/stress.py`
 
-`python3 -I tools/stress.py build/piano_render 300` (and `… 200 overlap`; settings can follow as
-`id=value`, e.g. `… 300 overlap string.restrike=100`)
+`python3 synthkit/tools/stress.py build/piano_render 300 --keys 21-88 space.room=0` (and `… 200 --mode overlap`; settings can follow as
+`id=value`, e.g. `… 300 --mode overlap --keys 21-88 space.room=0 string.restrike=100`)
 plays random passages of fast repeats, chords, overlapping notes and pedal
-changes. Keys run A0–E6, so every key has a damper. It reports any passage
+changes. It is the kit's (synthkit API.md §10; it began here). `--keys 21-88` keeps the keys to
+A0–E6, so every key has a damper, and `space.room=0` keeps the reverb's tail out: with both, it
+plays exactly the passages this repo's own version did. It reports any passage
 still sounding (above −80 dBFS) 3 s after everything was released. Healthy: 0
 failures in both modes. A failing passage is saved as `/tmp/stuck_<seed>.json`
 to render and investigate.
 
-### Speed: `tools/bench-web.cjs`
+### Speed: `synthkit/web/test/bench-web.cjs`
 
-`node tools/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json`
+`node synthkit/web/test/bench-web.cjs build-web/web/piano.html tests/glissando-pedal.json` (the kit's; it began here)
 renders a scenario offline through the page's real AudioWorklet in headless
 Chromium. The machine's speed varies, so compare with main's build on the same
 machine. Today:
