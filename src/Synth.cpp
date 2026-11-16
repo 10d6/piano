@@ -31,7 +31,9 @@
 #include <synthkit/synth.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 
 #include "PianoData.h"
 #include "PianoStrike.h"
@@ -97,6 +99,24 @@ float measuredCents(int note) {
   return pd::keys[s.a].cents + (pd::keys[s.b].cents - pd::keys[s.a].cents) * s.w;
 }
 }  // namespace
+
+// Key maps (the Keys tab; docs/MODEL.md, Key maps): each key's own departure from the piano, as a
+// worn or unevenly kept instrument has. Custom state "keys" (API.md §5a), one value per key from A0
+// (index 0) to C8 (87), drawn on the page (ui/custom.js, keyMap). Each moves that key away from the
+// global settings, never replaces them, and Key Map Depth scales every departure (0 %: none,
+// 200 %: twice as far). The neutral maps, which every patch without them loads, change nothing
+// (bit-identical).
+//   tune    cents, ±50: the key's pitch, and its free string's for the sympathetic resonance
+//   unison  × the Unison setting, 0-4: how far out of tune the key's strings are with each other
+//   hammer  −1…1: below 0 a softer felt (Hardness down), above 0 a harder one (Edge up), as
+//           Uneven's voicing does (by the square root: Edge does little at its low end)
+//   level   dB, −18…+6: how loud the key is against its neighbours
+constexpr int kMapKeys = 88, kMapLow = 21;
+struct KeyMaps {
+  std::array<float, kMapKeys> tune{}, unison{}, hammer{}, level{};
+  KeyMaps() { unison.fill(1.f); }
+};
+inline int mapIndex(int note) { return std::clamp(note - kMapLow, 0, kMapKeys - 1); }
 
 
 // The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
@@ -314,7 +334,14 @@ struct Piano : Synth {
   Param touch, dynamics, toneRange, softAttack, softPedal, velMap, bright, attack, hammer, hardness, strikePoint, strikeDepth, body, mech, unison, stretch, stiffness, overtoneDecay, sustain, damper,
       resonance, topDampers, width, room, arpPattern, arpScale, arpLow, arpHigh, arpRate, arpSync, arpDivision,
       arpOverlap, arpBoost, arpOthers, arpGroup, arpWidth, touchPress, touchPoint, touchWidth, restrike, touchSnap, touchDry, listenDepth, listenPoint, listenWidth, spaceType, spaceDecay, spaceSize, spacePredelay,
-      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut, hamEdge, hamWeight, hamCore, hamMorph, hamMaterial, hamWear, hamUneven;
+      spaceDamping, spaceEarly, spaceLowCut, spaceHighCut, hamEdge, hamWeight, hamCore, hamMorph, hamMaterial, hamWear, hamUneven, keysDepth;
+  Custom<KeyMaps> keyMaps;
+  // the maps as of this host block (processEvents), for the voices and the bank: a plain copy, so
+  // a voice's every block doesn't go through the custom state's read (2-4 % of the browser's time
+  // in a pedalled glissando). mapsMoved: changed since the bank last looked.
+  KeyMaps maps;
+  bool mapsMoved = true;
+  float lastMapDepth = -1;
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -389,6 +416,7 @@ struct Piano : Synth {
     // Wear: the felt packed hard where the piano is played most. Uneven: every key its own hammer. On top
     // of Edge and Weight wherever those come from (set by hand or by Material); 0 is bit-identical
     hamWear = b.add("hammer.wear").name("Hammer Wear").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
+    keysDepth = b.add("keys.depth").name("Key Map Depth").range(0, 200).def(100).unit("%").modulatable().group("Keys");
     hamUneven = b.add("hammer.uneven").name("Hammer Uneven").range(0, 100).def(0).unit("%").modulatable().group("Hammer Surface");
     // the kit's arpeggiator and sequencer (features.arp, API.md §4b): a piano's notes end with their
     // dampers, so its notes have no note envelope unless one is chosen
@@ -406,11 +434,47 @@ struct Piano : Synth {
       }
   }
 
+  void defineCustom(CustomBuilder& b) override {
+    keyMaps = b.add<KeyMaps>("keys", {
+      // only the maps that differ from neutral are saved, so a patch that doesn't use them stays as it was
+      .save = [](const KeyMaps& k, Json& j) {
+        j = Json::object();
+        auto put = [&](const char* id, const std::array<float, kMapKeys>& a, float neutral) {
+          for (float v : a)
+            if (v != neutral) {
+              j[id] = a;
+              return;
+            }
+        };
+        put("tune", k.tune, 0.f);
+        put("unison", k.unison, 1.f);
+        put("hammer", k.hammer, 0.f);
+        put("level", k.level, 0.f);
+      },
+      .load = [](const Json& j, KeyMaps& k) {
+        k = KeyMaps{};
+        auto get = [&](const char* id, std::array<float, kMapKeys>& a, float lo, float hi) {
+          if (!j.contains(id)) return;
+          j[id].to(a);
+          for (float& v : a) v = std::isfinite(v) ? std::clamp(v, lo, hi) : (lo + hi) * 0.5f;
+        };
+        get("tune", k.tune, -50.f, 50.f);
+        get("unison", k.unison, 0.f, 4.f);
+        get("hammer", k.hammer, -1.f, 1.f);
+        get("level", k.level, -18.f, 6.f);
+      },
+      .initial = {},
+    });
+  }
+
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<PianoVoice>(*this); }
 
   // The recording's stretch tuning, scaled by Stretch.
   double tune(int note, const NoteContext& n) override {
-    return note + n.get(stretch) * 0.01 * measuredCents(note) * 0.01;
+    double t = note + n.get(stretch) * 0.01 * measuredCents(note) * 0.01;
+    float c = keyMaps.read().tune[mapIndex(note)];   // the key's own tuning (Key maps)
+    if (c != 0) t += c * n.get(keysDepth) * 0.0001;
+    return t;
   }
 
   // Velocity → loudness and tone, smoothly, across the key's measured range (its softest
@@ -742,6 +806,7 @@ struct Piano : Synth {
     if (nChanges < kMaxChanges) changes[nChanges++] = c;
     else applyChange(c);
   }
+  float bankCents[128] = {};   // each free string's own tuning from the key map (cents, × Depth)
   float lastStretch = -1, lastSus = -1, lastDampScale = -1, lastA4 = -1, lastStiff = -1, lastGamma = -2;
 
   // string partial frequencies and decays, as the voices' strikes compute them (medium strike)
@@ -810,7 +875,7 @@ struct Piano : Synth {
   }
 
   void bankPoles(int key, float stretchPct, float sus, float dampScale, float stiff, float gamma) {
-    float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f - 69.f) / 12.f);
+    float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f + bankCents[key] * 0.01f - 69.f) / 12.f);
     float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
     float rate = 0.5f * sr, nyq = 0.47f * rate;
     for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
@@ -841,6 +906,18 @@ struct Piano : Synth {
     if (changed) {
       lastStretch = stretchPct; lastSus = sus; lastDampScale = dampScale; lastA4 = a4Hz; lastStiff = stiff; lastGamma = gamma;
       for (bool& p : keyPoles) p = false;
+    }
+    float mapDepth = ctx.get(keysDepth) * 0.01f;
+    if (mapsMoved || mapDepth != lastMapDepth) {   // a key whose map tuning has moved retunes its free string
+      mapsMoved = false;
+      lastMapDepth = mapDepth;
+      for (int key = kMapLow; key < kMapLow + kMapKeys; ++key) {
+        float c = maps.tune[key - kMapLow] * mapDepth;
+        if (c != bankCents[key]) {
+          bankCents[key] = c;
+          keyPoles[key] = false;
+        }
+      }
     }
     float drive = kCoupling * dbToGain(ctx.get(resonance)) * 2.f / sr;   // per half-rate step
     int applied = 0;
@@ -978,6 +1055,13 @@ struct Piano : Synth {
   int topDamper = kLastDamper;
 
   void processEvents(EventContext& ctx) override {
+    {
+      const KeyMaps& k = keyMaps.read();
+      if (std::memcmp(&k, &maps, sizeof(KeyMaps)) != 0) {
+        maps = k;
+        mapsMoved = true;
+      }
+    }
     topDamper = ctx.choice(topDampers) == 1 ? 108 : kLastDamper;
     damperDiv = std::max(ctx.get(damper) * 0.01f, 0.25f);
     arpType = ctx.choice(arpOn);
@@ -1275,6 +1359,12 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     return 0.01f * (L[l0][mic] + (L[l0 + 1][mic] - L[l0][mic]) * lf);
   };
   float gainDb = vm.gainDb + kTrimDb;
+  // Key maps: the key's own level and hammer, read as it is struck
+  const KeyMaps& keyMap = synth.maps;
+  float mapDepth = ctx.get(synth.keysDepth) * 0.01f;
+  float mapHammer = keyMap.hammer[mapIndex(static_cast<int>(note))] * mapDepth;
+  float mapLevel = keyMap.level[mapIndex(static_cast<int>(note))] * mapDepth;
+  if (mapLevel != 0) gainDb += mapLevel;
   float bright = ctx.get(synth.bright);
   float stiff = ctx.get(synth.stiffness) * 0.01f;
   // The hammer (tools/analyze_hammer.py): its force spectrum 1 / (1 + (f / fc)²), with the corner
@@ -1331,6 +1421,9 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
     keyVoicing = std::copysign(std::sqrt(uneven * std::fabs(r)), r);
   }
   float keyMass = uneven > 0 ? uneven * keyRandom(static_cast<int>(note), 0x85ebca6bu) : 0.f;
+  // the key map's hammer (Key maps): this key's felt, softer or harder, on top of Uneven's
+  if (mapHammer != 0)
+    keyVoicing = std::clamp(keyVoicing + std::copysign(std::sqrt(std::fabs(mapHammer)), mapHammer), -1.f, 1.f);
   if (keyVoicing < 0) hard = std::clamp(hard + kUnevenSoft * keyVoicing, -1.f, 1.f);
   auto fcAt = [&](int k) { return pd::hammerFc[k][l0] + (pd::hammerFc[k][l0 + 1] - pd::hammerFc[k][l0]) * lf; };
   float hammerFc = std::exp(std::log(fcAt(s.a)) + (std::log(fcAt(s.b)) - std::log(fcAt(s.a))) * s.w);
@@ -2206,6 +2299,10 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
   float pitch = static_cast<float>(ctx.pitchHz());
   float sus = ctx.get(synth.sustain) * 0.01f;
   float uni = ctx.get(synth.unison) * 0.01f;
+  {   // the key map's unison (Key maps): followed while the note rings, like the setting itself
+    float u = synth.maps.unison[mapIndex(note)];
+    if (u != 1.f) uni *= std::max(0.f, 1.f + (u - 1.f) * ctx.get(synth.keysDepth) * 0.01f);
+  }
   float dmp = ctx.get(synth.damper) * 0.01f;
   float gam = ctx.get(synth.overtoneDecay) * 0.01f;
   bool touched = touchBlock(ctx);

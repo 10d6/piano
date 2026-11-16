@@ -276,6 +276,16 @@ from CI at milestones.
   take their gains at once (`struckFrom`) only while it is on. A still point is subtle; the movement
   is the sound: don't call a still setting strong. `tools/measure/listen.py`. Presets *Wandering
   Ear*, *Opening Ear*, *Bridge Pickup*; tests `listening-point`, `mod-listen`.
+- **Key maps** (the Keys tab; custom state `keys`, `KeyMaps`; `keys.depth`; the `keyMap` widget;
+  docs/MODEL.md, Key maps): per-key Tuning, Unison, Hammer and Level, judgments (not measured).
+  Each moves its key away from the global settings, never replaces them. Neutral maps must stay
+  bit-identical (`cmp`), and only non-neutral maps are saved. Tuning also retunes the key's free
+  string (`bankCents`). The widget's state must be declared before `ctx.onCustom`, which calls back
+  at once (a `let` after it threw on load). Age Piano's pattern is mirrored, seeded, in the presets
+  *Neglected Upright*, *Needs a Tuner*, *Saloon Upright*. `tools/measure/keymaps.py`; tests
+  `key-maps`, `key-maps-extreme` (keys above E6 have no dampers: keep them out of `silentAfter`
+  tests). Next stages discussed with the owner: Sustain, Dampers and Stiffness maps, then prepared-piano
+  maps (Touch Point per key).
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
@@ -293,8 +303,8 @@ from CI at milestones.
   moves Drift/S&H LFOs' random paths (*Tape Wow*'s render). Shape curves in presets must start and
   end level where they restart, or they click. Presets *Tape Wow*, *Tremolo Ballad*, *Living
   Hammer*, *Breathing Strings*, *Notch Sweep*, *Beat Pump*, *Tidal Arp*; tests `mod-*`.
-- **The page** (`ui/layout.json`): tabs **Piano** (Playing, Tone, Strings, Space) and
-  **Synthesis** (one wide accordion: Partial Arp, Touch Point, Listening Point, the kit's arp panels, LFOs, Shapes, the matrix,
+- **The page** (`ui/layout.json`): tabs **Piano** (Playing, Tone, Strings, Space),
+  **Keys** (Key Maps) and **Synthesis** (one wide accordion: Partial Arp, Touch Point, Listening Point, the kit's arp panels, LFOs, Shapes, the matrix,
   all folded but the matrix); Output below both. New creative features go in the accordion.
 - **Space** (`src/Reverb.h`, `space.*`): early reflections per space (image-source shoebox,
   built in `prepare`, played by `wa::Convolver`) and a 16-line feedback-network tail, so Decay,

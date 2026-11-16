@@ -106,6 +106,11 @@ the hammer go quiet, the ones it leaves come back as far as the recordings show 
 further than a real hammer goes: an ideal string's silent nodes, then every change multiplied, up to three
 times (the *Hollow Strike* and *Glass Strike* presets). Loudness is kept as either moves. At their defaults the piano is as measured.
 
+**Key maps** (the **Keys** tab) give each key its own tuning, unison, hammer and level, drawn
+across the keyboard or filled at once by **Age Piano** (a worn piano's pattern: most wear in the
+middle, where a piano is played most); **Depth** scales them all, so the piano can age and be
+restored as you play. Try *Neglected Upright*, *Needs a Tuner*, *Saloon Upright*.
+
 **The soft pedal** (**Soft Pedal**, MIDI controller 67) shifts the hammers as a grand's una corda does: softer
 felt, then one string of each three left out, so notes start quieter and rounder and sing on as long.
 It is modelled from the physics, not measured: these recordings have none with it down.

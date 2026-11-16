@@ -1027,6 +1027,45 @@ first.
 
 What the first version of this control did, and why it was replaced: Design history.
 
+### Key maps
+
+The Keys tab (`keys` custom state, `KeyMaps` in src/Synth.cpp, the `keyMap` widget in
+ui/custom.js): each key's own departure from the piano as set, as a worn or unevenly kept piano
+has. Not measured: judgments about what a technician would find. Four maps, one value per key from
+A0 to C8, each moving its keys away from the global settings rather than replacing them, so the
+global controls still work. **Key Map Depth** (`keys.depth`, 0-200 %, modulatable) scales every
+departure. The neutral maps, which every patch without them loads, are bit-identical to the piano
+without them; only maps that differ from neutral are saved.
+
+- **Tuning** (cents, ±50): added to the key's pitch in `tune`, as the measured stretch is. The
+  key's free string in the sympathetic bank takes it too (`bankCents`, retuned when it changes), so
+  a detuned key's string rings at its own pitch under the pedal. Read as each note starts.
+- **Unison** (× the Unison setting, 0-4): how far the key's strings are out of tune with each
+  other. It multiplies Unison where the voice reads it, every block, so it follows a ringing note
+  as the setting does. Spread about where each partial rings (Unison, above), so a large value
+  beats and shimmers without moving the note's pitch.
+- **Hammer** (−1…1): the key's felt, added to Uneven's voicing (Wear and Uneven): below 0 Hardness
+  down, above 0 Edge up, by the square root. In the top two octaves a softer felt also takes much of
+  the level, as Hardness does there.
+- **Level** (dB, −18…+6): added to the key's gain at the strike, so the strike, the body's ring and
+  the partials all move together.
+
+**Age Piano** (on the page) fills all four at once with a worn piano's pattern, by Amount a: most
+wear where a piano is played most (Wear's curve, 0.35 + 0.65 e^(−((key − 62) / 17)²), w):
+tuning a·(−10 w·r + 7·r±) cents (flat more than sharp), unison 1 + a·(0.4 + 2.6 w·r), hammer
+a·(0.7 w·r + 0.25 r±), level a·2.5 r± dB with one key in about 16 a weak one (4-10 dB down), with r
+in 0…1 and r± in −1…1, drawn anew each time. The presets *Neglected Upright* (Amount 90 %), *Needs a
+Tuner* (100 %, tuning and unison only) and *Saloon Upright* (a honky-tonk: every unison near 300 %,
+hard hammers) were made the same way from a fixed seed.
+
+How audible (`tools/measure/keymaps.py`, one key at velocity 100 against no map; C3, D4, C5,
+C6): Level −6 dB 26-30 %; Hammer ±100 % 17-26 % (harder: 9 % at C6; softer: 49 % and 12 dB
+quieter at C6), ±50 % 10-14 %; Unison 400 % 13-18 %, 0 % and 200 % 9-13 %; Tuning +25 cents 2-12 %
+on one note alone (a key's tuning is heard against the others, in intervals and chords, which one
+note can't show). The presets against Init on a scale and a chord: *Neglected Upright* 19 % (13 %
+from its maps), *Saloon Upright* 18 %, *Needs a Tuner* 5 %. Speed: unchanged (15× realtime in
+`--check`); a map is one lookup per note, and per block for Unison.
+
 ### The soft pedal
 
 **Soft Pedal** (`play.softpedal`, 0-100 %, MIDI controller 67) is a grand's una corda: the action
