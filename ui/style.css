@@ -11,7 +11,11 @@
 .keymap-tabs { display: flex; gap: 2px; }
 .keymap button { font: inherit; font-size: 12px; padding: 4px 10px; border: 1px solid var(--edge); background: var(--field); color: var(--ink); border-radius: 4px; cursor: pointer; }
 .keymap-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.keymap-readout { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.keymap-readout.left { right: auto; left: 70px; }
+.keymap-hint { font-size: 12px; color: var(--ink-soft); }
+.keymap-plot { position: relative; }
+.keymap-readout { position: absolute; top: 4px; right: 4px; pointer-events: none; font-size: 12px; padding: 1px 6px;
+  border-radius: 3px; background: var(--field); color: var(--ink); opacity: 0.92; font-variant-numeric: tabular-nums; }
 .keymap-canvas { cursor: crosshair; }
 .keymap-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .keymap-amount input { accent-color: var(--accent); }

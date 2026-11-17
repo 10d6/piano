@@ -227,9 +227,12 @@ function keyMapWidget(el, ctx) {
   el.innerHTML = `
     <div class="keymap-bar">
       <div class="keymap-tabs" role="tablist"></div>
+      <div class="keymap-hint">Drag across the bars to draw; double-click a bar to reset that key.</div>
+    </div>
+    <div class="keymap-plot">
+      <canvas class="keymap-canvas"></canvas>
       <div class="keymap-readout" aria-live="polite"></div>
     </div>
-    <canvas class="keymap-canvas"></canvas>
     <canvas class="keymap-keys"></canvas>
     <div class="keymap-tools">
       <button data-act="reset" title="Put every key of this map back as set">Reset</button>
@@ -383,7 +386,10 @@ function keyMapWidget(el, ctx) {
     }
     const m = MAPS[current];
     const shown = held >= 0 ? held : hover;
-    readout.textContent = shown >= 0 ? `${mapName(shown)}: ${m.text(maps[current][shown])}` : `${m.label}: drag across the bars to draw, double-click a bar to reset that key`;
+    // the value under the pointer, over the bars' corner: it never moves the layout
+    readout.textContent = shown >= 0 ? `${mapName(shown)}: ${m.text(maps[current][shown])}` : "";
+    readout.hidden = shown < 0;
+    readout.classList.toggle("left", shown > MAP_KEYS * 0.75);   // out of the way of the keys it describes
     info.textContent = m.info;
     el.dataset.map = current;   // for tests
     draw();
