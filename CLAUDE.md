@@ -277,15 +277,19 @@ from CI at milestones.
   is the sound: don't call a still setting strong. `tools/measure/listen.py`. Presets *Wandering
   Ear*, *Opening Ear*, *Bridge Pickup*; tests `listening-point`, `mod-listen`.
 - **Key maps** (the Keys tab; custom state `keys`, `KeyMaps`; `keys.depth`; the `keyMap` widget;
-  docs/MODEL.md, Key maps): per-key Tuning, Unison, Hammer and Level, judgments (not measured).
+  docs/MODEL.md, Key maps): per-key Tuning, Unison, Hammer, Level, Sustain, Dampers and Stiffness,
+  judgments (not measured).
   Each moves its key away from the global settings, never replaces them. Neutral maps must stay
-  bit-identical (`cmp`), and only non-neutral maps are saved. Tuning also retunes the key's free
-  string (`bankCents`). The widget's state must be declared before `ctx.onCustom`, which calls back
+  bit-identical (`cmp`), and only non-neutral maps are saved. Every map that the free strings have
+  (Tuning, Sustain, Dampers, Stiffness) reaches the key's own (`bank*K`, `bankCents`); Dampers
+  also the body's ring (`dampBody`) and the strike noise. Voices read `maps`, a copy made once per
+  host block in `processEvents`, not the custom state (2-4 % of the browser's time otherwise). The widget's state must be declared before `ctx.onCustom`, which calls back
   at once (a `let` after it threw on load). Age Piano's pattern is mirrored, seeded, in the presets
-  *Neglected Upright*, *Needs a Tuner*, *Saloon Upright*. `tools/measure/keymaps.py`; tests
+  *Neglected Upright*, *Needs a Tuner*, *Saloon Upright* (maps added later come from a second seed,
+  so a preset's earlier maps don't move). A Dampers map at its top rings on: keep it out of
+  `silentAfter` tests (the extreme test uses the quick end). `tools/measure/keymaps.py`; tests
   `key-maps`, `key-maps-extreme` (keys above E6 have no dampers: keep them out of `silentAfter`
-  tests). Next stages discussed with the owner: Sustain, Dampers and Stiffness maps, then prepared-piano
-  maps (Touch Point per key).
+  tests). Next stage discussed with the owner: prepared-piano maps (Touch Point per key).
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,
