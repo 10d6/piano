@@ -489,7 +489,11 @@ button, input, select { font: inherit; color: inherit; }
 .keymap-tabs { display: flex; gap: 2px; }
 .keymap button { font: inherit; font-size: 12px; padding: 4px 10px; border: 1px solid var(--edge); background: var(--field); color: var(--ink); border-radius: 4px; cursor: pointer; }
 .keymap-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.keymap-readout { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.keymap-readout.left { right: auto; left: 70px; }
+.keymap-hint { font-size: 12px; color: var(--ink-soft); }
+.keymap-plot { position: relative; }
+.keymap-readout { position: absolute; top: 4px; right: 4px; pointer-events: none; font-size: 12px; padding: 1px 6px;
+  border-radius: 3px; background: var(--field); color: var(--ink); opacity: 0.92; font-variant-numeric: tabular-nums; }
 .keymap-canvas { cursor: crosshair; }
 .keymap-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .keymap-amount input { accent-color: var(--accent); }
@@ -1010,9 +1014,12 @@ function keyMapWidget(el, ctx) {
   el.innerHTML = `
     <div class="keymap-bar">
       <div class="keymap-tabs" role="tablist"></div>
+      <div class="keymap-hint">Drag across the bars to draw; double-click a bar to reset that key.</div>
+    </div>
+    <div class="keymap-plot">
+      <canvas class="keymap-canvas"></canvas>
       <div class="keymap-readout" aria-live="polite"></div>
     </div>
-    <canvas class="keymap-canvas"></canvas>
     <canvas class="keymap-keys"></canvas>
     <div class="keymap-tools">
       <button data-act="reset" title="Put every key of this map back as set">Reset</button>
@@ -1166,7 +1173,10 @@ function keyMapWidget(el, ctx) {
     }
     const m = MAPS[current];
     const shown = held >= 0 ? held : hover;
-    readout.textContent = shown >= 0 ? `${mapName(shown)}: ${m.text(maps[current][shown])}` : `${m.label}: drag across the bars to draw, double-click a bar to reset that key`;
+    // the value under the pointer, over the bars' corner: it never moves the layout
+    readout.textContent = shown >= 0 ? `${mapName(shown)}: ${m.text(maps[current][shown])}` : "";
+    readout.hidden = shown < 0;
+    readout.classList.toggle("left", shown > MAP_KEYS * 0.75);   // out of the way of the keys it describes
     info.textContent = m.info;
     el.dataset.map = current;   // for tests
     draw();
