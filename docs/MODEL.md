@@ -1031,7 +1031,7 @@ What the first version of this control did, and why it was replaced: Design hist
 
 The Keys tab (`keys` custom state, `KeyMaps` in src/Synth.cpp, the `keyMap` widget in
 ui/custom.js): each key's own departure from the piano as set, as a worn or unevenly kept piano
-has. Not measured: judgments about what a technician would find. Four maps, one value per key from
+has. Not measured: judgments about what a technician would find. Seven maps, one value per key from
 A0 to C8, each moving its keys away from the global settings rather than replacing them, so the
 global controls still work. **Key Map Depth** (`keys.depth`, 0-200 %, modulatable) scales every
 departure. The neutral maps, which every patch without them loads, are bit-identical to the piano
@@ -1049,20 +1049,40 @@ without them; only maps that differ from neutral are saved.
   the level, as Hardness does there.
 - **Level** (dB, −18…+6): added to the key's gain at the strike, so the strike, the body's ring and
   the partials all move together.
+- **Sustain** (× the Sustain setting, 0.25-4): multiplies Sustain where the voice reads it, every
+  block, and the key's free string's. Like the setting, it lengthens what rings on, not the strike's
+  fast modes.
+- **Dampers** (× the Dampers setting, the damper's time, 0.25-32): the voice's damping, its strike
+  noise's, the key's body ring's (`dampBody`) and its free string's all take it, so a leaky damper
+  lets every part of the key ring on alike. At 32 a note let go is all but undamped (D4 21 dB louder
+  0.1-0.5 s after release). Keys above E6 have none unless Top Dampers is All keys.
+- **Stiffness** (× the Stiffness setting, 0-4): read at the strike, as the setting is, and by the
+  key's free string (`bankStiffK`), so the two agree (the reason Stiffness itself isn't a
+  modulation destination). Plain in the bass and top octaves, subtle in the middle, as the setting.
+
+Unison, Stiffness and Level move with Depth in a straight line, Sustain and Dampers (logarithmic
+settings) as powers: × v^Depth.
 
 **Age Piano** (on the page) fills all four at once with a worn piano's pattern, by Amount a: most
 wear where a piano is played most (Wear's curve, 0.35 + 0.65 e^(−((key − 62) / 17)²), w):
 tuning a·(−10 w·r + 7·r±) cents (flat more than sharp), unison 1 + a·(0.4 + 2.6 w·r), hammer
-a·(0.7 w·r + 0.25 r±), level a·2.5 r± dB with one key in about 16 a weak one (4-10 dB down), with r
-in 0…1 and r± in −1…1, drawn anew each time. The presets *Neglected Upright* (Amount 90 %), *Needs a
+a·(0.7 w·r + 0.25 r±), level a·2.5 r± dB with one key in about 16 a weak one (4-10 dB down),
+sustain 1 − a·(0.1 + 0.3 w·r), damper time 2^(1.5 a·r) with one key in 20/a all but undamped
+(16-32), and one key in 20/a a replaced string (Stiffness × 2.5-4), with r in 0…1 and r± in −1…1,
+drawn anew each time. The presets *Neglected Upright* (Amount 90 %), *Needs a
 Tuner* (100 %, tuning and unison only) and *Saloon Upright* (a honky-tonk: every unison near 300 %,
-hard hammers) were made the same way from a fixed seed.
+hard hammers) were made the same way from a fixed seed (*Neglected Upright*'s Sustain, Dampers and
+Stiffness from a second one, added later, so its first four maps stayed as they were: four keys with
+dampers that hardly stop them, G#3 among them, and five replaced strings, C4 among them).
 
 How audible (`tools/measure/keymaps.py`, one key at velocity 100 against no map; C3, D4, C5,
 C6): Level −6 dB 26-30 %; Hammer ±100 % 17-26 % (harder: 9 % at C6; softer: 49 % and 12 dB
 quieter at C6), ±50 % 10-14 %; Unison 400 % 13-18 %, 0 % and 200 % 9-13 %; Tuning +25 cents 2-12 %
 on one note alone (a key's tuning is heard against the others, in intervals and chords, which one
-note can't show). The presets against Init on a scale and a chord: *Neglected Upright* 19 % (13 %
+note can't show); Sustain 50 % / 200 % 18-28 % / 22-39 %; Stiffness 300 % 2-5 % from C3 to C5 and
+11 % at C6 (a replaced string in *Neglected Upright*: 11-16 % in the bass, 5.5 % at C4); Dampers
+(let go at 1 s) × 32 16-42 % from C3 to C5 and 3.5 % at C6, × 4 3-8 %, × 0.25 0-2 % (the dampers
+are already quick there). The presets against Init on a scale and a chord: *Neglected Upright* 19 % (13 %
 from its maps), *Saloon Upright* 18 %, *Needs a Tuner* 5 %. Speed: unchanged (15× realtime in
 `--check`); a map is one lookup per note, and per block for Unison.
 

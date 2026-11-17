@@ -11,7 +11,8 @@
 // so this is how to hear them without a MIDI keyboard.
 //
 // keyMap: the Keys tab's editor for the key maps (custom state "keys", src/Synth.cpp KeyMaps):
-// one bar per key, A0 to C8, for the map chosen above it (Tuning, Unison, Hammer, Level). Drag
+// one bar per key, A0 to C8, for the map chosen above it (Tuning, Unison, Hammer, Level, Sustain,
+// Dampers, Stiffness). Drag
 // across the bars to draw (one undo step per drag); double-click a bar to put that key back.
 // The strip of keys under the bars plays each key. The buttons fill a map at once: Reset, Smooth,
 // Randomize (this map), and Age Piano (every map, a worn piano's pattern: most wear in the middle,
@@ -198,6 +199,21 @@ const MAPS = {
     text: (v) => (Math.abs(v) < 0.05 ? "as set" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`),
     info: "How loud each key is against its neighbours (−18 to +6 dB): uneven regulation, a weak or dead note.",
   },
+  sustain: {
+    label: "Sustain", lo: 0.25, hi: 4, neutral: 1, log: true, unit: "×",
+    text: (v) => `${Math.round(v * 100)} % of Sustain`,
+    info: "How long each key rings, as a share of the Sustain setting (25-400 %): a worn bridge or a tired string dies early.",
+  },
+  damper: {
+    label: "Dampers", lo: 0.25, hi: 32, neutral: 1, log: true, unit: "×",
+    text: (v) => (v >= 31.5 ? "rings on, as if it had no damper" : `damper ${v >= 1 ? v.toFixed(v < 10 ? 1 : 0) + "× as slow" : (1 / v).toFixed(1) + "× as quick"}`),
+    info: "How long each key's damper takes to stop it when you let go, × the Dampers setting: above the line a worn, leaky damper lets the note ring on (at the top, as if it had none); below it, a firmer one stops it quicker. Keys above E6 have no dampers unless Top Dampers is All keys.",
+  },
+  stiff: {
+    label: "Stiffness", lo: 0, hi: 4, neutral: 1, unit: "×",
+    text: (v) => `${Math.round(v * 100)} % of Stiffness`,
+    info: "How stiff each key's strings are, × the Stiffness setting (0-400 %): a string replaced with a heavier gauge, or a corroded one, rings more bell-like than its neighbours. It applies to the notes you strike next.",
+  },
 };
 const MAP_IDS = Object.keys(MAPS);
 const mapName = (i) => noteName(i + MAP_LOW);
@@ -206,8 +222,17 @@ const clampTo = (m, v) => Math.max(m.lo, Math.min(m.hi, v));
 
 // the bars' height runs from the range's bottom to its top with neutral in the middle (each half
 // linear), so the line is always at the same place and both directions have room to draw
-const toUnit = (m, v) => (v >= m.neutral ? 0.5 + 0.5 * (v - m.neutral) / (m.hi - m.neutral) : 0.5 * (v - m.lo) / (m.neutral - m.lo));
-const fromUnit = (m, u) => (u >= 0.5 ? m.neutral + (u - 0.5) * 2 * (m.hi - m.neutral) : m.lo + u * 2 * (m.neutral - m.lo));
+// (in log terms for Sustain and Dampers, whose settings are logarithmic)
+const lin = (m, v) => (m.log ? Math.log(v) : v);
+const unlin = (m, x) => (m.log ? Math.exp(x) : x);
+const toUnit = (m, v) => {
+  const x = lin(m, v), n = lin(m, m.neutral), lo = lin(m, m.lo), hi = lin(m, m.hi);
+  return x >= n ? 0.5 + 0.5 * (x - n) / (hi - n) : 0.5 * (x - lo) / (n - lo);
+};
+const fromUnit = (m, u) => {
+  const n = lin(m, m.neutral), lo = lin(m, m.lo), hi = lin(m, m.hi);
+  return unlin(m, u >= 0.5 ? n + (u - 0.5) * 2 * (hi - n) : lo + u * 2 * (n - lo));
+};
 
 function neutralMaps() {
   const o = {};
@@ -238,7 +263,7 @@ function keyMapWidget(el, ctx) {
       <button data-act="reset" title="Put every key of this map back as set">Reset</button>
       <button data-act="smooth" title="Average each key with its neighbours">Smooth</button>
       <button data-act="random" title="Give every key of this map its own random value, by Amount">Randomize</button>
-      <button data-act="age" title="Fill every map with a worn piano's pattern, by Amount: drifting tuning, beating unisons, packed hammers in the middle, uneven levels">Age Piano</button>
+      <button data-act="age" title="Fill every map with a worn piano's pattern, by Amount: drifting tuning, beating unisons, packed hammers and shorter rings in the middle, uneven levels, slow dampers (now and then one that hardly stops), now and then a replaced string">Age Piano</button>
       <label class="keymap-amount">Amount <input type="range" min="0" max="100" value="50"><span>50 %</span></label>
     </div>
     <div class="keymap-info"></div>`;
@@ -349,6 +374,9 @@ function keyMapWidget(el, ctx) {
     unison: (a) => 1 + 3 * a * Math.random(),
     hammer: (a) => a * rnd(),
     level: (a) => 6 * a * rnd(),
+    sustain: (a) => 2 ** (a * rnd()),
+    damper: (a) => 2 ** (2 * a * rnd()),
+    stiff: (a) => 1 + 0.8 * a * rnd(),
   };
   el.querySelector(".keymap-tools").addEventListener("click", (e) => {
     const act = e.target.closest("button")?.dataset.act;
@@ -372,6 +400,12 @@ function keyMapWidget(el, ctx) {
         maps.hammer[i] = clampTo(MAPS.hammer, a * (0.7 * w * Math.random() + 0.25 * rnd()));
         // uneven regulation, and now and then a weak note
         maps.level[i] = clampTo(MAPS.level, a * (2.5 * rnd() - (Math.random() < 0.06 ? 4 + 6 * Math.random() : 0)));
+        // shorter rings, most in the middle
+        maps.sustain[i] = clampTo(MAPS.sustain, 1 - a * (0.1 + 0.3 * w * Math.random()));
+        // dampers slow with wear, and now and then one that hardly stops its note
+        maps.damper[i] = clampTo(MAPS.damper, Math.random() < 0.05 * a ? 16 + 16 * Math.random() : 2 ** (1.5 * a * Math.random()));
+        // now and then a string replaced with another gauge
+        maps.stiff[i] = clampTo(MAPS.stiff, Math.random() < 0.05 * a ? 2.5 + 1.5 * Math.random() : 1);
       }
     }
     commit();
@@ -425,7 +459,10 @@ function keyMapWidget(el, ctx) {
     }
     g.strokeStyle = soft; g.beginPath(); g.moveTo(0, Math.round(y0) + 0.5); g.lineTo(w, Math.round(y0) + 0.5); g.stroke();
     g.fillStyle = soft; g.font = "10px system-ui, sans-serif";
-    const label = { tune: ["+50 cents", "−50 cents"], unison: ["400 %", "0 %"], hammer: ["harder", "softer"], level: ["+6 dB", "−18 dB"] }[current];
+    const label = {
+      tune: ["+50 cents", "−50 cents"], unison: ["400 %", "0 %"], hammer: ["harder", "softer"], level: ["+6 dB", "−18 dB"],
+      sustain: ["400 %", "25 %"], damper: ["rings on (×32)", "×0.25"], stiff: ["400 %", "0 %"],
+    }[current];
     g.fillText(label[0], 3, T + 9);
     g.fillText(label[1], 3, H - Bm - 2);
     // the keys
