@@ -28,8 +28,12 @@ MAPS = [("Tuning +10 cents", "tune", 10.0), ("Tuning +25 cents", "tune", 25.0),
         ("Unison 0 %", "unison", 0.0), ("Unison 200 %", "unison", 2.0), ("Unison 400 %", "unison", 4.0),
         ("Hammer softer 50 %", "hammer", -0.5), ("Hammer softer 100 %", "hammer", -1.0),
         ("Hammer harder 50 %", "hammer", 0.5), ("Hammer harder 100 %", "hammer", 1.0),
-        ("Level −6 dB", "level", -6.0)]
-NEUTRAL = {"tune": 0.0, "unison": 1.0, "hammer": 0.0, "level": 0.0}
+        ("Level −6 dB", "level", -6.0),
+        ("Sustain 50 %", "sustain", 0.5), ("Sustain 200 %", "sustain", 2.0),
+        ("Stiffness 0 %", "stiff", 0.0), ("Stiffness 300 %", "stiff", 3.0)]
+# the dampers act only on release: the key is let go at 1 s
+DAMPERS = [("Dampers ×0.25", 0.25), ("Dampers ×4", 4.0), ("Dampers ×32", 32.0)]
+NEUTRAL = {"tune": 0.0, "unison": 1.0, "hammer": 0.0, "level": 0.0, "sustain": 1.0, "damper": 1.0, "stiff": 1.0}
 ROOT = M.TOOLS.parent
 NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -63,6 +67,10 @@ def level(y):
     return 10 * np.log10(np.mean(y[:48000] ** 2) + 1e-30)
 
 
+def after(y):
+    return 10 * np.log10(np.mean(y[int(1.1 * 48000):int(1.5 * 48000)] ** 2) + 1e-30)
+
+
 def main():
     tool = sys.argv[sys.argv.index("--render") + 1] if "--render" in sys.argv else str(ROOT / "build" / "piano_render")
     note = lambda k: [{"t": 0, "on": k, "vel": 100}]
@@ -75,6 +83,15 @@ def main():
             y = render(tool, patch(one_map(mid, k, v)), note(k), 3.0)
             row.append(f"{dist(base[k], y):6.1f} ({level(y) - level(base[k]):+5.1f})")
         print(f"{label:22s}" + "".join(f"{c:>16s}" for c in row))
+    released = lambda k: [{"t": 0, "on": k, "vel": 100}, {"t": 1.0, "off": k}]
+    base = {k: render(tool, patch(), released(k), 3.0) for k in KEYS}
+    for label, v in DAMPERS:
+        row = []
+        for k in KEYS:
+            y = render(tool, patch(one_map("damper", k, v)), released(k), 3.0)
+            row.append(f"{dist(base[k], y):6.1f} ({after(y) - after(base[k]):+5.1f})")
+        print(f"{label:22s}" + "".join(f"{c:>16s}" for c in row))
+    print("  (Dampers: let go at 1 s; in brackets, the level 0.1-0.5 s after release against no map)")
 
     print("\nPresets against Init, a scale C3-C5 and a chord (distance %):")
     ev = []

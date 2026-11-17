@@ -111,12 +111,26 @@ float measuredCents(int note) {
 //   hammer  −1…1: below 0 a softer felt (Hardness down), above 0 a harder one (Edge up), as
 //           Uneven's voicing does (by the square root: Edge does little at its low end)
 //   level   dB, −18…+6: how loud the key is against its neighbours
+//   sustain × the Sustain setting, 0.25-4: how long the key rings
+//   damper  × the Dampers setting (the time a damper takes), 0.25-32: a worn or leaky damper is
+//           slow; at 32 the key all but rings on, as if it had none
+//   stiff   × the Stiffness setting, 0-4: a string replaced with another gauge, or a corroded one
+// Unison, Stiffness and Level move with Depth in a straight line; Sustain and Dampers, whose
+// settings are logarithmic, as powers (× v^Depth).
 constexpr int kMapKeys = 88, kMapLow = 21;
 struct KeyMaps {
-  std::array<float, kMapKeys> tune{}, unison{}, hammer{}, level{};
-  KeyMaps() { unison.fill(1.f); }
+  std::array<float, kMapKeys> tune{}, unison{}, hammer{}, level{}, sustain{}, damper{}, stiff{};
+  KeyMaps() {
+    unison.fill(1.f);
+    sustain.fill(1.f);
+    damper.fill(1.f);
+    stiff.fill(1.f);
+  }
 };
 inline int mapIndex(int note) { return std::clamp(note - kMapLow, 0, kMapKeys - 1); }
+// a map's value at Depth d: a factor that moves in a straight line, or as a power
+inline float mapLinear(float v, float d) { return v == 1.f ? 1.f : std::max(0.f, 1.f + (v - 1.f) * d); }
+inline float mapPower(float v, float d) { return v == 1.f ? 1.f : std::pow(v, d); }
 
 
 // The damper on a key: how fast it stops the strings (dB/s); keys above E6 have none.
@@ -342,6 +356,11 @@ struct Piano : Synth {
   KeyMaps maps;
   bool mapsMoved = true;
   float lastMapDepth = -1;
+  float eventMapDepth = 1;   // Key Map Depth as of this host block (processEvents)
+  static constexpr std::array<float, 128> kOnes = [] { std::array<float, 128> a{}; for (float& v : a) v = 1.f; return a; }();
+  std::array<float, 128> bankSusK = kOnes, bankDampK = kOnes, bankStiffK = kOnes;   // each free string's map factors (× Depth)
+  // a key's damper time from its map (× the Dampers setting)
+  float damperMap(int key, float depth) const { return mapPower(maps.damper[mapIndex(key)], depth); }
 
   void defineParams(ParamBuilder& b) override {
     touch = b.add("play.touch").name("Touch").range(-1, 1).def(0).group("Playing");
@@ -450,6 +469,9 @@ struct Piano : Synth {
         put("unison", k.unison, 1.f);
         put("hammer", k.hammer, 0.f);
         put("level", k.level, 0.f);
+        put("sustain", k.sustain, 1.f);
+        put("damper", k.damper, 1.f);
+        put("stiff", k.stiff, 1.f);
       },
       .load = [](const Json& j, KeyMaps& k) {
         k = KeyMaps{};
@@ -462,6 +484,9 @@ struct Piano : Synth {
         get("unison", k.unison, 0.f, 4.f);
         get("hammer", k.hammer, -1.f, 1.f);
         get("level", k.level, -18.f, 6.f);
+        get("sustain", k.sustain, 0.25f, 4.f);
+        get("damper", k.damper, 0.25f, 32.f);
+        get("stiff", k.stiff, 0.f, 4.f);
       },
       .initial = {},
     });
@@ -875,6 +900,9 @@ struct Piano : Synth {
   }
 
   void bankPoles(int key, float stretchPct, float sus, float dampScale, float stiff, float gamma) {
+    sus *= bankSusK[key];        // the key's own maps (Key maps; 1 where it has none)
+    dampScale *= bankDampK[key];
+    stiff *= bankStiffK[key];
     float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f + bankCents[key] * 0.01f - 69.f) / 12.f);
     float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
     float rate = 0.5f * sr, nyq = 0.47f * rate;
@@ -912,9 +940,14 @@ struct Piano : Synth {
       mapsMoved = false;
       lastMapDepth = mapDepth;
       for (int key = kMapLow; key < kMapLow + kMapKeys; ++key) {
-        float c = maps.tune[key - kMapLow] * mapDepth;
-        if (c != bankCents[key]) {
+        int m = key - kMapLow;
+        float c = maps.tune[m] * mapDepth, su = mapPower(maps.sustain[m], mapDepth),
+              dm = mapPower(maps.damper[m], mapDepth), st = mapLinear(maps.stiff[m], mapDepth);
+        if (c != bankCents[key] || su != bankSusK[key] || dm != bankDampK[key] || st != bankStiffK[key]) {
           bankCents[key] = c;
+          bankSusK[key] = su;
+          bankDampK[key] = dm;
+          bankStiffK[key] = st;
           keyPoles[key] = false;
         }
       }
@@ -1041,13 +1074,13 @@ struct Piano : Synth {
   void arpDampers() {
     for (int k = 0; k < 128; ++k) {
       // the kit's notes ignore the pedal themselves, but the body ring is the key's own and follows it
-      if (arpWasUp[k] && !arpUp[k] && !keysDown[k] && !pedalDown) dampBody(k, damperRate(k, topDamper) / damperDiv);
+      if (arpWasUp[k] && !arpUp[k] && !keysDown[k] && !pedalDown) dampBody(k, damperRate(k, topDamper) / (damperDiv * damperMap(k, eventMapDepth)));
       arpWasUp[k] = arpUp[k];
       arpUp[k] = false;
     }
   }
   void damperFalls(EventContext& ctx, int key) {
-    dampBody(key, damperRate(key, topDamper) / std::max(ctx.get(damper) * 0.01f, 0.25f));
+    dampBody(key, damperRate(key, topDamper) / (std::max(ctx.get(damper) * 0.01f, 0.25f) * damperMap(key, eventMapDepth)));
   }
 
   // the highest key with a damper: E6 on a grand (the top strings ring on after release, as recorded),
@@ -1061,6 +1094,7 @@ struct Piano : Synth {
         maps = k;
         mapsMoved = true;
       }
+      eventMapDepth = ctx.get(keysDepth) * 0.01f;
     }
     topDamper = ctx.choice(topDampers) == 1 ? 108 : kLastDamper;
     damperDiv = std::max(ctx.get(damper) * 0.01f, 0.25f);
@@ -1367,6 +1401,7 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   if (mapLevel != 0) gainDb += mapLevel;
   float bright = ctx.get(synth.bright);
   float stiff = ctx.get(synth.stiffness) * 0.01f;
+  stiff *= mapLinear(keyMap.stiff[mapIndex(static_cast<int>(note))], mapDepth);   // the key's own (Key maps)
   // The hammer (tools/analyze_hammer.py): its force spectrum 1 / (1 + (f / fc)²), with the corner
   // measured per key and layer from how the partials brighten as the felt is struck harder.
   // Hardness moves the corner (a harder felt, a shorter contact: ±3 octaves at ±100 %), and every
@@ -2304,6 +2339,15 @@ void PianoVoice::render(VoiceContext& ctx, Buffer& out) {
     if (u != 1.f) uni *= std::max(0.f, 1.f + (u - 1.f) * ctx.get(synth.keysDepth) * 0.01f);
   }
   float dmp = ctx.get(synth.damper) * 0.01f;
+  {   // the key maps' sustain and damper time (Key maps): followed while the note rings
+    int m = mapIndex(note);
+    float s = synth.maps.sustain[m], d = synth.maps.damper[m];
+    if (s != 1.f || d != 1.f) {
+      float depth = ctx.get(synth.keysDepth) * 0.01f;
+      sus *= mapPower(s, depth);
+      dmp *= mapPower(d, depth);
+    }
+  }
   float gam = ctx.get(synth.overtoneDecay) * 0.01f;
   bool touched = touchBlock(ctx);
   if (lastTouchPress > 0) {   // Dry: half the finger's damping (a wide finger's share) at 100 %
