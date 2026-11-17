@@ -9,6 +9,7 @@
 .keymap canvas { display: block; width: 100%; }
 .keymap-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .keymap-tabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.keymap-group { align-self: center; font-size: 11px; color: var(--ink-soft); margin: 0 4px 0 10px; }
 .keymap button { font: inherit; font-size: 12px; padding: 4px 10px; border: 1px solid var(--edge); background: var(--field); color: var(--ink); border-radius: 4px; cursor: pointer; }
 .keymap-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .keymap-readout.left { right: auto; left: 70px; }

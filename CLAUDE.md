@@ -286,10 +286,16 @@ from CI at milestones.
   host block in `processEvents`, not the custom state (2-4 % of the browser's time otherwise). The widget's state must be declared before `ctx.onCustom`, which calls back
   at once (a `let` after it threw on load). Age Piano's pattern is mirrored, seeded, in the presets
   *Neglected Upright*, *Needs a Tuner*, *Saloon Upright* (maps added later come from a second seed,
-  so a preset's earlier maps don't move). A Dampers map at its top rings on: keep it out of
+  so a preset's earlier maps don't move). **Preparations** (Point, Mute, Bolt; `Prep`, `prepOf`,
+  `boltRatio`; docs/MODEL.md, Preparations): read at the strike into `prepDb`/`prepRatio` per
+  partial number (`pnum`, as Touch Point), and by the free string (`bankPrep`, solved again only when
+  drawn or when Depth moves an amount by over 1 %). The bolt is solved exactly (a point mass on a
+  string), not a guess: keep the bisection's bracket ((n−1)π, nπ]. Not modelled: a buzz or rattle,
+  what an object does to the hammer's contact. Presets *Prepared Sonata*, *Rubber Piano*, *Bolted
+  Gongs*; tests `prepared`, `prepared-gongs`. A Dampers map at its top rings on: keep it out of
   `silentAfter` tests (the extreme test uses the quick end). `tools/measure/keymaps.py`; tests
   `key-maps`, `key-maps-extreme` (keys above E6 have no dampers: keep them out of `silentAfter`
-  tests). Next stage discussed with the owner: prepared-piano maps (Touch Point per key).
+  tests).
 - **The kit's arpeggiator / sequencer** (`features.arp`, `arp.*`, docs/MODEL.md): Off must stay
   bit-identical (`cmp`). Played keys keep one voice per key; the kit's notes take their own
   voice (`allocateVoice` tells them apart by `playedPending`, counted in `processEvents`,

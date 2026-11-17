@@ -109,7 +109,11 @@ times (the *Hollow Strike* and *Glass Strike* presets). Loudness is kept as eith
 **Key maps** (the **Keys** tab) give each key its own tuning, unison, hammer, level, sustain, damper and string stiffness, drawn
 across the keyboard or filled at once by **Age Piano** (a worn piano's pattern: most wear in the
 middle, where a piano is played most); **Depth** scales them all, so the piano can age and be
-restored as you play. Try *Neglected Upright*, *Needs a Tuner*, *Saloon Upright*.
+restored as you play. Try *Neglected Upright*, *Needs a Tuner*, *Saloon Upright*. Its **Prepared**
+maps put an object on a key's strings, as on a prepared piano: a rubber **Mute** (a thud with its
+pitch, or a harmonic at 1/2, 1/3…) or a **Bolt** (its mass detunes every partial its own way: the
+gong), each at a **Point** of its own; **Prepare** fills them at once. Try *Prepared Sonata*,
+*Rubber Piano*, *Bolted Gongs*.
 
 **The soft pedal** (**Soft Pedal**, MIDI controller 67) shifts the hammers as a grand's una corda does: softer
 felt, then one string of each three left out, so notes start quieter and rounder and sing on as long.
