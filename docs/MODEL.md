@@ -1031,8 +1031,8 @@ What the first version of this control did, and why it was replaced: Design hist
 
 The Keys tab (`keys` custom state, `KeyMaps` in src/Synth.cpp, the `keyMap` widget in
 ui/custom.js): each key's own departure from the piano as set, as a worn or unevenly kept piano
-has. Not measured: judgments about what a technician would find. Seven maps, one value per key from
-A0 to C8, each moving its keys away from the global settings rather than replacing them, so the
+has, and three more that prepare it (Preparations, below). Not measured: judgments about what a
+technician would find. Ten maps, one value per key from A0 to C8, each moving its keys away from the global settings rather than replacing them, so the
 global controls still work. **Key Map Depth** (`keys.depth`, 0-200 %, modulatable) scales every
 departure. The neutral maps, which every patch without them loads, are bit-identical to the piano
 without them; only maps that differ from neutral are saved.
@@ -1085,6 +1085,48 @@ note can't show); Sustain 50 % / 200 % 18-28 % / 22-39 %; Stiffness 300 % 2-5 % 
 are already quick there). The presets against Init on a scale and a chord: *Neglected Upright* 19 % (13 %
 from its maps), *Saloon Upright* 18 %, *Needs a Tuner* 5 %. Speed: unchanged (15× realtime in
 `--check`); a map is one lookup per note, and per block for Unison.
+
+### Preparations
+
+Three more key maps prepare the piano, as Cage's was: an object on a key's strings. Not measured
+(no recordings of one); the mechanics of a string with an object on it, and judgments for the sizes
+(`kMute…`, `kBolt…`). `Prep` and `prepOf` in src/Synth.cpp, read as each note is struck (an object
+stays on the string till the next strike) and by the key's free string.
+
+- **Point** (0.02-0.5, 0.13 when not drawn): where the object sits, a share of the string from its
+  nearer end. Alone it does nothing. The page snaps it to 1/2, 1/3 … 1/16, where a mute leaves a
+  harmonic, and fades the bars of keys with nothing on them.
+- **Mute** (0-1): a rubber or felt wedge. Touch Point's rule (`touchShare`) at a fixed width,
+  `kMuteWidth` 3 % of the string, and `kMuteMaxDb` · Mute² dB/s at a whole share: partial n takes
+  ½(1 − cos(2πny)·sinc(nπw)) of it, so those with a node under the wedge ring on (at 1/2, the even
+  ones: D4's 2nd 6 dB down at 0.5-2 s, its 1st, 3rd and 5th 53-60 dB). At 13 % it thuds with its
+  pitch: D4 1-6 dB quieter in its first 0.1 s, 15-33 dB at 0.5-1 s.
+- **Bolt** (0-1): a bolt or screw clamped to the strings, a point mass μ = `kBoltMaxMu` · Bolt²
+  times the string's own (3 at 100 %). The string's modes are then the roots of
+  sin k − μk·sin(kx)·sin(k(1−x)) = 0 (the force balance at the mass), which interlace with the bare
+  string's, the n-th in ((n−1)π, nπ], so each is found by bisection between the two (`boltRatio`;
+  about 9,000 sines in double precision for a strike's 96 partials, nothing measurable on a fast passage). Each partial keeps
+  k/(nπ) of its frequency: a light bolt lowers it by about μ·sin²(nπx), a heavy one splits the
+  string in two at x, whose two series the partials approach, and the note turns inharmonic and
+  lower, the gong (D4 at 100 %, 13 %: its fundamental 296 → 155 Hz, 152 predicted; at Depth 50 %,
+  247 Hz, 246.5 predicted). A partial with a node at x is left where it is. Its contact adds
+  `kBoltFrictionDb` · Bolt dB/s, by the same share with no width.
+- The amounts scale with Depth (Mute and Bolt × Depth, then squared); Point doesn't. The free
+  strings are solved again when a map is drawn, and when Depth alone has moved a preparation's
+  amounts by more than 1 % (a modulated Depth would otherwise solve every prepared string each
+  block). The strike's own sound and the body's ring aren't prepared: what an object does to the
+  hammer's contact, and a rattle or buzz from a loose one, are left (a buzz is nonlinear).
+- **Prepare** (on the page) puts an object on some keys from C2 to C7: each key with probability
+  Amount / 2, a bolt (55 %, 0.25-0.9) or a mute (0.4-1), at a point of its own (in 3 of 10, a
+  whole division from 1/2 to 1/9, else 5-30 %, log-even). It clears the keys it passes over, and
+  leaves the other maps alone (Age Piano leaves these). Presets: *Prepared Sonata* (Prepare at 80 %
+  from a fixed seed: 11 bolts, 12 mutes), *Rubber Piano* (every key muted at 10-14 %, Mute 50-60 %),
+  *Bolted Gongs* (a bolt on every key from C2 to C6, 60-90 %, at 6-26 %).
+
+How audible (`tools/measure/keymaps.py`, at Point 13 %, C3, D4, C5, C6): Mute 50 % 30-60 %,
+100 % 41-74 % (5-14 dB quieter in the first second); Bolt 30 % 22-33 %, 60 % 36-63 %, 100 % 43-80 %
+(level within 2.3 dB: the bolt moves the partials, not the level); a mute at 1/2 29-59 %. The
+presets against Init: *Prepared Sonata* 36 %, *Rubber Piano* 41 %, *Bolted Gongs* 30 %.
 
 ### The soft pedal
 

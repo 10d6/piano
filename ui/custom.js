@@ -12,10 +12,11 @@
 //
 // keyMap: the Keys tab's editor for the key maps (custom state "keys", src/Synth.cpp KeyMaps):
 // one bar per key, A0 to C8, for the map chosen above it (Tuning, Unison, Hammer, Level, Sustain,
-// Dampers, Stiffness). Drag
+// Dampers, Stiffness; and, Prepared, Point, Mute, Bolt). Drag
 // across the bars to draw (one undo step per drag); double-click a bar to put that key back.
 // The strip of keys under the bars plays each key. The buttons fill a map at once: Reset, Smooth,
-// Randomize (this map), and Age Piano (every map, a worn piano's pattern: most wear in the middle,
+// Randomize (this map), Prepare (Point, Mute and Bolt: some keys from C2 to C7 get an object on
+// their strings) and Age Piano (every other map, a worn piano's pattern: most wear in the middle,
 // where a piano is played most), both by Amount.
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -214,6 +215,22 @@ const MAPS = {
     text: (v) => `${Math.round(v * 100)} % of Stiffness`,
     info: "How stiff each key's strings are, × the Stiffness setting (0-400 %): a string replaced with a heavier gauge, or a corroded one, rings more bell-like than its neighbours. It applies to the notes you strike next.",
   },
+  // the prepared piano: an object on the strings (src/Synth.cpp, Prep)
+  point: {
+    label: "Point", group: "Prepared", lo: 0.02, hi: 0.5, neutral: 0.13, log: true, unit: "",
+    text: (v) => { const n = Math.round(1 / v); return `${(v * 100).toFixed(1)} % along the string${Math.abs(v * n - 1) < 0.002 ? ` (1/${n})` : ""}`; },
+    info: "Where along each key's string its Mute or Bolt sits, as a share of the string from the nearer end (2-50 %; it does nothing alone). At 1/2, 1/3, 1/4… (the bars snap there) a mute leaves a harmonic: the partials with a node there ring on. Faded bars are keys with nothing on them.",
+  },
+  mute: {
+    label: "Mute", group: "Prepared", lo: 0, hi: 1, neutral: 0, unit: "",
+    text: (v) => (v <= 0 ? "none" : `${Math.round(v * 100)} %`),
+    info: "A rubber or felt wedge between each key's strings, at its Point (0-100 %): the note thuds with its pitch and dies quickly, most on the partials that move at the Point. It applies to the notes you strike next.",
+  },
+  bolt: {
+    label: "Bolt", group: "Prepared", lo: 0, hi: 1, neutral: 0, unit: "",
+    text: (v) => (v <= 0 ? "none" : `${Math.round(v * 100)} % (${(3 * v * v).toFixed(2)}× the string's mass)`),
+    info: "A bolt or screw clamped to each key's strings at its Point (0-100 %): its mass pulls every partial down by its own amount, so the note goes inharmonic, gong-like, and lower (at 100 %, an octave or so). It applies to the notes you strike next.",
+  },
 };
 const MAP_IDS = Object.keys(MAPS);
 const mapName = (i) => noteName(i + MAP_LOW);
@@ -225,12 +242,15 @@ const clampTo = (m, v) => Math.max(m.lo, Math.min(m.hi, v));
 // (in log terms for Sustain and Dampers, whose settings are logarithmic)
 const lin = (m, v) => (m.log ? Math.log(v) : v);
 const unlin = (m, x) => (m.log ? Math.exp(x) : x);
+// a map whose neutral is its bottom (Mute, Bolt: none) runs from the bottom up instead
 const toUnit = (m, v) => {
   const x = lin(m, v), n = lin(m, m.neutral), lo = lin(m, m.lo), hi = lin(m, m.hi);
+  if (m.lo === m.neutral) return (x - lo) / (hi - lo);
   return x >= n ? 0.5 + 0.5 * (x - n) / (hi - n) : 0.5 * (x - lo) / (n - lo);
 };
 const fromUnit = (m, u) => {
   const n = lin(m, m.neutral), lo = lin(m, m.lo), hi = lin(m, m.hi);
+  if (m.lo === m.neutral) return unlin(m, lo + u * (hi - lo));
   return unlin(m, u >= 0.5 ? n + (u - 0.5) * 2 * (hi - n) : lo + u * 2 * (n - lo));
 };
 
@@ -263,7 +283,8 @@ function keyMapWidget(el, ctx) {
       <button data-act="reset" title="Put every key of this map back as set">Reset</button>
       <button data-act="smooth" title="Average each key with its neighbours">Smooth</button>
       <button data-act="random" title="Give every key of this map its own random value, by Amount">Randomize</button>
-      <button data-act="age" title="Fill every map with a worn piano's pattern, by Amount: drifting tuning, beating unisons, packed hammers and shorter rings in the middle, uneven levels, slow dampers (now and then one that hardly stops), now and then a replaced string">Age Piano</button>
+      <button data-act="prepare" title="Prepare the piano: put a rubber mute or a bolt, each at a point of its own, on some keys from C2 to C7 (at Amount 100 %, about half of them). Point, Mute and Bolt are drawn afresh; the other maps are left as they are">Prepare</button>
+      <button data-act="age" title="Fill every map but the Prepared ones with a worn piano's pattern, by Amount: drifting tuning, beating unisons, packed hammers and shorter rings in the middle, uneven levels, slow dampers (now and then one that hardly stops), now and then a replaced string">Age Piano</button>
       <label class="keymap-amount">Amount <input type="range" min="0" max="100" value="50"><span>50 %</span></label>
     </div>
     <div class="keymap-info"></div>`;
@@ -284,6 +305,12 @@ function keyMapWidget(el, ctx) {
   const H = 160, KH = 26;
 
   for (const id of MAP_IDS) {
+    if (MAPS[id].group && MAPS[id].group !== MAPS[MAP_IDS[MAP_IDS.indexOf(id) - 1]]?.group) {
+      const g = document.createElement("span");
+      g.className = "keymap-group";
+      g.textContent = MAPS[id].group;
+      tabs.append(g);
+    }
     const b = document.createElement("button");
     b.textContent = MAPS[id].label;
     b.dataset.map = id;
@@ -304,8 +331,14 @@ function keyMapWidget(el, ctx) {
     const m = MAPS[current];
     let u = 1 - (y - r.top - 6) / (r.height - 12);
     u = Math.max(0, Math.min(1, u));
-    if (Math.abs(u - 0.5) < 0.012) u = 0.5;   // snaps to the line
-    return clampTo(m, fromUnit(m, u));
+    const u0 = toUnit(m, m.neutral);
+    if (Math.abs(u - u0) < 0.012) u = u0;   // snaps to the line
+    let v = clampTo(m, fromUnit(m, u));
+    if (current === "point") {   // and Point to the string's whole divisions, where harmonics are
+      const n = Math.round(1 / v);
+      if (n >= 2 && n <= 16 && Math.abs(v * n - 1) < 0.04) v = 1 / n;
+    }
+    return v;
   };
   canvas.style.touchAction = "none";
   canvas.addEventListener("pointerdown", (e) => {
@@ -374,6 +407,9 @@ function keyMapWidget(el, ctx) {
     unison: (a) => 1 + 3 * a * Math.random(),
     hammer: (a) => a * rnd(),
     level: (a) => 6 * a * rnd(),
+    point: () => 0.05 * 6 ** Math.random(),
+    mute: (a) => a * Math.random(),
+    bolt: (a) => a * Math.random(),
     sustain: (a) => 2 ** (a * rnd()),
     damper: (a) => 2 ** (2 * a * rnd()),
     stiff: (a) => 1 + 0.8 * a * rnd(),
@@ -388,6 +424,19 @@ function keyMapWidget(el, ctx) {
       for (let i = 0; i < MAP_KEYS; i++) arr[i] = 0.25 * old[Math.max(0, i - 1)] + 0.5 * old[i] + 0.25 * old[Math.min(MAP_KEYS - 1, i + 1)];
     } else if (act === "random") {
       for (let i = 0; i < MAP_KEYS; i++) arr[i] = clampTo(m, spread[current](a));
+    } else if (act === "prepare") {
+      // as for a prepared piano: some keys from C2 to C7 get an object, a mute or a bolt, at a
+      // point of their own (now and then a whole division of the string, for a harmonic)
+      for (let i = 0; i < MAP_KEYS; i++) {
+        maps.point[i] = MAPS.point.neutral;
+        maps.mute[i] = 0;
+        maps.bolt[i] = 0;
+        const note = i + MAP_LOW;
+        if (note < 36 || note > 96 || Math.random() >= 0.5 * a) continue;
+        maps.point[i] = Math.random() < 0.3 ? 1 / (2 + Math.floor(8 * Math.random())) : 0.05 * 6 ** Math.random();
+        if (Math.random() < 0.55) maps.bolt[i] = 0.25 + 0.65 * Math.random();
+        else maps.mute[i] = 0.4 + 0.6 * Math.random();
+      }
     } else if (act === "age") {
       // a piano long without a tuner or a technician: every map at once
       for (let i = 0; i < MAP_KEYS; i++) {
@@ -444,7 +493,7 @@ function keyMapWidget(el, ctx) {
     const cw = w / MAP_KEYS;
     // the bars
     let g = size(canvas, H);
-    const T = 6, Bm = 6, yOf = (u) => T + (1 - u) * (H - T - Bm), y0 = yOf(0.5);
+    const T = 6, Bm = 6, yOf = (u) => T + (1 - u) * (H - T - Bm), y0 = yOf(toUnit(m, m.neutral));
     for (let i = 0; i < MAP_KEYS; i++) {
       if (isBlack(i)) { g.fillStyle = edge; g.globalAlpha = 0.25; g.fillRect(i * cw, 0, cw, H); g.globalAlpha = 1; }
     }
@@ -455,13 +504,17 @@ function keyMapWidget(el, ctx) {
       const y = yOf(toUnit(m, arr[i]));
       const lit = now - (flash.get(i) || -1e9) < 600;
       g.fillStyle = i === hover || i === held || lit ? ink : accent;
+      // Point does nothing on a key with nothing on its strings: faded there
+      g.globalAlpha = current === "point" && !(maps.mute[i] > 0 || maps.bolt[i] > 0) ? 0.3 : 1;
       g.fillRect(i * cw + 0.5, Math.min(y, y0), Math.max(1, cw - 1), Math.max(1.5, Math.abs(y - y0)));
+      g.globalAlpha = 1;
     }
     g.strokeStyle = soft; g.beginPath(); g.moveTo(0, Math.round(y0) + 0.5); g.lineTo(w, Math.round(y0) + 0.5); g.stroke();
     g.fillStyle = soft; g.font = "10px system-ui, sans-serif";
     const label = {
       tune: ["+50 cents", "−50 cents"], unison: ["400 %", "0 %"], hammer: ["harder", "softer"], level: ["+6 dB", "−18 dB"],
       sustain: ["400 %", "25 %"], damper: ["rings on (×32)", "×0.25"], stiff: ["400 %", "0 %"],
+      point: ["50 % (the middle)", "2 % (near the end)"], mute: ["100 %", "none"], bolt: ["100 %", "none"],
     }[current];
     g.fillText(label[0], 3, T + 9);
     g.fillText(label[1], 3, H - Bm - 2);

@@ -142,7 +142,7 @@
             {
               "title": "Key Maps",
               "wide": true,
-              "info": "Each key's own departure from the piano: its tuning, how far its strings beat against each other, its hammer, level, sustain, damper and string stiffness, as a worn or unevenly kept piano has. Draw a map, or fill them all with Age Piano. Each map moves its keys away from the global settings (Strings, Tone), so those still work. Saved with the patch.",
+              "info": "Each key's own departure from the piano: its tuning, how far its strings beat against each other, its hammer, level, sustain, damper and string stiffness, as a worn or unevenly kept piano has (Age Piano fills them); and, Prepared, an object on its strings: a rubber mute or a bolt at a point of its own (Prepare fills them). Each map moves its keys away from the global settings (Strings, Tone), so those still work. Saved with the patch.",
               "controls": [
                 {
                   "param": "keys.depth",

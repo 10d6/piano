@@ -3,7 +3,7 @@
 
 Each map at a few values on one key against the same key with no map, as the perceptual
 distance between the two renders (the owner could hardly hear a control at 1-7 %; 15 % and more
-is plain), with the change in level. Velocity 100, Depth 100 %, one note per register. Then the
+is plain), with the change in level. Velocity 100, Depth 100 %, one note per register (Mute and Bolt at the default Point, 13 % along the string). Then the
 presets that use the maps against the same playing on Init (a scale and a chord).
 
 The maps are custom state, not parameters, so this renders patches of its own rather than
@@ -30,10 +30,14 @@ MAPS = [("Tuning +10 cents", "tune", 10.0), ("Tuning +25 cents", "tune", 25.0),
         ("Hammer harder 50 %", "hammer", 0.5), ("Hammer harder 100 %", "hammer", 1.0),
         ("Level −6 dB", "level", -6.0),
         ("Sustain 50 %", "sustain", 0.5), ("Sustain 200 %", "sustain", 2.0),
-        ("Stiffness 0 %", "stiff", 0.0), ("Stiffness 300 %", "stiff", 3.0)]
+        ("Stiffness 0 %", "stiff", 0.0), ("Stiffness 300 %", "stiff", 3.0),
+        ("Mute 50 % (at 13 %)", "mute", 0.5), ("Mute 100 % (at 13 %)", "mute", 1.0),
+        ("Bolt 30 % (at 13 %)", "bolt", 0.3), ("Bolt 60 % (at 13 %)", "bolt", 0.6), ("Bolt 100 % (at 13 %)", "bolt", 1.0),
+        ("Mute 100 % at 1/2", "mute@half", 1.0)]
 # the dampers act only on release: the key is let go at 1 s
 DAMPERS = [("Dampers ×0.25", 0.25), ("Dampers ×4", 4.0), ("Dampers ×32", 32.0)]
-NEUTRAL = {"tune": 0.0, "unison": 1.0, "hammer": 0.0, "level": 0.0, "sustain": 1.0, "damper": 1.0, "stiff": 1.0}
+NEUTRAL = {"tune": 0.0, "unison": 1.0, "hammer": 0.0, "level": 0.0, "sustain": 1.0, "damper": 1.0, "stiff": 1.0,
+           "point": 0.13, "mute": 0.0, "bolt": 0.0}
 ROOT = M.TOOLS.parent
 NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -54,6 +58,8 @@ def patch(keys=None, params=None, base=None):
 
 
 def one_map(map_id, key, value):
+    if map_id == "mute@half":   # a mute at the middle of the string: a harmonic
+        return {**one_map("mute", key, value), **one_map("point", key, 0.5)}
     a = [NEUTRAL[map_id]] * 88
     a[key - 21] = value
     return {map_id: a}
@@ -99,7 +105,7 @@ def main():
         ev += [{"t": 0.25 * i, "on": k, "vel": 90}, {"t": 0.25 * i + 0.24, "off": k}]
     for k in (48, 55, 60, 64, 67):
         ev += [{"t": 3.5, "on": k, "vel": 95}, {"t": 5.5, "off": k}]
-    for name in ("neglected-upright", "needs-a-tuner", "saloon-upright"):
+    for name in ("neglected-upright", "needs-a-tuner", "saloon-upright", "prepared-sonata", "rubber-piano", "bolted-gongs"):
         pre = json.load(open(ROOT / "presets" / f"{name}.json"))
         keys = pre.get("custom", {}).get("keys", {})
         y_maps = render(tool, patch(keys, base=pre), ev, 6.0)

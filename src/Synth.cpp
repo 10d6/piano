@@ -115,12 +115,18 @@ float measuredCents(int note) {
 //   damper  × the Dampers setting (the time a damper takes), 0.25-32: a worn or leaky damper is
 //           slow; at 32 the key all but rings on, as if it had none
 //   stiff   × the Stiffness setting, 0-4: a string replaced with another gauge, or a corroded one
+// and three that prepare a key (docs/MODEL.md, Preparations):
+//   point   where along the string an object sits, a share of its length from the nearer end,
+//           0.02-0.5 (0.13 when not drawn; alone it does nothing)
+//   mute    a rubber or felt wedge there, 0-1: damping, most on the partials with an antinode there
+//   bolt    a bolt or screw there, 0-1: its mass, which detunes every partial its own way
 // Unison, Stiffness and Level move with Depth in a straight line; Sustain and Dampers, whose
 // settings are logarithmic, as powers (× v^Depth).
 constexpr int kMapKeys = 88, kMapLow = 21;
 struct KeyMaps {
-  std::array<float, kMapKeys> tune{}, unison{}, hammer{}, level{}, sustain{}, damper{}, stiff{};
+  std::array<float, kMapKeys> tune{}, unison{}, hammer{}, level{}, sustain{}, damper{}, stiff{}, point{}, mute{}, bolt{};
   KeyMaps() {
+    point.fill(0.13f);
     unison.fill(1.f);
     sustain.fill(1.f);
     damper.fill(1.f);
@@ -162,6 +168,72 @@ inline float touchShare(int n, float y, float w) {
   float a = 0.5f * kTwoPi * n * w;
   float sinc = a > 1e-4f ? std::sin(a) / a : 1.f;
   return 0.5f * (1.f - std::cos(kTwoPi * n * y) * sinc);
+}
+
+// A prepared string (Key maps: Point, Mute, Bolt; docs/MODEL.md, Preparations). A bolt or screw
+// clamped to the string at x (a fraction of its length) is a point mass mu times the string's own.
+// The string's modes are then k with
+//     sin k − mu·k·sin(kx)·sin(k(1−x)) = 0
+// (cot(kx) + cot(k(1−x)) = mu·k, the force balance at the mass, without its poles). The n-th lies
+// in ((n−1)π, nπ] (they interlace), and the two ends have opposite signs unless the mass sits on
+// a node of mode n, which it then leaves alone. Returns k/(nπ): the share of its frequency the
+// n-th partial keeps (≤ 1). A light bolt lowers each partial by mu·sin²(nπx), a heavy one splits
+// the string in two at x, whose own series the partials approach: the gong.
+inline float boltRatio(int n, float x, float mu) {
+  constexpr double pi = 3.14159265358979323846;
+  double s = std::sin(n * pi * x);
+  if (mu <= 0 || s * s < 1e-9) return 1.f;
+  auto h = [&](double k) { return std::sin(k) - mu * k * std::sin(k * x) * std::sin(k * (1 - x)); };
+  double a = (n - 1) * pi + 1e-9, b = n * pi, ha = h(a), hb = h(b);
+  if (ha * hb > 0) {   // the left end sits on the mode below (a node there): look for the change
+    bool found = false;
+    for (int m = 1; m < 32 && !found; ++m) {
+      double k = (n - 1) * pi + pi * m / 32, hk = h(k);
+      if (hk * hb <= 0) {
+        a = k;
+        ha = hk;
+        found = true;
+      }
+    }
+    if (!found) return 1.f;
+  }
+  for (int it = 0; it < 28; ++it) {
+    double m = 0.5 * (a + b), hm = h(m);
+    if (hm * ha > 0) {
+      a = m;
+      ha = hm;
+    } else {
+      b = m;
+    }
+  }
+  return static_cast<float>(0.5 * (a + b) / (n * pi));
+}
+constexpr float kMuteWidth = 0.03f;      // a rubber or felt wedge's width, as a share of the string
+constexpr float kMuteMaxDb = 1500.f;     // its damping (dB/s) at Mute 100 %, where its share is whole
+constexpr float kBoltMaxMu = 3.f;        // a bolt's mass at Bolt 100 %, × the string's
+constexpr float kBoltFrictionDb = 40.f;  // and the damping its contact adds at 100 % (dB/s, whole share)
+// A key's preparation, as Depth leaves it: where, the mute's damping and the bolt's mass.
+struct Prep {
+  float y = 0.13f, muteDb = 0, mu = 0, boltDb = 0;
+  bool any() const { return muteDb > 0 || mu > 0; }
+};
+// The extra damping (dB/s) and the frequency share of partial n under a preparation.
+inline float prepDbOf(const Prep& p, int n) {
+  return (p.muteDb > 0 ? p.muteDb * touchShare(n, p.y, kMuteWidth) : 0.f) +
+         (p.boltDb > 0 ? p.boltDb * touchShare(n, p.y, 0.f) : 0.f);
+}
+// a key's preparation from the maps at Depth d (the amounts scale with it, the point doesn't)
+inline Prep prepOf(const KeyMaps& m, int note, float d) {
+  int i = mapIndex(note);
+  Prep p;
+  p.y = std::clamp(m.point[i], 0.02f, 0.5f);
+  float mute = m.mute[i] * d, bolt = m.bolt[i] * d;
+  if (mute > 0) p.muteDb = kMuteMaxDb * mute * mute;
+  if (bolt > 0) {
+    p.mu = kBoltMaxMu * bolt * bolt;
+    p.boltDb = kBoltFrictionDb * bolt;
+  }
+  return p;
 }
 
 inline float damperRate(int note, int last = kLastDamper) {
@@ -287,6 +359,10 @@ struct PianoVoice : Voice {
   // Touch Point (touch.*): the finger's extra decay per partial number (dB/s, positive; all 0
   // with no finger on the string), and the settings it was worked out from
   float touchDb[kMaxPartials + 1] = {};
+  // the key's preparation (Key maps: Point, Mute, Bolt), set at each strike: each partial's extra
+  // damping (dB/s) and the share of its frequency it keeps. Unused unless prepared.
+  bool prepared = false;
+  float prepDb[kMaxPartials + 1] = {}, prepRatio[kMaxPartials + 1] = {};
   float lastTouchPress = 0, lastTouchPoint = -1, lastTouchWidth = -1;
   bool lastTouchSnap = false;
 
@@ -359,6 +435,7 @@ struct Piano : Synth {
   float eventMapDepth = 1;   // Key Map Depth as of this host block (processEvents)
   static constexpr std::array<float, 128> kOnes = [] { std::array<float, 128> a{}; for (float& v : a) v = 1.f; return a; }();
   std::array<float, 128> bankSusK = kOnes, bankDampK = kOnes, bankStiffK = kOnes;   // each free string's map factors (× Depth)
+  Prep bankPrep[128];   // each free string's preparation (Key maps: Point, Mute, Bolt)
   // a key's damper time from its map (× the Dampers setting)
   float damperMap(int key, float depth) const { return mapPower(maps.damper[mapIndex(key)], depth); }
 
@@ -472,6 +549,9 @@ struct Piano : Synth {
         put("sustain", k.sustain, 1.f);
         put("damper", k.damper, 1.f);
         put("stiff", k.stiff, 1.f);
+        put("point", k.point, 0.13f);
+        put("mute", k.mute, 0.f);
+        put("bolt", k.bolt, 0.f);
       },
       .load = [](const Json& j, KeyMaps& k) {
         k = KeyMaps{};
@@ -487,6 +567,9 @@ struct Piano : Synth {
         get("sustain", k.sustain, 0.25f, 4.f);
         get("damper", k.damper, 0.25f, 32.f);
         get("stiff", k.stiff, 0.f, 4.f);
+        get("point", k.point, 0.02f, 0.5f);
+        get("mute", k.mute, 0.f, 1.f);
+        get("bolt", k.bolt, 0.f, 1.f);
       },
       .initial = {},
     });
@@ -906,10 +989,12 @@ struct Piano : Synth {
     float f0 = a4Hz * std::exp2((key + stretchPct * 0.01f * measuredCents(key) * 0.01f + bankCents[key] * 0.01f - 69.f) / 12.f);
     float dmp = keyDamped[key] ? damperRate(key, topDamper) / dampScale : 0.f;
     float rate = 0.5f * sr, nyq = 0.47f * rate;
+    const Prep& pp = bankPrep[key];
+    bool prep = pp.any();
     for (int i = keyFirst[key]; i < keyFirst[key] + keyLen[key]; ++i) {
       float rat = stiff == 1.f || bIn[i] == 0 ? bRatio[i] : partialRatio(bPn[i], bB[i], bDev[i], stiff);
-      float f = f0 * rat;
-      float db = overtoneDecayDb(bDecay[i], rat, gamma) / sus - dmp * bDampMul[i];
+      float f = prep ? f0 * rat * boltRatio(bPn[i], pp.y, pp.mu) : f0 * rat;
+      float db = overtoneDecayDb(bDecay[i], rat, gamma) / sus - dmp * bDampMul[i] - (prep ? prepDbOf(pp, bPn[i]) : 0.f);
       float rad = bIn[i] != 0 && f < nyq ? std::pow(10.f, db * 0.05f / rate) : 0.f;
       bPr[i] = rad * std::cos(kTwoPi * f / rate);
       bPi[i] = rad * std::sin(kTwoPi * f / rate);
@@ -939,6 +1024,7 @@ struct Piano : Synth {
     if (mapsMoved || mapDepth != lastMapDepth) {   // a key whose map tuning has moved retunes its free string
       mapsMoved = false;
       lastMapDepth = mapDepth;
+      bool drawn = mapsMoved;
       for (int key = kMapLow; key < kMapLow + kMapKeys; ++key) {
         int m = key - kMapLow;
         float c = maps.tune[m] * mapDepth, su = mapPower(maps.sustain[m], mapDepth),
@@ -948,6 +1034,14 @@ struct Piano : Synth {
           bankSusK[key] = su;
           bankDampK[key] = dm;
           bankStiffK[key] = st;
+          keyPoles[key] = false;
+        }
+        // a preparation: solved again when it's drawn, and when Depth alone has moved its amounts
+        // by more than 1 % (a modulated Depth would otherwise solve every prepared string a block)
+        Prep pp = prepOf(maps, key, mapDepth), &old = bankPrep[key];
+        auto moved = [&](float a, float b) { return drawn ? a != b : std::fabs(a - b) > 0.01f * std::max(a, b); };
+        if (pp.y != old.y || moved(pp.muteDb, old.muteDb) || moved(pp.mu, old.mu) || pp.any() != old.any()) {
+          old = pp;
           keyPoles[key] = false;
         }
       }
@@ -1398,6 +1492,15 @@ void PianoVoice::strike(VoiceContext& ctx, float vel) {
   float mapDepth = ctx.get(synth.keysDepth) * 0.01f;
   float mapHammer = keyMap.hammer[mapIndex(static_cast<int>(note))] * mapDepth;
   float mapLevel = keyMap.level[mapIndex(static_cast<int>(note))] * mapDepth;
+  {   // the key's preparation, as it is struck: it stays on the string until the next strike
+    Prep pp = prepOf(keyMap, static_cast<int>(note), mapDepth);
+    prepared = pp.any();
+    if (prepared)
+      for (int n = 1; n <= kMaxPartials; ++n) {
+        prepDb[n] = prepDbOf(pp, n);
+        prepRatio[n] = boltRatio(n, pp.y, pp.mu);
+      }
+  }
   if (mapLevel != 0) gainDb += mapLevel;
   float bright = ctx.get(synth.bright);
   float stiff = ctx.get(synth.stiffness) * 0.01f;
@@ -2225,9 +2328,10 @@ void PianoVoice::release() {
 void PianoVoice::updatePoles(float pitchHz, float sustainScale, float unisonScale, float damperScale, float gamma) {
   float nyq = 0.47f * sr;
   for (int i = 0; i < count; ++i) {
-    float f = pitchHz * ratio[i] + centre[i] + (offset[i] - centre[i]) * unisonScale;
+    float f = (prepared ? pitchHz * ratio[i] * prepRatio[pnum[i]] : pitchHz * ratio[i]) + centre[i] +
+              (offset[i] - centre[i]) * unisonScale;
     float db = overtoneDecayDb(decay[i], ratio[i], gamma) / sustainScale - extra[i] - (damped ? damp[i] / damperScale : 0.f) -
-               touchDb[pnum[i]];
+               touchDb[pnum[i]] - (prepared ? prepDb[pnum[i]] : 0.f);
     float rad = f < nyq ? std::pow(10.f, db * 0.05f / sr) : 0.f;
     float w = kTwoPi * f / sr;
     pr[i] = rad * std::cos(w);
