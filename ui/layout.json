@@ -137,6 +137,25 @@
           ]
         },
         {
+          "title": "Keys",
+          "sections": [
+            {
+              "title": "Key Maps",
+              "wide": true,
+              "info": "Each key's own departure from the piano: its tuning, how far its strings beat against each other, its hammer and its level, as a worn or unevenly kept piano has. Draw a map, or fill them all with Age Piano. Each map moves its keys away from the global settings (Strings, Tone), so those still work. Saved with the patch.",
+              "controls": [
+                {
+                  "param": "keys.depth",
+                  "label": "Depth"
+                },
+                {
+                  "type": "keyMap"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "title": "Synthesis",
           "sections": [
             {
@@ -402,7 +421,8 @@
     "hammer.morph": "On: Material sets Edge, Weight and Core together, and their own knobs aren't read. Off: they are set by hand.",
     "hammer.material": "With Morph on: what the hammer is made of. 0% felt (the piano as measured), 25% worn felt (bright only when struck hard), 50% leather on a light hammer (thinner and brighter, an early piano), 75% wood (lighter and harder still), 100% metal (a tack in a full-weight hammer: bright and full). A route from velocity or a random value here gives each note its own hammer.",
     "hammer.wear": "Felt packed hard by years of playing. 0% is new felt. Higher makes the hammers harder and brighter, as Edge does, most around the middle of the keyboard, where a piano is played most, and a third as much at its ends. Play a scale from the bass to the top to hear it come and go.",
-    "hammer.uneven": "Every key its own hammer. 0% is an evenly voiced piano. Higher makes some keys' felt softer and duller, others' harder and brighter, and their hammers a little lighter or heavier: always the same on the same key, unlike a random route, which changes with every strike. Play neighbouring keys one after another to hear it."
+    "hammer.uneven": "Every key its own hammer. 0% is an evenly voiced piano. Higher makes some keys' felt softer and duller, others' harder and brighter, and their hammers a little lighter or heavier: always the same on the same key, unlike a random route, which changes with every strike. Play neighbouring keys one after another to hear it.",
+    "keys.depth": "How far every key map takes its keys from the global settings: 0 % plays the piano as set, 100 % as drawn, 200 % twice as far. Lower to hear the piano before it aged; modulate it to age and restore it as you play."
   },
   "keyboard": true
 }
