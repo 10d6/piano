@@ -326,6 +326,11 @@ from CI at milestones.
   and the RT60s to report.
 - Voices read parameters only in `render`, so the strike happens at the
   start of the first render after `start` (`pending`).
+- Kit gaps since closed by synthkit eb45fe0 (not yet used here; piano's renders are
+  bit-identical across the bump): keyboard velocity from where a key is clicked, half-pedalling
+  (`sk.halfPedal`, `ctx.pedal()`), release velocity (`ctx.releaseVelocity()`), greyed-out controls
+  (`enabledWhen`, for Morph), `cc.N` mod sources. Piano's own pedal handling still decides its
+  dampers; wiring these in is separate work.
 - Kit gaps found so far (candidates for synthkit PRs): velocity on the on-screen keyboard and
   computer keys (always 100), continuous CC64 for
   half-pedalling (the kit treats it as on/off), release velocity, parameter
